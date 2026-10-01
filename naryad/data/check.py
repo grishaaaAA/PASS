@@ -46,7 +46,7 @@ SCHEMA = {
         ("id", "str", False), ("board_number", "str", False), ("plate", "str", False),
         ("model", "str", False), ("class", "str", False), ("fuel", "str", False),
         ("park_id", "str", False), ("condition", "str", False),
-        ("home_route_id", "str", True),
+        ("repair_days_left", "int", True), ("home_route_id", "str", True),
     ],
     "drivers": [
         ("id", "str", False), ("tab_number", "str", False), ("full_name", "str", False),
@@ -67,7 +67,7 @@ ENUMS = {
     ("vehicles", "fuel"): {"gas", "diesel", "electric"},
     ("vehicles", "condition"): {"ok", "repair", "maintenance", "accident"},
     ("drivers", "classes"): set(CLASSES),
-    ("drivers", "schedule"): {"work", "day_off"},
+    ("drivers", "schedule"): {"work", "day_off", "sick", "vacation"},
     ("drivers", "medical"): {"passed", "failed", "pending"},
 }
 
@@ -138,6 +138,9 @@ def check(data: dict) -> dict:
         ref("routes", route, "park_id", parks)
     for vehicle in data["vehicles"]:
         ref("vehicles", vehicle, "park_id", parks)
+        if (vehicle["condition"] == "ok") != (vehicle["repair_days_left"] is None):
+            errors.append(f"vehicles {vehicle['id']}: срок ремонта указывается только "
+                          f"у неисправного автобуса")
         ref("vehicles", vehicle, "home_route_id", routes)
     for driver in data["drivers"]:
         ref("drivers", driver, "park_id", parks)
@@ -146,8 +149,8 @@ def check(data: dict) -> dict:
         if vehicle and vehicle["class"] not in driver["classes"]:
             errors.append(f"drivers {driver['id']}: закреплён за "
                           f"{vehicle['id']}, но нет допуска к классу {vehicle['class']}")
-        if driver["schedule"] == "day_off" and driver["medical"] is not None:
-            errors.append(f"drivers {driver['id']}: выходной, но указан медосмотр")
+        if driver["schedule"] != "work" and driver["medical"] is not None:
+            errors.append(f"drivers {driver['id']}: не работает сегодня, но указан медосмотр")
 
     shifts_of: dict = {}
     for shift in data["shifts"]:
@@ -225,9 +228,9 @@ def check(data: dict) -> dict:
         duty_ids = {d["id"] for d in own_duties}
         need_shifts = sum(s["duty_id"] in duty_ids for s in data["shifts"])
         working = sum(d["park_id"] == pid and d["schedule"] == "work"
-                      for d in data["drivers"])
+                      and d["medical"] != "failed" for d in data["drivers"])
         if working < need_shifts:
-            warnings.append(f"парк {pid}: смен {need_shifts}, водителей по графику "
+            warnings.append(f"парк {pid}: смен {need_shifts}, водителей готово "
                             f"{working}, не хватает {need_shifts - working}")
 
     return {"errors": errors, "warnings": warnings}

@@ -1,2 +1,2 @@
 ﻿id;name;address;lat;lon;state;list_count;tech_readiness;release_weekday;release_weekend;reserve_weekday;reserve_weekend
-P07;Автобусный парк №7;;;;working;420;0.893;350;266;24;19
+P07;Автобусный парк №7;Кубинская ул., 86;;;working;420;0.893;350;266;24;19
