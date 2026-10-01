@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 from .model import REASONS, Day, Plan
@@ -26,7 +27,12 @@ LABOR_FILE = Path(__file__).with_name("labor.json")
 def load_labor(path: Path = LABOR_FILE) -> dict:
     """Нормы труда: имя -> число. Источники и статус лежат в самом файле."""
     raw = json.loads(Path(path).read_text(encoding="utf-8"))
-    return {name: item["value"] for name, item in raw.items()}
+    return {name: item["value"] for name, item in raw.items() if not name.startswith("_")}
+
+
+def shift_limit(labor: dict) -> int:
+    """Дневная норма смены: 12 ч при согласовании с профсоюзом, иначе 10 ч (п. 6)."""
+    return labor["max_shift_extended_min"] if labor["city_12h_agreed"] else labor["max_shift_min"]
 
 
 @dataclass(frozen=True)
@@ -170,12 +176,18 @@ def _driver_load(day: Day, plan: Plan, labor: dict) -> list:
                                      f"Водитель {tab}: смены {first.id} и {second.id} "
                                      f"пересекаются по времени", (driver_id, first.id, second.id)))
         total = sum(s.length for s in shifts)
-        if total > labor["max_shift_min"]:
+        limit = shift_limit(labor)
+        if total > limit:
+            note = ("" if labor["city_12h_agreed"] is not None else
+                    "; до 12 ч можно, если с профсоюзом согласовано (п. 6 Приказа № 424)")
             out.append(Violation("driver_overtime",
-                                 f"Водитель {tab}: {total // 60} ч {total % 60} мин за день, "
-                                 f"норма {labor['max_shift_min'] // 60} ч",
+                                 f"Водитель {tab}: {_hm(total)} за день, норма {_hm(limit)}{note}",
                                  (driver_id, *(s.id for s in shifts))))
     return out
+
+
+def _hm(minutes_: int) -> str:
+    return f"{minutes_ // 60} ч {minutes_ % 60:02d} мин"
 
 
 def _unfilled_explained(day: Day, plan: Plan) -> list:
@@ -236,3 +248,60 @@ def metrics(day: Day, plan: Plan) -> dict:
         "shifts_filled": sum(s.id in plan.drivers for s in shifts),
         "by_priority": {p: {"filled": f, "total": t} for p, (f, t) in sorted(by_priority.items())},
     }
+
+
+def check_rest(series: list, labor: dict | None = None) -> list:
+    """Отдых водителей на серии дней: список пар (день, план) по порядку дат.
+
+    Проверяет то, что нельзя увидеть в одном дне (Приказ № 424):
+    - отдых между сменами не меньше 11 ч, до 9 ч - не больше 3 раз
+      между еженедельными отдыхами (п. 18);
+    - отдых вместе с перерывом на питание - не меньше двух длин
+      предыдущей смены (п. 18);
+    - не больше 6 смен подряд без отдыха 45 ч (п. 19).
+    Что было до первого дня серии, неизвестно: считаем, что перед ней
+    у всех был еженедельный отдых.
+    """
+    labor = labor or load_labor()
+    worked = defaultdict(list)
+    for day, plan in series:
+        base = date.fromisoformat(day.meta["date"]).toordinal() * 1440
+        for shift_id, driver_id in plan.drivers.items():
+            shift = day.shifts.get(shift_id)
+            if shift is not None:
+                worked[driver_id].append((base + shift.start, base + shift.end, shift.id))
+    out = []
+    for driver_id, shifts in worked.items():
+        shifts.sort()
+        reduced = in_row = 0
+        for i, (start, end, shift_id) in enumerate(shifts):
+            in_row += 1
+            if in_row > labor["max_shifts_between_weekly_rests"]:
+                out.append(Violation("weekly_rest",
+                                     f"Водитель {driver_id}: смена {shift_id} - уже {in_row}-я "
+                                     f"подряд без отдыха 45 ч, можно не больше "
+                                     f"{labor['max_shifts_between_weekly_rests']} (п. 19)",
+                                     (driver_id, shift_id)))
+            if i + 1 == len(shifts):
+                break
+            next_start, _, next_id = shifts[i + 1]
+            gap, work = next_start - end, end - start
+            if gap >= labor["min_weekly_rest_min"]:
+                reduced = in_row = 0
+                continue
+            need = labor["rest_to_work_ratio"] * work - labor["meal_break_assumed_min"]
+            if gap < need:
+                out.append(Violation("rest_ratio",
+                                     f"Водитель {driver_id}: между {shift_id} и {next_id} отдых "
+                                     f"{_hm(gap)}, а после смены {_hm(work)} нужно не меньше "
+                                     f"{_hm(need)} (двойная смена минус перерыв на питание, п. 18)",
+                                     (driver_id, shift_id, next_id)))
+            if gap < labor["min_daily_rest_min"]:
+                reduced += 1
+                if gap < labor["min_daily_rest_reduced_min"] or reduced > labor["max_reduced_rests"]:
+                    out.append(Violation("daily_rest",
+                                         f"Водитель {driver_id}: между {shift_id} и {next_id} "
+                                         f"отдых {_hm(gap)}; нужно 11 ч, сократить до 9 ч можно "
+                                         f"не больше {labor['max_reduced_rests']} раз (п. 18)",
+                                         (driver_id, shift_id, next_id)))
+    return out
