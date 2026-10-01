@@ -163,6 +163,7 @@ class Plan:
     vehicles: dict = field(default_factory=dict)   # наряд -> автобус
     drivers: dict = field(default_factory=dict)    # смена -> водитель
     unfilled: dict = field(default_factory=dict)   # наряд или смена -> причина
+    transfers: dict = field(default_factory=dict)  # автобус -> в какой парк переброшен на день
     meta: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
@@ -173,6 +174,7 @@ class Plan:
             "driver_assignments": [{"shift_id": s, "driver_id": d}
                                    for s, d in sorted(self.drivers.items())],
             "unfilled": [{"id": i, "reason": r} for i, r in sorted(self.unfilled.items())],
+            "transfers": [{"vehicle_id": v, "to_park": p} for v, p in sorted(self.transfers.items())],
         }
 
     @classmethod
@@ -182,7 +184,8 @@ class Plan:
         for name, target, key, value in (
                 ("vehicle_assignments", plan.vehicles, "duty_id", "vehicle_id"),
                 ("driver_assignments", plan.drivers, "shift_id", "driver_id"),
-                ("unfilled", plan.unfilled, "id", "reason")):
+                ("unfilled", plan.unfilled, "id", "reason"),
+                ("transfers", plan.transfers, "vehicle_id", "to_park")):
             for item in data.get(name, []):
                 if item[key] in target:
                     raise ValueError(f"{name}: {item[key]} указан дважды")

@@ -98,6 +98,7 @@ def solve_drivers(day: Day, vehicle_plan: Plan, history: History | None = None,
     limit = shift_limit(labor)
 
     plan = Plan(vehicles=dict(vehicle_plan.vehicles), unfilled=dict(vehicle_plan.unfilled),
+                transfers=dict(vehicle_plan.transfers),
                 meta={**vehicle_plan.meta, "stage": "drivers", "made_by": "naryad.solve.drivers"})
 
     shifts = []

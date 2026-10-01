@@ -56,6 +56,7 @@ def baseline_drivers(day: Day, vehicle_plan: Plan) -> Plan:
     реальный порядок узнаем у перевозчика.
     """
     plan = Plan(vehicles=dict(vehicle_plan.vehicles), unfilled=dict(vehicle_plan.unfilled),
+                transfers=dict(vehicle_plan.transfers),
                 meta={"made_by": "naryad.solve.baseline", "stage": "drivers"})
     ready = [d for d in sorted(day.drivers.values(), key=lambda d: d.tab_number)
              if d.schedule == "work" and d.medical != "failed"]

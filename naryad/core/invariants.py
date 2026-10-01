@@ -102,10 +102,10 @@ def _vehicle_fits(day: Day, plan: Plan) -> list:
             out.append(Violation("vehicle_broken",
                                  f"{name}: автобус неисправен ({vehicle.condition})",
                                  (duty_id, vehicle_id)))
-        if vehicle.park_id != duty.park_id:
+        if vehicle.park_id != duty.park_id and plan.transfers.get(vehicle.id) != duty.park_id:
             out.append(Violation("vehicle_park",
                                  f"{name}: автобус из парка {vehicle.park_id}, наряд парка "
-                                 f"{duty.park_id}", (duty_id, vehicle_id)))
+                                 f"{duty.park_id}, переброска не оформлена", (duty_id, vehicle_id)))
     return out
 
 

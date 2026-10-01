@@ -1,0 +1,153 @@
+"""Весь город и переброски между парками (А7). Запуск: python -m unittest"""
+
+import itertools
+import time
+import unittest
+from collections import Counter, defaultdict
+
+from naryad.core.invariants import check_plan
+from naryad.core.model import Day, Plan
+from naryad.data.generate import generate
+from naryad.solve.city import TRANSFER_COST, add_transfers, solve_city, with_park_shortage
+from naryad.solve.vehicles import _groups, allowed_classes, drop_costs, solve_vehicles
+
+from tests.test_core import WEEKDAY
+
+CITY = Day.from_dict(generate("case", WEEKDAY, seed=1))
+TWO_PARKS = dict(park_count=2, release_per_park=16, routes_total=6,
+                 class_mix={"medium": 12, "big": 12, "extra_big": 8})
+
+
+def line_lost(day, plan, park_id=None):
+    return [d for d in day.duties.values() if d.day_type == day.day_type and d.type == "line"
+            and (park_id is None or d.park_id == park_id) and d.id not in plan.vehicles]
+
+
+class TestCity(unittest.TestCase):
+
+    def test_normal_day_no_transfers(self):
+        plan = solve_city(CITY)
+        self.assertEqual(check_plan(CITY, plan), [])
+        self.assertEqual(plan.transfers, {})
+        self.assertEqual(line_lost(CITY, plan), [])
+
+    def test_emergency_in_one_park(self):
+        day = with_park_shortage(CITY, "P03", 0.25)
+        without = solve_city(day, transfers=False, drivers=False)
+        start = time.perf_counter()
+        plan = solve_city(day)
+        self.assertLess(time.perf_counter() - start, 10.0)
+        self.assertEqual(check_plan(day, plan), [])
+        self.assertTrue(line_lost(day, without, "P03"))
+        self.assertEqual(line_lost(day, plan), [])
+        self.assertTrue(all(p == "P03" for p in plan.transfers.values()))
+        self.assertNotIn("no_driver", plan.unfilled.values())
+        donors = Counter(day.vehicles[v].park_id for v in plan.transfers)
+        self.assertGreater(len(donors), 1)  # нагрузка распределена между парками
+
+    def test_transfer_only_when_worth_it(self):
+        day = with_park_shortage(CITY, "P03", 0.25)
+        plan = add_transfers(day, solve_vehicles(day), cost=1e9)
+        self.assertEqual(plan.transfers, {})
+
+    def test_gas_buses_stay_in_gas_parks(self):
+        day = with_park_shortage(CITY, "P03", 0.4)
+        plan = add_transfers(day, solve_vehicles(day), gas_parks={"P07"})
+        self.assertTrue(plan.transfers)
+        self.assertFalse([v for v in plan.transfers if day.vehicles[v].fuel == "gas"])
+        self.assertEqual(check_plan(day, plan, drivers=False), [])
+
+    def test_release_limit_respected(self):
+        day = with_park_shortage(CITY, "P03", 0.25)
+        park = day.parks["P03"]
+        released = Counter(day.duties[d].park_id for d in solve_vehicles(day).vehicles)["P03"]
+        import dataclasses
+        day.parks["P03"] = dataclasses.replace(park, release_weekday=released + 5,
+                                               release_weekend=released + 5)
+        plan = add_transfers(day, solve_vehicles(day))
+        self.assertEqual(len(plan.transfers), 5)
+        self.assertEqual(check_plan(day, plan, drivers=False), [])
+
+    def test_plan_round_trip_with_transfers(self):
+        day = with_park_shortage(CITY, "P03", 0.25)
+        plan = add_transfers(day, solve_vehicles(day))
+        self.assertEqual(Plan.from_dict(plan.to_dict()).transfers, plan.transfers)
+
+    def test_greedy_matches_brute_force(self):
+        """Малый город из двух парков: польза перебросок как у полного перебора."""
+        checked = 0
+        for seed in range(1, 7):
+            base = Day.from_dict(generate("case", WEEKDAY, seed=seed, **TWO_PARKS))
+            first = sorted(base.parks)[0]
+            for share in (0.3, 0.5, 0.7):
+                day = with_park_shortage(base, first, share, seed)
+                before = solve_vehicles(day)
+                after = add_transfers(day, Plan(vehicles=dict(before.vehicles),
+                                                unfilled=dict(before.unfilled)))
+                self.assertAlmostEqual(_gain(day, before, after), _best_gain(day, before), places=6)
+                checked += 1
+        self.assertEqual(checked, 18)
+
+
+def _route_state(day, plan):
+    """Маршрут -> (цены пропусков по порядку, сколько выпало)."""
+    out = {}
+    for key, duties in _groups(day).items():
+        if duties[0].type == "line":
+            out[key] = ([c for _, c in drop_costs(day, duties)],
+                        sum(d.id not in plan.vehicles for d in duties))
+    return out
+
+
+def _gain(day, before, after):
+    gain = 0.0
+    b, a = _route_state(day, before), _route_state(day, after)
+    for key, (costs, m_before) in b.items():
+        m_after = a[key][1]
+        gain += sum(costs[m_after:m_before])
+    return gain - TRANSFER_COST * len(after.transfers)
+
+
+def _best_gain(day, before):
+    """Полный перебор: сколько автобусов перебросить на каждый маршрут."""
+    used = set(before.vehicles.values())
+    pool = Counter(v.cls for v in day.vehicles.values()
+                   if v.condition == "ok" and v.id not in used)
+    released = Counter(day.duties[d].park_id for d in before.vehicles)
+    routes = [(key, day.duties[next(d.id for d in duties)]) for key, duties in _groups(day).items()
+              if duties[0].type == "line"]
+    states = _route_state(day, before)
+    choices = []
+    for key, duty in routes:
+        costs, m = states[key]
+        own_spare = sum(1 for v in day.vehicles.values() if v.condition == "ok" and v.id not in used
+                        and v.park_id == duty.park_id and v.cls in allowed_classes(day, duty))
+        choices.append(range(m + 1) if m and own_spare == 0 else range(1))
+    best = 0.0
+    for counts in itertools.product(*choices):
+        need, per_park = Counter(), Counter()
+        for (key, duty), t in zip(routes, counts):
+            cls = allowed_classes(day, duty)[0]
+            need[(cls, duty.park_id)] += t
+            per_park[duty.park_id] += t
+        ok = all(per_park[p] + released[p] <= day.parks[p].release(day.day_type) for p in per_park)
+        for (cls, park), t in need.items():
+            other = sum(1 for v in day.vehicles.values() if v.condition == "ok" and v.id not in used
+                        and v.cls == cls and v.park_id != park)
+            ok = ok and t <= other
+        by_class = defaultdict(int)
+        for (cls, _), t in need.items():
+            by_class[cls] += t
+        ok = ok and all(t <= pool[c] for c, t in by_class.items())
+        if not ok:
+            continue
+        gain = 0.0
+        for (key, duty), t in zip(routes, counts):
+            costs, m = states[key]
+            gain += sum(costs[m - t:m]) - TRANSFER_COST * t
+        best = max(best, gain)
+    return best
+
+
+if __name__ == "__main__":
+    unittest.main()
