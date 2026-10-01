@@ -190,8 +190,12 @@ def _hm(minutes_: int) -> str:
     return f"{minutes_ // 60} ч {minutes_ % 60:02d} мин"
 
 
-def _unfilled_explained(day: Day, plan: Plan) -> list:
-    """Всё незакрытое названо, и у всего названного есть причина."""
+def _unfilled_explained(day: Day, plan: Plan, drivers: bool = True) -> list:
+    """Всё незакрытое названо, и у всего названного есть причина.
+
+    drivers=False - план только по автобусам (этап до расстановки водителей):
+    пустые смены тогда не считаются нарушением.
+    """
     out = []
     for item_id, reason in plan.unfilled.items():
         if reason not in REASONS:
@@ -211,6 +215,8 @@ def _unfilled_explained(day: Day, plan: Plan) -> list:
                                      f"Наряд {duty.id} без автобуса, а причина не названа",
                                      (duty.id,)))
             continue
+        if not drivers:
+            continue
         for shift in day.shifts_by_duty.get(duty.id, []):
             if shift.id not in plan.drivers and shift.id not in plan.unfilled:
                 out.append(Violation("unexplained",
@@ -219,15 +225,18 @@ def _unfilled_explained(day: Day, plan: Plan) -> list:
     return out
 
 
-def check_plan(day: Day, plan: Plan, labor: dict | None = None) -> list:
-    """Все нарушения плана. Пустой список - план можно выпускать."""
+def check_plan(day: Day, plan: Plan, labor: dict | None = None, drivers: bool = True) -> list:
+    """Все нарушения плана. Пустой список - план можно выпускать.
+
+    drivers=False - проверить план только по автобусам, без водителей.
+    """
     labor = labor or load_labor()
     unknown = _unknown(day, plan)
     if unknown:
         return unknown  # ссылки в никуда: дальше проверять нечего
     return (_vehicle_twice(day, plan) + _vehicle_fits(day, plan) + _park_limits(day, plan)
             + _driver_fits(day, plan) + _driver_load(day, plan, labor)
-            + _unfilled_explained(day, plan))
+            + _unfilled_explained(day, plan, drivers))
 
 
 def metrics(day: Day, plan: Plan) -> dict:
