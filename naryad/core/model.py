@@ -43,6 +43,7 @@ class Route:
     number: str
     allowed_classes: tuple
     priority: int
+    turnaround_min: int = 0  # время полного круга, для расчёта интервала
 
 
 @dataclass(frozen=True)
@@ -119,7 +120,8 @@ class Day:
             parks={p["id"]: Park(p["id"], p["name"], p["state"], p["release_weekday"],
                                  p["release_weekend"]) for p in data["parks"]},
             routes={r["id"]: Route(r["id"], r["park_id"], r["number"],
-                                   tuple(r["allowed_classes"]), r["priority"])
+                                   tuple(r["allowed_classes"]), r["priority"],
+                                   r["turnaround_min"])
                     for r in data["routes"]},
             duties={d["id"]: Duty(d["id"], d["park_id"], d["type"], d["route_id"],
                                   d["vehicle_class"], d["day_type"], minutes(d["start"]),
