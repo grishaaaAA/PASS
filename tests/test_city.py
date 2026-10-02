@@ -60,6 +60,14 @@ class TestCity(unittest.TestCase):
         self.assertFalse([v for v in plan.transfers if day.vehicles[v].fuel == "gas"])
         self.assertEqual(check_plan(day, plan, drivers=False), [])
 
+    def test_park_down_gives_nothing(self):
+        day = with_park_shortage(CITY, "P03", 0.25)
+        donor = "P05"
+        day.parks[donor] = dataclasses.replace(day.parks[donor], state="down")
+        plan = add_transfers(day, solve_vehicles(day))
+        self.assertTrue(plan.transfers)
+        self.assertFalse([v for v in plan.transfers if day.vehicles[v].park_id == donor])
+
     def test_release_limit_respected(self):
         day = with_park_shortage(CITY, "P03", 0.25)
         park = day.parks["P03"]

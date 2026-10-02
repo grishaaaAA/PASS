@@ -118,7 +118,8 @@ class TestValidPlans(unittest.TestCase):
         day = Day.load(SAMPLES / "park7_weekday.json")
         stats = metrics(day, greedy_plan(day))
         self.assertEqual(stats["line_duties"], 326)
-        self.assertLessEqual(stats["line_filled"], stats["line_duties"])
+        plan = greedy_plan(day)
+        self.assertEqual(stats["line_filled"], sum(day.duties[d].type == "line" for d in plan.vehicles))
         self.assertEqual(sum(p["total"] for p in stats["by_priority"].values()), 326)
 
 
@@ -253,6 +254,40 @@ class TestBrokenPlans(unittest.TestCase):
     def test_unknown_id(self):
         self.plan.vehicles["НЕТ-ТАКОГО"] = self.free_vehicle(condition="ok").id
         self.broken("unknown_id")
+
+    def test_reserve_class(self):
+        duty_id = next(d for d in self.duty_ids if self.day.duties[d].type == "reserve")
+        duty = self.day.duties[duty_id]
+        wrong = next(v for v in self.day.vehicles.values()
+                     if v.cls != duty.vehicle_class and v.park_id == duty.park_id)
+        self.plan.vehicles[duty_id] = wrong.id
+        self.broken("vehicle_class")
+
+    def test_transfer_to_other_park(self):
+        duty = self.day.duties[self.duty_ids[0]]
+        vehicle_id = self.plan.vehicles[duty.id]
+        parks = sorted(self.day.parks)
+        other = next(p for p in parks if p != duty.park_id)
+        self.day.vehicles[vehicle_id] = dataclasses.replace(self.day.vehicles[vehicle_id], park_id=other)
+        self.plan.transfers[vehicle_id] = other  # переброшен, но не в парк этого наряда
+        self.broken("vehicle_park")
+        self.plan.transfers[vehicle_id] = duty.park_id
+        self.assertNotIn("vehicle_park", codes(check_plan(self.day, self.plan)))
+
+    def test_unknown_driver_vehicle_shift(self):
+        for spoil in (lambda: self.plan.drivers.__setitem__(self.shift_ids[0], "НЕТ-ВОДИТЕЛЯ"),
+                      lambda: self.plan.vehicles.__setitem__(self.duty_ids[0], "НЕТ-АВТОБУСА"),
+                      lambda: self.plan.drivers.__setitem__("НЕТ-СМЕНЫ", self.plan.drivers[self.shift_ids[1]])):
+            self.setUp()
+            spoil()
+            self.broken("unknown_id")
+
+    def test_shift_exactly_at_limit(self):
+        shift = self.day.shifts[self.shift_ids[0]]
+        self.day.shifts[shift.id] = dataclasses.replace(shift, end=shift.start + 600)
+        self.assertNotIn("driver_overtime", codes(check_plan(self.day, self.plan)))
+        self.day.shifts[shift.id] = dataclasses.replace(shift, end=shift.start + 601)
+        self.broken("driver_overtime")
 
 
 if __name__ == "__main__":

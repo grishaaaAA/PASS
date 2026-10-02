@@ -64,11 +64,13 @@ class OpsState:
     down_vehicles: dict = field(default_factory=dict)  # автобус -> с какого времени
     down_drivers: dict = field(default_factory=dict)   # водитель -> с какого времени
     history: History = field(default_factory=History)  # прошлые дни водителей
+    transfers: dict = field(default_factory=dict)      # автобус -> в какой парк переброшен на день
     log: list = field(default_factory=list)
 
     @classmethod
     def from_plan(cls, day: Day, plan: Plan, history: History | None = None) -> "OpsState":
-        state = cls(day=day, history=copy.deepcopy(history) if history else History())
+        state = cls(day=day, history=copy.deepcopy(history) if history else History(),
+                    transfers=dict(plan.transfers))
         for duty_id, vehicle_id in plan.vehicles.items():
             duty = day.duties[duty_id]
             state.vehicles[duty_id] = [Segment(duty.start, duty.end, vehicle_id)]
@@ -492,6 +494,25 @@ def check_state(state: OpsState, labor: dict | None = None) -> list:
             for a, b in zip(items, items[1:]):
                 if b[0] < a[1]:
                     out.append(f"{place} {key}: в {_hm(b[0])} сразу {a[2]} и {b[2]}")
+    for duty_id, segments in state.vehicles.items():
+        duty = day.duties[duty_id]
+        for seg in segments:
+            vehicle = day.vehicles[seg.who]
+            if vehicle.cls not in _classes(state, duty):
+                out.append(f"наряд {duty_id}: автобус {seg.who} класса {vehicle.cls} не подходит")
+            if vehicle.park_id != duty.park_id and state.transfers.get(vehicle.id) != duty.park_id:
+                out.append(f"наряд {duty_id}: автобус {seg.who} из парка {vehicle.park_id} без переброски")
+    for shift_id, segments in state.drivers.items():
+        duty = day.duties[day.shifts[shift_id].duty_id]
+        for seg in segments:
+            driver = day.drivers[seg.who]
+            if driver.park_id != duty.park_id:
+                out.append(f"смена {shift_id}: водитель {seg.who} из парка {driver.park_id}")
+            if driver.schedule != "work" or driver.medical == "failed":
+                out.append(f"смена {shift_id}: водитель {seg.who} не работает сегодня или не прошёл медосмотр")
+            for bus in state.vehicles.get(duty.id, []):
+                if bus.start < seg.end and seg.start < bus.end and day.vehicles[bus.who].cls not in driver.classes:
+                    out.append(f"смена {shift_id}: у водителя {seg.who} нет допуска к автобусу {bus.who}")
     busy = {}
     for table, kind in ((state.vehicles, "автобус"), (state.drivers, "водитель")):
         for key, segments in table.items():

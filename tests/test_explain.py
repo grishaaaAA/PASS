@@ -7,7 +7,7 @@ import time
 import unittest
 
 from naryad.core.model import Day
-from naryad.explain import (day_summary, explain_option, interval, why_driver, why_unfilled,
+from naryad.explain import (CLASS_NAMES, day_summary, explain_option, interval, why_driver, why_unfilled,
                             why_vehicle)
 from naryad.ops.replan import Breakdown, OpsState, options_for
 from naryad.solve.compare import with_shortage
@@ -55,10 +55,32 @@ class TestExplain(unittest.TestCase):
         self.assertIn("Интервал", " ".join(item["reasons"]))
 
     def test_no_driver_names_the_class(self):
-        shift_id = next(k for k, v in self.plan.unfilled.items() if v == "no_driver")
+        def without(shift_id):
+            cls = self.day.vehicles[self.plan.vehicles[self.day.shifts[shift_id].duty_id]].cls
+            return cls, sum(cls not in d.classes for d in self.day.drivers.values())
+        shift_id = next(k for k, v in sorted(self.plan.unfilled.items())
+                        if v == "no_driver" and without(k)[1] > 0)
         item = why_unfilled(self.day, self.plan, shift_id)
         self.check_shape(item)
         self.assertEqual(item["numbers"]["drivers"], len(self.day.drivers))
+        cls, count = without(shift_id)
+        self.assertIn(f"нет допуска к классу «{CLASS_NAMES[cls]}»: {count}", " ".join(item["reasons"]))
+
+    def test_interval_grows_when_buses_missing(self):
+        duty_id = next(k for k, v in self.plan.unfilled.items()
+                       if v == "no_vehicle" and self.day.duties[k].type == "line")
+        duty = self.day.duties[duty_id]
+        t = (duty.start + duty.end) // 2
+        iv = interval(self.day, self.plan, duty.route_id, t)
+        self.assertLess(iv["running_buses"], iv["planned_buses"])
+        self.assertGreater(iv["actual_min"], iv["planned_min"])
+
+    def test_summary_counts_reserves(self):
+        summary = day_summary(self.day, self.plan)
+        reserves = sum(1 for d in self.plan.unfilled if d in self.day.duties
+                       and self.day.duties[d].type == "reserve")
+        self.assertEqual(summary["numbers"]["reserve_unfilled"], reserves)
+        self.assertGreater(reserves, 0)
 
     def test_own_and_other_vehicle(self):
         own = next(d for d, v in self.plan.vehicles.items() if self.day.duties[d].type == "line"

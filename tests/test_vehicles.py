@@ -104,6 +104,18 @@ class TestVehicles(unittest.TestCase):
                 reasons |= set(plan.unfilled.values())
         self.assertIn("release_limit", reasons)  # лимит выпуска действительно ограничивал
 
+    def test_release_limit_binds(self):
+        """Лимит выпуска меньше нарядов: оба способа его соблюдают и называют причину."""
+        day = Day.load(SAMPLES / "park7_weekday.json")
+        park = next(iter(day.parks.values()))
+        day.parks[park.id] = dataclasses.replace(park, release_weekday=300, release_weekend=300)
+        for solver in (solve_vehicles, baseline_vehicles):
+            with self.subTest(solver.__name__):
+                plan = solver(day)
+                self.assertEqual(check_plan(day, plan, drivers=False), [])
+                self.assertEqual(len(plan.vehicles), 300)
+                self.assertIn("release_limit", plan.unfilled.values())
+
     def test_reserve_goes_first(self):
         day = with_shortage(Day.load(SAMPLES / "park7_weekday.json"), 0.06, 1)
         plan = solve_vehicles(day)

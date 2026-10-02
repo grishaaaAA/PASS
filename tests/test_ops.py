@@ -8,7 +8,9 @@ import unittest
 from naryad.core.model import Day
 from naryad.data.generate import generate
 from naryad.ops.replan import (SUPPLY_MIN, TRANSFER_MIN, Accident, Breakdown, Losses, NoShow,
-                               OpsState, Segment, _cut, _end, apply, check_state, options_for)
+                               OpsState, Segment, _cut, _end, apply, check_state, free_drivers,
+                               options_for)
+from naryad.core.invariants import load_labor
 from naryad.ops.scenarios import build, run
 from naryad.solve.drivers import History, day_base, solve_drivers
 from naryad.solve.vehicles import solve_vehicles
@@ -254,15 +256,46 @@ class TestCheckState(unittest.TestCase):
         def long_day(st):
             st.drivers[late.id] = [Segment(late.start, late.end, driver)]
 
+        def wrong_class(st):
+            allowed = day.routes[duty.route_id].allowed_classes
+            st.vehicles[duty.id] = [Segment(duty.start, duty.end, next(
+                v.id for v in sorted(day.vehicles.values(), key=lambda v: v.id)
+                if v.cls not in allowed and v.park_id == duty.park_id and v.id not in used))]
+
+        def foreign_driver(st):
+            st.day.drivers[driver] = dataclasses.replace(day.drivers[driver], park_id="P99")
+
+        def sick_driver(st):
+            st.day.drivers[driver] = dataclasses.replace(day.drivers[driver], schedule="sick")
+
+        def no_permit(st):
+            st.day.drivers[driver] = dataclasses.replace(day.drivers[driver], classes=())
+
         def tired(st):
             st.history.get(driver).last_end = day_base(day) + shift.start - 60
             st.history.get(driver).last_length = 8 * 60
 
         for spoil, text in ((two_buses, "сразу"), (two_drivers, "сразу"), (bus_twice, "одновременно"),
                             (outside, "вне времени"), (empty, "пустой"), (down, "выбыл"),
-                            (long_day, "больше нормы"), (tired, "не отдохнул")):
+                            (long_day, "больше нормы"), (tired, "не отдохнул"),
+                            (wrong_class, "не подходит"), (foreign_driver, "из парка"),
+                            (sick_driver, "не работает сегодня"), (no_permit, "нет допуска")):
             with self.subTest(spoil.__name__):
                 self.assertIn(text, self.broken(spoil))
+
+
+class TestFreeDrivers(unittest.TestCase):
+
+    def test_park_and_length_filters(self):
+        state = morning_state()
+        duty = important_running(state)
+        found = free_drivers(state, duty, MORNING, MORNING + 60, load_labor())
+        self.assertTrue(found)
+        self.assertTrue(all(state.day.drivers[d].park_id == duty.park_id for d in found))
+        moved = found[0]
+        state.day.drivers[moved] = dataclasses.replace(state.day.drivers[moved], park_id="P99")
+        self.assertNotIn(moved, free_drivers(state, duty, MORNING, MORNING + 60, load_labor()))
+        self.assertEqual(free_drivers(state, duty, MORNING, MORNING + 11 * 60, load_labor()), [])
 
 
 class TestAccidentAndDriver(unittest.TestCase):

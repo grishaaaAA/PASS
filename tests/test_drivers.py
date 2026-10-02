@@ -43,7 +43,14 @@ class TestRestStatus(unittest.TestCase):
         self.assertIsNone(rest_status(self.state(14, 4, reduced=3), 24 * H, LABOR))
 
     def test_too_short(self):
-        self.assertIsNone(rest_status(self.state(23, 4), 30 * H, LABOR))             # 7 ч
+        # после смены 3 ч двойное правило требует 5 ч 30 мин - мешает именно порог 9 ч
+        self.assertIsNone(rest_status(self.state(23, 3), 30 * H, LABOR))             # 7 ч
+
+    def test_boundaries(self):
+        self.assertEqual(rest_status(self.state(14, 4), 23 * H, LABOR), "reduced")   # ровно 9 ч
+        self.assertIsNone(rest_status(self.state(14, 4), 23 * H - 1, LABOR))         # 8 ч 59 мин
+        self.assertEqual(rest_status(self.state(14, 4), 25 * H, LABOR), "ok")        # ровно 11 ч
+        self.assertEqual(rest_status(self.state(14, 4, in_row=5), 30 * H, LABOR), "ok")  # шестая подряд
 
     def test_six_in_row(self):
         self.assertIsNone(rest_status(self.state(14, 8, in_row=6), 30 * H, LABOR))
@@ -166,6 +173,15 @@ class TestSeries(unittest.TestCase):
         self.assertEqual(sum(ours.values()), sum(manual.values()))
         self.assertEqual(ours.get("важность 1", 0), 0)
         self.assertGreater(manual.get("важность 1", 0), 0)
+
+    def test_no_days_off_series(self):
+        """8 дней, все водители по графику работают: решатель сам даёт отдых 45 ч."""
+        days = week(days=8)
+        for day in days:
+            for driver_id, driver in list(day.drivers.items()):
+                day.drivers[driver_id] = dataclasses.replace(driver, schedule="work")
+        plans = solve_series(days)
+        self.assertEqual(check_rest(plans), [])
 
     def test_rotation_of_three(self):
         """A не может утром, утро у чужого X, вечер у закреплённого B: B - утро, A - вечер, X - на место A."""

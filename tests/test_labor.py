@@ -39,6 +39,25 @@ def series(shifts, first="2026-10-05"):
     return out
 
 
+def series_at(starts, length=4):
+    """Серия, где один водитель работает сменами length ч, начиная в starts (часы от первого дня)."""
+    out, first = [], date.fromisoformat("2026-10-05")
+    by_day = {}
+    for t in starts:
+        by_day.setdefault(int(t // 24), []).append(t % 24)
+    ids = list(BASE.shifts)
+    for index in range(max(by_day) + 1):
+        day = copy.copy(BASE)
+        day.meta = dict(BASE.meta, date=(first + timedelta(days=index)).isoformat())
+        day.shifts, plan = dict(BASE.shifts), Plan()
+        for k, start in enumerate(by_day.get(index, [])):
+            day.shifts[ids[k]] = dataclasses.replace(BASE.shifts[ids[k]], start=round(start * 60),
+                                                     end=round((start + length) * 60))
+            plan.drivers[ids[k]] = DRIVER
+        out.append((day, plan))
+    return out
+
+
 class TestLaborFile(unittest.TestCase):
 
     def test_every_norm_has_source_and_status(self):
@@ -99,13 +118,19 @@ class TestRest(unittest.TestCase):
         self.assertIn("daily_rest", codes(found))
 
     def test_reduced_rest_only_three_times(self):
-        # смена 14 ч каждый день - отдых между сменами 10 ч (меньше 11, больше 9):
-        # три таких сокращения допустимы, четвёртое - нарушение
-        found = check_rest(series([(d, 6, 20) for d in range(5)]))
-        daily = [v for v in found if v.code == "daily_rest"]
-        self.assertEqual(len(daily), 1)
-        three = check_rest(series([(d, 6, 20) for d in range(4)]))
-        self.assertEqual([v for v in three if v.code == "daily_rest"], [])
+        # смены по 4 ч, между ними 10 ч: три сокращения законны, четвёртое - нарушение
+        self.assertEqual(check_rest(series_at([0, 14, 28, 42])), [])
+        self.assertEqual(codes(check_rest(series_at([0, 14, 28, 42, 56]))), {"daily_rest"})
+
+    def test_reduced_count_resets_only_after_weekly_rest(self):
+        # отдыхи 10, 10, 12, 10, 10 ч: обычный 12 ч счётчик не сбрасывает - четвёртое сокращение
+        self.assertEqual(codes(check_rest(series_at([0, 14, 28, 44, 58, 72]))), {"daily_rest"})
+        # отдыхи 10, 10, 45, 10, 10 ч: после еженедельного отдыха снова можно три раза
+        self.assertEqual(check_rest(series_at([0, 14, 28, 77, 91, 105])), [])
+
+    def test_boundaries(self):
+        self.assertEqual(check_rest(series_at([0, 13])), [])                  # отдых ровно 9 ч
+        self.assertEqual(check_rest(series([(d, 6, 14) for d in range(6)])), [])  # ровно 6 смен подряд
 
 
 
