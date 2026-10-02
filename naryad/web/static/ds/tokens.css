@@ -1,0 +1,97 @@
+/* AUTODISP — generated from tokens.json */
+:root, [data-theme="light"] {
+  --pass-cyan: #35bdc8;
+  --pass-cyanplus: #227b81;
+  --pass-smokey_white: #f1edee;
+  --pass-shadow_grey: #2e282a;
+  --pass-emerald: #63d471;
+  --pass-sage: #9ebab7;
+  --bg: var(--pass-smokey_white);
+  --surface: #ffffff;
+  --surface-sunken: #e8e3e4;
+  --ink: var(--pass-shadow_grey);
+  --ink-muted: #5f575a;
+  --ink-inverse: var(--pass-smokey_white);
+  --border: #d9d3d5;
+  --border-strong: #8a8285;
+  --accent: var(--pass-cyan);
+  --on-accent: var(--pass-shadow_grey);
+  --accent-deep: var(--pass-cyanplus);
+  --on-accent-deep: #ffffff;
+  --accent-text: #1e6e73;
+  --focus-ring: var(--pass-cyanplus);
+  --success-fill: #00852e;
+  --warning-fill: #cc4400;
+  --danger-fill: #e0001b;
+  --info-fill: #007f8a;
+  --neutral-fill: #5f575a;
+  --on-fill: #ffffff;
+  --success-text: #1d7029;
+  --warning-text: #8a5d00;
+  --danger-text: #b23a2b;
+  --shadow-sm: 0 1px 2px rgba(46, 40, 42, 0.06), 0 1px 3px rgba(46, 40, 42, 0.04);
+  --shadow-md: 0 6px 20px rgba(46, 40, 42, 0.08);
+  --shadow-lg: 0 16px 40px rgba(46, 40, 42, 0.12);
+  --shadow-glow: 0 12px 28px rgba(53, 189, 200, 0.45), 0 2px 6px rgba(46, 40, 42, 0.10);
+  --shadow-glow-deep: 0 12px 28px rgba(34, 123, 129, 0.40), 0 2px 6px rgba(46, 40, 42, 0.10);
+}
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --radius-sm: 14px;
+  --radius-md: 20px;
+  --radius-lg: 32px;
+  --radius-xl: 44px;
+  --radius-pill: 999px;
+  --duration-fast: 160ms;
+  --duration-base: 260ms;
+  --duration-slow: 420ms;
+  --duration-stagger: 40ms;
+  --easing-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --easing-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --easing-exit: cubic-bezier(0.4, 0, 1, 1);
+  --gradient-chrome: linear-gradient(135deg, #7fe0e7 0%, #45c6d0 28%, #2fb2bc 50%, #8ee4ea 62%, #3dbcc6 100%);
+  --gradient-chrome-deep: linear-gradient(135deg, #2a8088 0%, #227b81 30%, #18646a 52%, #268188 64%, #1d6f75 100%);
+  --gradient-steel: linear-gradient(135deg, #fbfcfc 0%, #e4e9eb 30%, #c7cfd2 52%, #f1f4f5 64%, #d5dcdf 100%);
+  --gradient-graphite: linear-gradient(135deg, #4f474a 0%, #2e282a 30%, #1c1819 52%, #3d3639 64%, #262123 100%);
+  --gradient-emerald: linear-gradient(135deg, #a3ecac 0%, #6fd97c 28%, #4fc45e 50%, #9ae8a3 62%, #63d471 100%);
+  --gradient-chrome-polished: linear-gradient(180deg, #e6fbfd 0%, #9fe8ee 10%, #36bac4 16%, #5fd0d8 28%, #c9f5f8 34%, #41c0ca 46%, #2fb2bc 54%, #a8ecf0 60%, #e9fcfd 67%, #53c9d2 78%, #2fb2bc 84%, #7fdde4 100%);
+  --gradient-deep-polished: linear-gradient(180deg, #2a8088 0%, #18646a 12%, #226f75 18%, #2a8088 28%, #145459 34%, #1d6f75 46%, #2a8088 56%, #124e53 62%, #226f75 74%, #2a8088 80%, #18646a 100%);
+  --gradient-steel-polished: linear-gradient(180deg, #ffffff 0%, #dfe5e8 12%, #a3aeb3 18%, #c3ccd0 30%, #f7f9fa 36%, #b4bec2 48%, #97a3a8 56%, #eef2f3 62%, #ffffff 68%, #bcc5c9 80%, #9aa6ab 86%, #d9dfe2 100%);
+  --gradient-graphite-polished: linear-gradient(180deg, #5a5155 0%, #2a2426 12%, #433c3f 18%, #1a1617 30%, #5f565a 36%, #2e282a 48%, #151213 56%, #4a4245 62%, #625a5d 68%, #262123 80%, #3a3336 86%, #1c1819 100%);
+  --gradient-chrome-polished-x: linear-gradient(90deg, #e6fbfd 0%, #9fe8ee 10%, #36bac4 16%, #5fd0d8 28%, #c9f5f8 34%, #41c0ca 46%, #2fb2bc 54%, #a8ecf0 60%, #e9fcfd 67%, #53c9d2 78%, #2fb2bc 84%, #7fdde4 100%);
+  --gradient-steel-polished-x: linear-gradient(90deg, #ffffff 0%, #dfe5e8 12%, #a3aeb3 18%, #c3ccd0 30%, #f7f9fa 36%, #b4bec2 48%, #97a3a8 56%, #eef2f3 62%, #ffffff 68%, #bcc5c9 80%, #9aa6ab 86%, #d9dfe2 100%);
+  --gradient-steel-conic: conic-gradient(from 20deg, #f4f6f7 0deg, #aeb8bd 45deg, #ffffff 90deg, #9ea9ae 135deg, #eef1f2 180deg, #aab4b9 225deg, #ffffff 270deg, #a3aeb3 315deg, #f4f6f7 360deg);
+  --gradient-sheen: linear-gradient(110deg, rgba(255, 255, 255, 0) 30%, rgba(255, 255, 255, 0.55) 50%, rgba(255, 255, 255, 0) 70%);
+  --font-display: "Coolvetica", "Ubuntu", system-ui, sans-serif;
+  --font-sans: "Ubuntu", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --text-display: 400 56px/60px var(--font-display);
+  --text-heading-1: 400 40px/46px var(--font-display);
+  --text-heading-2: 700 32px/38px var(--font-sans);
+  --text-heading-3: 500 24px/30px var(--font-sans);
+  --text-title: 500 20px/28px var(--font-sans);
+  --text-body-lg: 400 18px/28px var(--font-sans);
+  --text-body: 400 16px/24px var(--font-sans);
+  --text-body-strong: 500 16px/24px var(--font-sans);
+  --text-label: 500 14px/20px var(--font-sans);
+  --text-caption: 400 14px/20px var(--font-sans);
+}
+.display { font-family: var(--font-display); font-size: 56px; line-height: 60px; font-weight: 400; letter-spacing: 0.02em; }
+.heading-1 { font-family: var(--font-display); font-size: 40px; line-height: 46px; font-weight: 400; letter-spacing: 0.02em; }
+.heading-2 { font-family: var(--font-sans); font-size: 32px; line-height: 38px; font-weight: 700; }
+.heading-3 { font-family: var(--font-sans); font-size: 24px; line-height: 30px; font-weight: 500; }
+.title { font-family: var(--font-sans); font-size: 20px; line-height: 28px; font-weight: 500; }
+.body-lg { font-family: var(--font-sans); font-size: 18px; line-height: 28px; font-weight: 400; }
+.body { font-family: var(--font-sans); font-size: 16px; line-height: 24px; font-weight: 400; }
+.body-strong { font-family: var(--font-sans); font-size: 16px; line-height: 24px; font-weight: 500; }
+.label { font-family: var(--font-sans); font-size: 14px; line-height: 20px; font-weight: 500; }
+.caption { font-family: var(--font-sans); font-size: 14px; line-height: 20px; font-weight: 400; }
+@font-face { font-family: "Ubuntu"; src: url("fonts/Ubuntu-Regular.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Ubuntu"; src: url("fonts/Ubuntu-Medium.ttf") format("truetype"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Ubuntu"; src: url("fonts/Ubuntu-Bold.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }

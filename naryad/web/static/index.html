@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AUTODISP - генератор данных</title>
+<link rel="icon" href="ds/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="ds/tokens.css">
+<link rel="stylesheet" href="ds/bundle.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="top">
+  <img class="top__logo" src="ds/logo.svg" alt="AUTODISP">
+  <span class="top__title">Генератор данных</span>
+</header>
+
+<main class="layout">
+  <form class="ad-card panel" id="form" novalidate>
+    <h2 class="heading-3 panel__head">Вводные</h2>
+
+    <div class="seg" role="radiogroup" aria-label="Источник данных" data-name="preset">
+      <button type="button" role="radio" aria-checked="true" data-value="case">Кейс</button>
+      <button type="button" role="radio" aria-checked="false" data-value="park7">Парк №7</button>
+    </div>
+    <p class="hint" id="presetHint">7 площадок, 118 маршрутов, выпуск 270 на парк, классы 700 / 700 / 500.</p>
+
+    <h3 class="title panel__sub">Период</h3>
+    <div class="grid2">
+      <label class="ad-field"><span class="ad-field__label">Первый день</span>
+        <input class="ad-input" type="date" name="start" value="2026-10-05" required></label>
+      <label class="ad-field"><span class="ad-field__label">Сколько дней</span>
+        <input class="ad-input" type="number" name="days" value="7" min="1" max="60" step="1" required>
+        <span class="ad-field__hint" id="daysHint">От 1 до 60</span></label>
+      <label class="ad-field"><span class="ad-field__label">Номер набора</span>
+        <input class="ad-input" type="number" name="seed" value="1" min="0" step="1" required>
+        <span class="ad-field__hint">Тот же номер - те же данные</span></label>
+      <div class="ad-field span2"><span class="ad-field__label" id="momentLabel">Момент</span>
+        <div class="seg seg--small" role="radiogroup" aria-labelledby="momentLabel" data-name="moment">
+          <button type="button" role="radio" aria-checked="true" data-value="morning">Утро дня</button>
+          <button type="button" role="radio" aria-checked="false" data-value="plan">План на завтра</button>
+        </div>
+        <span class="ad-field__hint">Утром медосмотр уже идёт</span></div>
+    </div>
+
+    <fieldset class="city" id="city">
+      <legend class="title panel__sub">Город</legend>
+      <p class="hint city__locked" id="cityLocked" hidden>У парка №7 все цифры берутся из справки на 12.05.2026.</p>
+      <div class="grid2">
+        <label class="ad-field"><span class="ad-field__label">Парков</span>
+          <input class="ad-input" type="number" name="park_count" min="1" max="7" step="1"></label>
+        <label class="ad-field"><span class="ad-field__label">Выпуск одного парка</span>
+          <input class="ad-input" type="number" name="release_per_park" min="10" max="1000" step="1"></label>
+        <label class="ad-field"><span class="ad-field__label">Маршрутов всего</span>
+          <input class="ad-input" type="number" name="routes_total" min="1" max="500" step="1"></label>
+        <label class="ad-field"><span class="ad-field__label">Тех. готовность</span>
+          <input class="ad-input" type="number" name="tech_readiness" min="0.5" max="1" step="0.001">
+          <span class="ad-field__hint">Доля исправных, 0,5 - 1</span></label>
+      </div>
+      <span class="ad-field__label">Выпуск по классам (доли)</span>
+      <div class="grid3">
+        <label class="ad-field"><span class="hint">Средний</span>
+          <input class="ad-input" type="number" name="mix_medium" min="0" step="1"></label>
+        <label class="ad-field"><span class="hint">Большой</span>
+          <input class="ad-input" type="number" name="mix_big" min="0" step="1"></label>
+        <label class="ad-field"><span class="hint">Особо большой</span>
+          <input class="ad-input" type="number" name="mix_extra_big" min="0" step="1"></label>
+      </div>
+      <label class="ad-field"><span class="ad-field__label">Выпуск в выходной</span>
+        <input class="ad-input" type="number" name="weekend_factor" min="0.3" max="1" step="0.01">
+        <span class="ad-field__hint">Доля от будней: 1 - как в будни</span></label>
+    </fieldset>
+
+    <p class="error" id="formError" role="alert" hidden></p>
+    <div class="actions">
+      <button type="submit" class="ad-btn ad-btn--primary" id="run">
+        <i class="ad-icon ad-icon--lightning ad-icon--sm" aria-hidden="true"></i><span>Сгенерировать</span></button>
+      <button type="button" class="ad-btn ad-btn--ghost" id="reset">Сбросить</button>
+    </div>
+  </form>
+
+  <section class="results" id="results" aria-live="polite">
+    <div class="ad-card empty" id="empty">
+      <h2 class="heading-3">Данных пока нет</h2>
+      <p class="body muted">Задайте вводные слева и нажмите «Сгенерировать». Появятся сводка по городу, по паркам и по дням, а ниже - кнопки выгрузки.</p>
+    </div>
+  </section>
+</main>
+
+<template id="skeleton">
+  <div class="kpis"><div class="sk sk--card"></div><div class="sk sk--card"></div><div class="sk sk--card"></div><div class="sk sk--card"></div></div>
+  <div class="sk sk--block"></div>
+  <div class="sk sk--table"></div>
+</template>
+
+<script src="ds/bundle.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
