@@ -1,0 +1,198 @@
+"""Объяснения решений (А6). Запуск: python -m unittest"""
+
+import dataclasses
+import json
+import random
+import time
+import unittest
+
+from naryad.core.model import Day, Plan
+from naryad.explain import (CLASS_NAMES, day_summary, explain_option, interval, why_driver, why_unfilled,
+                            why_vehicle)
+from naryad.ops.replan import Breakdown, OpsState, options_for
+from naryad.solve.compare import with_shortage
+from naryad.solve.drivers import History, day_base, solve_drivers
+from naryad.solve.vehicles import solve_vehicles
+
+from tests.test_core import SAMPLES
+
+
+def stressed():
+    """День 7-го парка: 15% автобусов не вышли, 330 водителей на больничном."""
+    day = with_shortage(Day.load(SAMPLES / "park7_weekday.json"), 0.15, 1)
+    rng = random.Random(2)
+    for driver_id in rng.sample(sorted(day.drivers), 330):
+        day.drivers[driver_id] = dataclasses.replace(day.drivers[driver_id], schedule="sick")
+    return day, solve_drivers(day, solve_vehicles(day))
+
+
+class TestExplain(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.day, cls.plan = stressed()
+
+    def check_shape(self, item):
+        self.assertTrue(item["question"].endswith("?") or item["question"].startswith("Сводка"))
+        self.assertTrue(item["answer"])
+        self.assertTrue(item["reasons"])
+        json.dumps(item, ensure_ascii=False)  # интерфейс получает это как есть
+
+    def test_every_unfilled_explained_fast(self):
+        start = time.perf_counter()
+        items = [why_unfilled(self.day, self.plan, i) for i in self.plan.unfilled]
+        self.assertLess(time.perf_counter() - start, 5.0)
+        self.assertEqual(len(items), len(self.plan.unfilled))
+        for item in items:
+            self.check_shape(item)
+
+    def test_no_vehicle_numbers_add_up(self):
+        duty_id = next(k for k, v in self.plan.unfilled.items()
+                       if v == "no_vehicle" and self.day.duties[k].type == "line")
+        item = why_unfilled(self.day, self.plan, duty_id)
+        self.assertEqual(item["numbers"]["vehicles_ok"], item["numbers"]["vehicles_busy"])
+        self.assertIn("большой", item["answer"])
+        self.assertIn("Интервал", " ".join(item["reasons"]))
+
+    def test_no_driver_names_the_class(self):
+        def without(shift_id):
+            cls = self.day.vehicles[self.plan.vehicles[self.day.shifts[shift_id].duty_id]].cls
+            return cls, sum(cls not in d.classes for d in self.day.drivers.values())
+        shift_id = next(k for k, v in sorted(self.plan.unfilled.items())
+                        if v == "no_driver" and without(k)[1] > 0)
+        item = why_unfilled(self.day, self.plan, shift_id)
+        self.check_shape(item)
+        self.assertEqual(item["numbers"]["drivers"], len(self.day.drivers))
+        cls, count = without(shift_id)
+        self.assertIn(f"нет допуска к классу «{CLASS_NAMES[cls]}»: {count}", " ".join(item["reasons"]))
+
+    def test_interval_grows_when_buses_missing(self):
+        duty_id = next(k for k, v in self.plan.unfilled.items()
+                       if v == "no_vehicle" and self.day.duties[k].type == "line")
+        duty = self.day.duties[duty_id]
+        t = (duty.start + duty.end) // 2
+        iv = interval(self.day, self.plan, duty.route_id, t)
+        self.assertLess(iv["running_buses"], iv["planned_buses"])
+        self.assertGreater(iv["actual_min"], iv["planned_min"])
+
+    def test_summary_counts_reserves(self):
+        summary = day_summary(self.day, self.plan)
+        reserves = sum(1 for d in self.plan.unfilled if d in self.day.duties
+                       and self.day.duties[d].type == "reserve")
+        self.assertEqual(summary["numbers"]["reserve_unfilled"], reserves)
+        self.assertGreater(reserves, 0)
+
+    def test_own_and_other_vehicle(self):
+        own = next(d for d, v in self.plan.vehicles.items() if self.day.duties[d].type == "line"
+                   and self.day.vehicles[v].home_route_id == self.day.duties[d].route_id)
+        other = next(d for d, v in self.plan.vehicles.items() if self.day.duties[d].type == "line"
+                     and self.day.vehicles[v].home_route_id != self.day.duties[d].route_id)
+        self.assertTrue(why_vehicle(self.day, self.plan, own)["numbers"]["own_route"])
+        item = why_vehicle(self.day, self.plan, other)
+        self.assertFalse(item["numbers"]["own_route"])
+        self.check_shape(item)
+
+    def test_tired_home_driver_reason(self):
+        day = Day.load(SAMPLES / "park7_weekday.json")
+        plan = solve_drivers(day, solve_vehicles(day))
+        shift_id, driver_id = next((s, d) for s, d in plan.drivers.items()
+                                   if day.drivers[d].home_vehicle_id
+                                   == plan.vehicles[day.shifts[s].duty_id])
+        vehicle_id = plan.vehicles[day.shifts[shift_id].duty_id]
+        for other in [d for d in day.drivers.values()
+                      if d.home_vehicle_id == vehicle_id and d.id != driver_id]:
+            day.drivers[other.id] = dataclasses.replace(other, schedule="day_off")
+        history = History()  # вчера закончил за час до последней смены своего автобуса: не годится ни на одну
+        latest = max(s.start for d, v in plan.vehicles.items() if v == vehicle_id
+                     for s in day.shifts_by_duty[d])
+        history.get(driver_id).last_end = day_base(day) + latest - 60
+        history.get(driver_id).last_length = 10 * 60
+        again = solve_drivers(day, solve_vehicles(day), history=History(
+            drivers={driver_id: dataclasses.replace(history.get(driver_id))}))
+        self.assertNotEqual(again.drivers.get(shift_id), driver_id)
+        text = " ".join(why_driver(day, again, shift_id, history)["reasons"])
+        self.assertIn("не отдохнул", text)
+        self.assertIn("выходной по графику", text)
+
+    def test_rest_explained_like_solver_decides(self):
+        """Законный сокращённый отдых - не нарушение; после 45 ч отдыха счётчик смен не мешает."""
+        day = Day.load(SAMPLES / "park7_weekday.json")
+        plan = solve_drivers(day, solve_vehicles(day))
+        shift_id, driver_id = sorted(plan.drivers.items())[0]
+        start = day_base(day) + day.shifts[shift_id].start
+        history = History()
+        state = history.get(driver_id)
+        cases = [(10 * 60, 4 * 60, 0, "сокращённый отдых"),         # 9-11 ч после короткой смены
+                 (50 * 60, 8 * 60, 6, "еженедельный отдых"),        # 6 смен, но потом 50 ч отдыха
+                 (20 * 60, 8 * 60, 6, "Нарушение: уже 6 смен подряд"),
+                 (8 * 60, 4 * 60, 0, "Нарушение: не отдохнул")]
+        for rest, length, in_row, expected in cases:
+            with self.subTest(expected):
+                state.last_end, state.last_length, state.in_row = start - rest, length, in_row
+                text = " ".join(why_driver(day, plan, shift_id, history)["reasons"])
+                self.assertIn(expected, text)
+                self.assertIn("Приказа № 160", text)
+                if not expected.startswith("Нарушение"):
+                    self.assertNotIn("Нарушение", text)
+
+    def test_reserve_vehicle_not_own_route(self):
+        duty_id = next(d for d in sorted(self.plan.vehicles) if self.day.duties[d].type == "reserve")
+        plan = Plan(vehicles=dict(self.plan.vehicles), unfilled=dict(self.plan.unfilled))
+        cls = self.day.duties[duty_id].vehicle_class
+        line_id, home_bus = next((d, v) for d, v in sorted(plan.vehicles.items())
+                                 if self.day.vehicles[v].home_route_id and self.day.vehicles[v].cls == cls)
+        plan.vehicles[duty_id], plan.vehicles[line_id] = home_bus, plan.vehicles[duty_id]
+        self.assertFalse(why_vehicle(self.day, plan, duty_id)["numbers"]["own_route"])  # у резерва нет маршрута
+
+    def test_unfilled_numbers_and_shortest(self):
+        duty_id = next(k for k, v in sorted(self.plan.unfilled.items())
+                       if v == "no_vehicle" and self.day.duties[k].type == "line")
+        duty = self.day.duties[duty_id]
+        classes = self.day.routes[duty.route_id].allowed_classes
+        busy = sum(1 for v in self.plan.vehicles.values() if self.day.vehicles[v].park_id == duty.park_id
+                   and self.day.vehicles[v].cls in classes)
+        item = why_unfilled(self.day, self.plan, duty_id)
+        self.assertEqual(item["numbers"]["vehicles_busy"], busy)
+        group = [d for d in self.day.duties.values() if d.route_id == duty.route_id
+                 and d.day_type == self.day.day_type]
+        shortest = min(group, key=lambda d: (d.end - d.start, d.id))
+        self.assertIn(shortest.id, self.plan.unfilled)  # на маршруте с потерями первым выпадает самый короткий
+        self.assertIn("самый короткий наряд", " ".join(why_unfilled(self.day, self.plan, shortest.id)["reasons"]))
+
+    def test_option_explained(self):
+        day = Day.load(SAMPLES / "park7_weekday.json")
+        state = OpsState.from_plan(day, solve_drivers(day, solve_vehicles(day)))
+        at = 8 * 60 + 40
+        duty_id = next(d for d in sorted(state.vehicles) if day.duties[d].type == "line"
+                       and day.duties[d].start < at < day.duties[d].end)
+        options = options_for(state, Breakdown(state.vehicle_at(duty_id, at), at))
+        item = explain_option(state, None, options, 0)
+        self.check_shape(item)
+        self.assertIn(f"остальные {len(state.vehicles) - item['numbers']['touched_duties']}",
+                      " ".join(item["reasons"]))
+        self.assertIn("хуже", item["reasons"][-1])
+        expected = {"none": 0, "idle": 1, "reserve": 2, "donor": 2}
+        for i, option in enumerate(options_for(state, Breakdown(state.vehicle_at(duty_id, at), at), limit=None)):
+            touched = explain_option(state, None, options_for(
+                state, Breakdown(state.vehicle_at(duty_id, at), at), limit=None), i)["numbers"]["touched_duties"]
+            self.assertEqual(touched, expected[option.kind], option.kind)
+
+    def test_interval(self):
+        day = Day.load(SAMPLES / "park7_weekday.json")
+        plan = solve_vehicles(day)
+        route = next(iter(day.routes.values()))
+        iv = interval(day, plan, route.id, 12 * 60)
+        self.assertEqual(iv["planned_min"], iv["actual_min"])
+        self.assertEqual(iv["planned_min"], round(route.turnaround_min / iv["planned_buses"]))
+
+    def test_summaries(self):
+        day = Day.load(SAMPLES / "park7_weekday.json")
+        full = day_summary(day, solve_drivers(day, solve_vehicles(day)))
+        self.assertEqual(full["reasons"], ["Все наряды и смены закрыты"])
+        item = day_summary(self.day, self.plan)
+        self.check_shape(item)
+        self.assertEqual(item["numbers"]["line_total"], 326)
+
+
+if __name__ == "__main__":
+    unittest.main()
