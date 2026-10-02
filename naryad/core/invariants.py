@@ -46,6 +46,11 @@ def use_labor_preset(name: str | None) -> None:
     _preset_for_process = name
 
 
+def labor_preset_name() -> str:
+    """Имя действующего набора норм: use_labor_preset(), иначе NARYAD_LABOR, иначе current."""
+    return _preset_for_process or os.environ.get(LABOR_ENV) or "current"
+
+
 def load_labor(path: Path = LABOR_FILE, preset: str | None = None) -> dict:
     """Нормы труда: имя -> число. Источники и статус лежат в самом файле.
 
