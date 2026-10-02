@@ -1,15 +1,16 @@
 """Расстановка автобусов (А3). Запуск: python -m unittest"""
 
+import dataclasses
 import itertools
 import time
 import unittest
 from collections import defaultdict
 
 from naryad.core.invariants import check_plan
-from naryad.core.model import Day
+from naryad.core.model import Day, Plan
 from naryad.data.generate import generate
 from naryad.solve.baseline import baseline_vehicles
-from naryad.solve.compare import compare, with_shortage
+from naryad.solve.compare import compare, report, with_shortage, worst_growth
 from naryad.solve.vehicles import _groups, allowed_classes, drop_costs, solve_vehicles, total_cost
 
 from tests.test_core import SAMPLES, WEEKDAY
@@ -100,11 +101,34 @@ class TestVehicles(unittest.TestCase):
         self.assertEqual(solve_vehicles(day).vehicles, solve_vehicles(day).vehicles)
 
     def test_comparison_numbers(self):
-        """Цифры для демо: при нехватке 15% важные маршруты не теряют нарядов."""
+        """Цифры для демо: при нехватке 15% важные маршруты теряют меньше, линия закрыта так же."""
         table = compare(Day.load(SAMPLES / "park7_weekday.json"), seeds=3)["нехватка 15%"]
-        self.assertEqual(table["наш план"]["потеряно нарядов важных маршрутов"], 0)
-        self.assertLess(table["наш план"]["потеряно часов на линии"],
-                        table["вручную"]["потеряно часов на линии"])
+        ours, manual = table["наш план"], table["вручную"]
+        important = "потеряно нарядов важных маршрутов"
+        self.assertLess(ours[important][1], manual[important][0])  # наш худший лучше их среднего
+        self.assertEqual(ours["закрыто нарядов на линии"], manual["закрыто нарядов на линии"])
+        self.assertLess(ours["цена пропусков"][0], manual["цена пропусков"][0])
+
+    def test_report_counts_directly(self):
+        day = with_shortage(Day.load(SAMPLES / "park7_weekday.json"), 0.15, 2, by_class=False)
+        for plan in (solve_vehicles(day), baseline_vehicles(day)):
+            lines = [d for d in day.duties.values() if d.type == "line" and d.day_type == day.day_type]
+            row = report(day, plan)
+            self.assertEqual(row["закрыто нарядов на линии"], sum(d.id in plan.vehicles for d in lines))
+            self.assertEqual(row["потеряно нарядов важных маршрутов"],
+                             sum(d.id not in plan.vehicles and day.routes[d.route_id].priority == 1
+                                 for d in lines))
+
+    def test_interval_growth_by_moment(self):
+        """Рост интервала - по автобусам в каждый момент, а не по нарядам за день."""
+        duty = Day.load(SAMPLES / "park7_weekday.json").duties["P07-R01-WD01"]
+        a, b, c = (dataclasses.replace(duty, id=i, start=s, end=e)
+                   for i, s, e in (("a", 0, 100), ("b", 0, 300), ("c", 200, 300)))
+        self.assertEqual(worst_growth(Plan(vehicles={"a": "1", "b": "2", "c": "3"}), [a, b, c]), 1.0)
+        self.assertEqual(worst_growth(Plan(vehicles={"a": "1", "b": "2"}), [a, b, c]), 2.0)  # по дню 1,5
+        self.assertEqual(worst_growth(Plan(vehicles={"b": "2"}), [a, b, c]), 2.0)
+        for running in ({"a": "1", "c": "3"}, {"a": "1"}):  # с 100-й по 200-ю минуту автобусов нет
+            self.assertEqual(worst_growth(Plan(vehicles=running), [a, b, c]), float("inf"))
 
 
 if __name__ == "__main__":

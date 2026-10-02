@@ -4,7 +4,9 @@
 Запуск: python -m naryad.solve.series [--preset park7] [--days 14] [--seed 1]
 
 Каждый день: сначала автобусы по нарядам (А3), потом водители по сменам
-(А4). Наш способ помнит прошлые дни водителей, ручной - нет.
+(А4). Ручной способ - две модели (naryad/solve/baseline.py): без проверки
+отдыха и со сверкой со вчерашним нарядом. Наш способ помнит прошлые дни
+водителей целиком и выравнивает их часы.
 """
 
 from __future__ import annotations
@@ -30,8 +32,10 @@ def solve_series(days: list, labor: dict | None = None) -> list:
     return out
 
 
-def manual_series(days: list) -> list:
-    return [(day, baseline_drivers(day, solve_vehicles(day))) for day in days]
+def manual_series(days: list, check_rest_by_yesterday: bool = True) -> list:
+    """Ручной способ на серии дней; False - отдых не проверяется совсем."""
+    yesterday = {} if check_rest_by_yesterday else None
+    return [(day, baseline_drivers(day, solve_vehicles(day), yesterday)) for day in days]
 
 
 def series_report(series: list) -> dict:
@@ -52,14 +56,14 @@ def series_report(series: list) -> dict:
                 own += day.drivers[driver_id].home_vehicle_id == vehicle_id
     rest = check_rest(series)
     hours = sorted(m / 60 for m in minutes.values())
+    tenth = statistics.quantiles(hours, n=10)
     return {
         "смен закрыто": f"{filled} из {needed}",
         "нарушений норм отдыха": len(rest),
         "водителей с нарушениями": len({v.ids[0] for v in rest}),
         "на своём закреплённом автобусе, %": round(100 * own / max(1, filled)),
-        "часов на водителя: меньше всех": round(hours[0]),
         "часов на водителя: медиана": round(statistics.median(hours)),
-        "часов на водителя: больше всех": round(hours[-1]),
+        "часов у 80% водителей (без 10% крайних с каждой стороны)": f"{tenth[0]:.0f}-{tenth[-1]:.0f}",
     }
 
 
@@ -72,12 +76,15 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     days = [Day.from_dict(d) for d in
             generate_series(args.preset, args.start, args.days, args.seed, "morning")]
-    manual, ours = series_report(manual_series(days)), series_report(solve_series(days))
-    width = max(map(len, manual))
+    columns = {"вручную, отдых не смотрит": series_report(manual_series(days, False)),
+               "вручную, сверка со вчера": series_report(manual_series(days)),
+               "наш план": series_report(solve_series(days))}
+    keys = list(columns["наш план"])
+    width = max(map(len, keys))
     print(f"{args.days} дней подряд, {args.preset}\n")
-    print(f"{'':{width}}  {'вручную':>12}  {'наш план':>12}")
-    for key in manual:
-        print(f"{key:{width}}  {manual[key]!s:>12}  {ours[key]!s:>12}")
+    print(f"{'':{width}}  " + "  ".join(f"{name:>26}" for name in columns))
+    for key in keys:
+        print(f"{key:{width}}  " + "  ".join(f"{table[key]!s:>26}" for table in columns.values()))
     return 0
 
 

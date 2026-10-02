@@ -146,8 +146,11 @@ class TestSeries(unittest.TestCase):
     def test_no_rest_violations(self):
         self.assertEqual(check_rest(self.ours), [])
 
-    def test_manual_breaks_rest(self):
-        self.assertGreater(len(check_rest(manual_series(self.days))), 0)
+    def test_manual_models(self):
+        """Без проверки отдыха нарушения есть; сверка со вчерашним нарядом их убирает."""
+        self.assertGreater(len(check_rest(manual_series(self.days, False))), 0)
+        careful = check_rest(manual_series(self.days))
+        self.assertFalse([v for v in careful if v.code in ("rest_ratio", "daily_rest")])
 
     def test_every_day_valid_and_full(self):
         report = series_report(self.ours)  # внутри - check_plan на каждый день
