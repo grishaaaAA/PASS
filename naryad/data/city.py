@@ -365,12 +365,23 @@ def _permit_tops(spec: dict, total: int, rng: random.Random) -> list:
     return tops
 
 
+def drivers_per_shift() -> float:
+    """Сколько водителей держать по списку на одну смену будней."""
+    cycle = DYNAMICS["work_days"] + DYNAMICS["rest_days"]
+    low, high = DYNAMICS["sick_days"]
+    absent = DYNAMICS["vacation_days"] / 365 + DYNAMICS["sick_start"] * (low + high) / 2
+    return DYNAMICS["working_spare"] / (DYNAMICS["work_days"] / cycle * (1 - absent))
+
+
 def _drivers(spec: dict, vehicles: list, rng: random.Random) -> list:
     weekday_shifts = sum(k * n for k, n in spec["shift_mix"]["weekday"].items())
-    total = round(weekday_shifts * DYNAMICS["drivers_per_shift"])
+    total = round(weekday_shifts * drivers_per_shift())
     tops = _permit_tops(spec, total, rng)
     number = _park_number(spec["id"])
+    # Сдвиги графика поровну: каждый день на выходном одна и та же доля людей.
     cycle = DYNAMICS["work_days"] + DYNAMICS["rest_days"]
+    offsets = [n % cycle for n in range(total)]
+    rng.shuffle(offsets)
     drivers = []
     for n in range(total):
         drivers.append({
@@ -380,7 +391,7 @@ def _drivers(spec: dict, vehicles: list, rng: random.Random) -> list:
             "park_id": spec["id"],
             "classes": list(CLASSES[:CLASSES.index(tops[n]) + 1]),
             "home_vehicle_id": None,
-            "rota_offset": rng.randrange(cycle),
+            "rota_offset": offsets[n],
             "vacation_start": rng.randrange(365),
         })
 
