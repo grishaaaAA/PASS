@@ -7,9 +7,13 @@
 1. Каждый парк расставляет свои автобусы (А3, точный оптимум внутри парка).
 2. Остатки: в одних парках есть лишние исправные автобусы, в других -
    незакрытые наряды того же класса.
-3. Переброска: лишний автобус уходит туда, где его отсутствие дороже
+3. Переброска: лишние автобусы уходят туда, где их отсутствие дороже
    всего, но только если польза больше цены переброски. Цена переброски
-   задаётся в тех же единицах, что цена пропуска наряда (А3).
+   задаётся в тех же единицах, что цена пропуска наряда (А3). Расчёт
+   точный - поток минимальной стоимости: лишние автобусы (парк, класс,
+   топливо) -> маршруты с пустыми нарядами -> лимит выпуска принимающего
+   парка. Так одновременно учитываются классы, газ и лимиты всех парков.
+   При равной пользе автобусы берутся понемногу из разных парков.
 
 Почему так, а не одной общей моделью: свои автобусы парк использует
 всегда, переброска - исключение на день, и диспетчеры парков должны
@@ -29,10 +33,9 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
-import heapq
 import random
 import time
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, deque
 
 from naryad.core.invariants import check_plan
 from naryad.core.model import Day, Plan
@@ -48,59 +51,104 @@ def add_transfers(day: Day, plan: Plan, cost: float = TRANSFER_COST,
                   gas_parks: set | None = None) -> Plan:
     """Перебросить лишние автобусы в парки, где не хватает. План меняется на месте."""
     used = set(plan.vehicles.values())
-    spare = defaultdict(list)  # класс -> [(парк, автобус)] лишние исправные
+    spare = defaultdict(list)  # (парк, класс, топливо) -> лишние исправные автобусы
     for v in sorted(day.vehicles.values(), key=lambda v: (v.park_id, v.board_number)):
         if v.condition == "ok" and v.id not in used and day.parks[v.park_id].state != "down":
-            spare[v.cls].append(v)
+            spare[(v.park_id, v.cls, v.fuel)].append(v)
     released = Counter(day.duties[d].park_id for d in plan.vehicles)
 
-    heap = []  # (-ценность следующего наряда маршрута, маршрут)
-    missing = {}
+    flow = _Flow()
+    lost_by_route = {}
     for key, duties in _groups(day).items():
         if duties[0].type != "line":
             continue
-        lost = [d for d in duties if plan.unfilled.get(d.id) == "no_vehicle"]
+        lost = sorted((d for d in duties if plan.unfilled.get(d.id) == "no_vehicle"),
+                      key=lambda d: (d.end - d.start, d.id), reverse=True)
         if not lost:
             continue
-        costs = drop_costs(day, duties)
-        missing[key] = (costs, sorted(lost, key=lambda d: d.end - d.start, reverse=True))
-        heapq.heappush(heap, (-costs[len(lost) - 1][1], key))
+        lost_by_route[key] = lost
+        park = duties[0].park_id
+        costs = drop_costs(day, duties)  # первые len(lost) - выпавшие, по возрастанию цены
+        for k in range(len(lost)):       # k-й вернувшийся автобус возвращает k-й по цене пропуск
+            flow.add(("route", key), ("park", park), 1, -(costs[len(lost) - 1 - k][1] - cost))
+        for group in spare:
+            g_park, cls, fuel = group
+            if g_park != park and cls in allowed_classes(day, duties[0]) and not (
+                    gas_parks is not None and fuel == "gas" and park not in gas_parks):
+                flow.add(("group", group), ("route", key), len(spare[group]), 0.0)
+    for park_id in {lost[0].park_id for lost in lost_by_route.values()}:
+        park = day.parks[park_id]
+        flow.add(("park", park_id), "T", max(0, park.release(day.day_type) - released[park_id]), 0.0)
+    for group, vehicles in spare.items():  # чуть дороже каждый следующий из той же группы: берём понемногу
+        for k in range(len(vehicles)):
+            flow.add("S", ("group", group), 1, 1e-6 * (k + 1))
+    flow.run("S", "T")
 
-    while heap:
-        value, route_id = heapq.heappop(heap)
-        if -value <= cost:
-            break
-        costs, lost = missing[route_id]
-        duty = lost[0]
-        park = day.parks[duty.park_id]
-        if released[park.id] >= park.release(day.day_type):
-            continue
-        donor = _donor(spare, allowed_classes(day, duty), duty.park_id, gas_parks)
-        if donor is None:
-            continue
-        spare[donor.cls].remove(donor)
-        plan.vehicles[duty.id] = donor.id
-        plan.transfers[donor.id] = duty.park_id
-        plan.unfilled.pop(duty.id)
-        released[park.id] += 1
-        lost.pop(0)
-        if lost:
-            heapq.heappush(heap, (-costs[len(lost) - 1][1], route_id))
+    for (route_key, group), n in sorted(flow.used(("route",), ("group",)).items(), key=str):
+        for _ in range(n):
+            duty = lost_by_route[route_key].pop(0)
+            vehicle = spare[group].pop(0)
+            plan.vehicles[duty.id] = vehicle.id
+            plan.transfers[vehicle.id] = duty.park_id
+            plan.unfilled.pop(duty.id)
     return plan
 
 
-def _donor(spare: dict, classes: tuple, park_id: str, gas_parks: set | None):
-    """Лишний автобус из другого парка: из того, где лишних больше всего."""
-    best = None
-    for cls in classes:
-        by_park = Counter(v.park_id for v in spare[cls] if v.park_id != park_id)
-        for v in spare[cls]:
-            if v.park_id == park_id or (gas_parks is not None and v.fuel == "gas"
-                                        and park_id not in gas_parks):
-                continue
-            if best is None or by_park[v.park_id] > by_park[best.park_id]:
-                best = v
-    return best
+class _Flow:
+    """Поток минимальной стоимости: кратчайшие пути (Беллман-Форд с очередью).
+
+    Пути набираются по одному, пока очередной путь выгоден (цена < 0):
+    цены путей не убывают, поэтому остановка на первом невыгодном даёт
+    самую выгодную переброску.
+    """
+
+    def __init__(self):
+        self.edges = []                 # [куда, остаток, цена, обратное ребро]
+        self.out = defaultdict(list)    # узел -> номера рёбер
+        self.start = {}                 # номер ребра -> откуда
+
+    def add(self, u, v, cap: int, cost: float) -> None:
+        if cap <= 0:
+            return
+        self.out[u].append(len(self.edges))
+        self.start[len(self.edges)] = u
+        self.edges.append([v, cap, cost, len(self.edges) + 1])
+        self.out[v].append(len(self.edges))
+        self.start[len(self.edges)] = v
+        self.edges.append([u, 0, -cost, len(self.edges) - 1])
+
+    def run(self, s, t) -> None:
+        while True:
+            dist, prev, queue, inside = {s: 0.0}, {}, deque([s]), {s}
+            while queue:
+                u = queue.popleft()
+                inside.discard(u)
+                for e in self.out[u]:
+                    v, cap, c, _ = self.edges[e]
+                    if cap > 0 and dist[u] + c < dist.get(v, float("inf")) - 1e-12:
+                        dist[v], prev[v] = dist[u] + c, e
+                        if v not in inside:
+                            inside.add(v)
+                            queue.append(v)
+            if t not in dist or dist[t] >= -1e-12:
+                return
+            v = t
+            while v != s:
+                e = prev[v]
+                self.edges[e][1] -= 1
+                self.edges[self.edges[e][3]][1] += 1
+                v = self.start[e]
+
+    def used(self, to_kind: tuple, from_kind: tuple) -> dict:
+        """Сколько пущено по рёбрам «откуда -> куда» заданных видов: {(куда, откуда): n}."""
+        out = {}
+        for e in range(0, len(self.edges), 2):
+            u, (v, cap, _, back) = self.start[e], self.edges[e]
+            sent = self.edges[back][1]
+            if sent and isinstance(u, tuple) and isinstance(v, tuple) \
+                    and u[0] == from_kind[0] and v[0] == to_kind[0]:
+                out[(v[1], u[1])] = out.get((v[1], u[1]), 0) + sent
+        return out
 
 
 def solve_city(day: Day, transfers: bool = True, cost: float = TRANSFER_COST,

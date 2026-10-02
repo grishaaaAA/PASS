@@ -1,5 +1,6 @@
 """Весь город и переброски между парками (А7). Запуск: python -m unittest"""
 
+import dataclasses
 import itertools
 import time
 import unittest
@@ -16,6 +17,8 @@ from tests.test_core import WEEKDAY
 CITY = Day.from_dict(generate("case", WEEKDAY, seed=1))
 TWO_PARKS = dict(park_count=2, release_per_park=16, routes_total=6,
                  class_mix={"medium": 12, "big": 12, "extra_big": 8})
+THREE_PARKS = dict(park_count=3, release_per_park=16, routes_total=9,
+                   class_mix={"medium": 12, "big": 12, "extra_big": 8})
 
 
 def line_lost(day, plan, park_id=None):
@@ -87,6 +90,79 @@ class TestCity(unittest.TestCase):
                 self.assertAlmostEqual(_gain(day, before, after), _best_gain(day, before), places=6)
                 checked += 1
         self.assertEqual(checked, 18)
+
+    def test_exact_with_gas_and_several_limits(self):
+        """Нехватка в двух парках, урезанные лимиты выпуска, газ: польза как у полного перебора."""
+        checked = binding = 0
+        # (seed, доля в первом парке, во втором, мест сверх выпуска); третий - тот, где жадный
+        # выбор по одному автобусу ошибался: польза 365,5 вместо 373,1
+        for seed, first, second, extra in ((1, 0.5, 0.4, 1), (2, 0.6, 0.6, 2), (3, 0.4, 0.7, 2), (4, 0.5, 0.4, 2)):
+            base = Day.from_dict(generate("case", WEEKDAY, seed=seed, **THREE_PARKS))
+            parks = sorted(base.parks)
+            day = with_park_shortage(with_park_shortage(base, parks[0], first, seed), parks[1], second, seed + 1)
+            before = solve_vehicles(day)
+            released = Counter(day.duties[d].park_id for d in before.vehicles)
+            for park_id in parks[:2]:  # принимающим паркам оставляем место только на часть автобусов
+                room = released[park_id] + extra
+                day.parks[park_id] = dataclasses.replace(day.parks[park_id], release_weekday=room,
+                                                         release_weekend=room)
+            for gas in ({parks[0]}, {parks[1], parks[2]}, None):
+                after = add_transfers(day, Plan(vehicles=dict(before.vehicles),
+                                                unfilled=dict(before.unfilled)), gas_parks=gas)
+                self.assertEqual(check_plan(day, after, drivers=False), [])
+                if gas is not None:
+                    self.assertFalse([v for v, p in after.transfers.items()
+                                      if day.vehicles[v].fuel == "gas" and p not in gas])
+                exact = _exact_gain(day, before, gas)
+                self.assertAlmostEqual(_gain(day, before, after), exact, places=6)
+                binding += any(Counter(day.duties[d].park_id for d in after.vehicles)[p]
+                               == day.parks[p].release_weekday for p in parks[:2])
+                checked += 1
+        self.assertEqual(checked, 12)
+        self.assertGreater(binding, 0)  # лимит выпуска действительно ограничивал
+
+
+def _exact_gain(day, before, gas_parks):
+    """Полный перебор: сколько автобусов вернуть на каждый маршрут; подбор бортов - паросочетанием."""
+    used = set(before.vehicles.values())
+    spare = [v for v in sorted(day.vehicles.values(), key=lambda v: v.id)
+             if v.condition == "ok" and v.id not in used and day.parks[v.park_id].state != "down"]
+    released = Counter(day.duties[d].park_id for d in before.vehicles)
+    routes = []
+    for key, duties in _groups(day).items():
+        lost = [d for d in duties if before.unfilled.get(d.id) == "no_vehicle"]
+        if duties[0].type == "line" and lost:
+            routes.append((duties[0], [c for _, c in drop_costs(day, duties)], len(lost)))
+
+    def fits(vehicle, duty):
+        return (vehicle.park_id != duty.park_id and vehicle.cls in allowed_classes(day, duty)
+                and not (gas_parks is not None and vehicle.fuel == "gas" and duty.park_id not in gas_parks))
+
+    def matched(slots):
+        owner = {}
+
+        def augment(i, seen):
+            for v in spare:
+                if fits(v, slots[i]) and v.id not in seen:
+                    seen.add(v.id)
+                    if v.id not in owner or augment(owner[v.id], seen):
+                        owner[v.id] = i
+                        return True
+            return False
+        return all(augment(i, set()) for i in range(len(slots)))
+
+    best = 0.0
+    for counts in itertools.product(*(range(m + 1) for _, _, m in routes)):
+        per_park = Counter()
+        for (duty, _, _), t in zip(routes, counts):
+            per_park[duty.park_id] += t
+        if any(released[p] + n > day.parks[p].release(day.day_type) for p, n in per_park.items()):
+            continue
+        gain = sum(sum(costs[m - 1 - k] - TRANSFER_COST for k in range(t))
+                   for (_, costs, m), t in zip(routes, counts))
+        if gain > best and matched([duty for (duty, _, _), t in zip(routes, counts) for _ in range(t)]):
+            best = gain
+    return best
 
 
 def _route_state(day, plan):
