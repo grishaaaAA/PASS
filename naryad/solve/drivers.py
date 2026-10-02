@@ -18,7 +18,9 @@
    водителя нет, его ищут перестановкой уже назначенных (поиск
    увеличивающей цепочки). Такой порядок даёт лучший возможный набор
    закрытых смен (жадный алгоритм на трансверсальном матроиде).
-2. Кого ставить. При выборе водителя порядок предпочтений: закреплённый
+2. Кого ставить. Выбранные смены раздаются заново в порядке начала (так
+   водитель держится своего времени суток изо дня в день). При выборе
+   водителя порядок предпочтений: закреплённый
    за этим автобусом; затем водители, чей закреплённый автобус сегодня не
    работает (остальные нужны своему автобусу); затем тот, кому не нужен
    сокращённый отдых; затем тот, у кого меньше часов с начала месяца. После расстановки обменами
@@ -156,6 +158,19 @@ def solve_drivers(day: Day, vehicle_plan: Plan, history: History | None = None,
             taken[shift.id] = free
         elif not augment(shift.id, set()):
             plan.unfilled[shift.id] = "no_driver"
+    # Второй проход: те же смены, но водители раздаются в порядке начала смен.
+    # Так закреплённые водители держатся своего времени суток изо дня в день и
+    # чаще попадают на свой автобус; набор закрытых смен не меняется.
+    chosen = sorted(taken, key=lambda sid: (day.shifts[sid].start, sid))
+    holder.clear()
+    taken.clear()
+    for shift_id in chosen:
+        free = next((d for d in candidates[shift_id] if d not in holder), None)
+        if free is not None:
+            holder[free] = shift_id
+            taken[shift_id] = free
+        elif not augment(shift_id, set()):
+            raise AssertionError(f"второй проход не закрыл смену {shift_id}")  # набор выполним - так не бывает
     _keep_home(day, vehicle_plan, candidates, holder, taken)
     plan.drivers.update(taken)
 
@@ -178,9 +193,11 @@ def solve_drivers(day: Day, vehicle_plan: Plan, history: History | None = None,
 def _keep_home(day: Day, vehicle_plan: Plan, candidates: dict, holder: dict, taken: dict) -> None:
     """Обмены, которые сажают закреплённых водителей на свои автобусы.
 
-    Меняются только люди, набор закрытых смен остаётся прежним. Каждый
-    обмен строго добавляет водителя на своём автобусе, поэтому цикл
-    конечен.
+    Меняются только люди, набор закрытых смен остаётся прежним. Обмены:
+    закреплённый свободен; обмен двоих; круг из трёх, когда закреплённый
+    занят на другой смене своего автобуса, а её может взять второй
+    закреплённый. Каждый обмен строго добавляет водителя на своём автобусе,
+    поэтому цикл конечен.
     """
     vehicle_of = {s: vehicle_plan.vehicles[day.shifts[s].duty_id] for s in candidates}
     homes = defaultdict(list)
@@ -200,14 +217,34 @@ def _keep_home(day: Day, vehicle_plan: Plan, candidates: dict, holder: dict, tak
                 if home not in allowed[shift_id]:
                     continue
                 other = holder.get(home)
-                if other is None:
+                if other is None:                      # закреплённый свободен
                     del holder[current]
                     holder[home], taken[shift_id] = shift_id, home
                     return True
-                if not at_home(home, other) and current in allowed[other]:
+                if not at_home(home, other) and current in allowed[other]:  # обмен двоих
                     holder[home], taken[shift_id] = shift_id, home
                     holder[current], taken[other] = other, current
                     return True
+                if at_home(home, other) and rotate(shift_id, current, home, other):
+                    return True
+        return False
+
+    def rotate(shift_id: str, current: str, home: str, other: str) -> bool:
+        """По кругу: home уходит на shift_id, его смену other берёт второй закреплённый
+        за тем же автобусом, а освободившуюся смену второго - current."""
+        for second in homes.get(vehicle_of[other], []):
+            if second in (home, current) or second not in allowed[other]:
+                continue
+            third = holder.get(second)
+            if third is not None and (at_home(second, third) or current not in allowed[third]):
+                continue
+            holder[home], taken[shift_id] = shift_id, home
+            holder[second], taken[other] = other, second
+            if third is None:
+                del holder[current]
+            else:
+                holder[current], taken[third] = third, current
+            return True
         return False
 
     while improve_once():

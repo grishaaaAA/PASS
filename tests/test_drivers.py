@@ -8,7 +8,7 @@ from naryad.core.invariants import check_plan, check_rest, load_labor
 from naryad.core.model import Day
 from naryad.data.generate import generate, generate_series
 from naryad.solve.compare import compare_drivers
-from naryad.solve.drivers import DriverState, History, _shift_value, rest_status, solve_drivers
+from naryad.solve.drivers import DriverState, History, _keep_home, _shift_value, rest_status, solve_drivers
 from naryad.solve.series import manual_series, series_report, solve_series
 from naryad.solve.vehicles import solve_vehicles
 
@@ -167,8 +167,27 @@ class TestSeries(unittest.TestCase):
         self.assertEqual(ours.get("важность 1", 0), 0)
         self.assertGreater(manual.get("важность 1", 0), 0)
 
+    def test_rotation_of_three(self):
+        """A не может утром, утро у чужого X, вечер у закреплённого B: B - утро, A - вечер, X - на место A."""
+        day = Day.load(SAMPLES / "park7_weekday.json")
+        plan = solve_vehicles(day)
+        duty_id, bus = next((d, v) for d, v in sorted(plan.vehicles.items())
+                            if len(day.shifts_by_duty[d]) >= 2
+                            and sum(x.home_vehicle_id == v for x in day.drivers.values()) >= 2)
+        a, b = sorted(x.id for x in day.drivers.values() if x.home_vehicle_id == bus)[:2]
+        morning, evening = day.shifts_by_duty[duty_id][:2]
+        foreign = next(s for d, v in sorted(plan.vehicles.items()) if v != bus
+                       for s in day.shifts_by_duty[d])
+        x = next(d.id for d in sorted(day.drivers.values(), key=lambda d: d.id) if d.home_vehicle_id is None)
+        candidates = {morning.id: [x, b], evening.id: [a, b, x], foreign.id: [a, x]}
+        taken = {morning.id: x, evening.id: b, foreign.id: a}
+        holder = {d: s for s, d in taken.items()}
+        _keep_home(day, plan, candidates, holder, taken)
+        self.assertEqual(taken, {morning.id: b, evening.id: a, foreign.id: x})
+        self.assertEqual(holder, {b: morning.id, a: evening.id, x: foreign.id})
+
     def test_home_drivers_kept(self):
-        self.assertGreaterEqual(series_report(self.ours)["на своём закреплённом автобусе, %"], 35)
+        self.assertGreaterEqual(series_report(self.ours)["на своём закреплённом автобусе, %"], 39)
 
 
 if __name__ == "__main__":

@@ -80,9 +80,11 @@ class TestExplain(unittest.TestCase):
         for other in [d for d in day.drivers.values()
                       if d.home_vehicle_id == vehicle_id and d.id != driver_id]:
             day.drivers[other.id] = dataclasses.replace(other, schedule="day_off")
-        history = History()
-        history.get(driver_id).last_end = day_base(day) + day.shifts[shift_id].start - 6 * 60
-        history.get(driver_id).last_length = 8 * 60
+        history = History()  # вчера закончил за час до последней смены своего автобуса: не годится ни на одну
+        latest = max(s.start for d, v in plan.vehicles.items() if v == vehicle_id
+                     for s in day.shifts_by_duty[d])
+        history.get(driver_id).last_end = day_base(day) + latest - 60
+        history.get(driver_id).last_length = 10 * 60
         again = solve_drivers(day, solve_vehicles(day), history=History(
             drivers={driver_id: dataclasses.replace(history.get(driver_id))}))
         self.assertNotEqual(again.drivers.get(shift_id), driver_id)
