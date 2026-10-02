@@ -20,24 +20,46 @@ TINY = dict(park_count=1, release_per_park=14, routes_total=3,
 
 
 def brute_force_cost(day: Day) -> float:
-    """Лучшая цена пропусков полным перебором: сколько нарядов выпадает в каждой группе."""
+    """Лучшая цена пропусков полным перебором: сколько нарядов выпадает в каждой группе.
+
+    Выполнимость - по каждому парку: лимит выпуска и условие Холла для
+    классов (нарядам, которым годятся только классы из набора S, хватает
+    исправных автобусов классов S).
+    """
     groups = list(_groups(day).values())
     supply = defaultdict(int)
     for v in day.vehicles.values():
         if v.condition == "ok":
             supply[(v.park_id, v.cls)] += 1
-    park = next(iter(day.parks.values()))
-    limit = park.release(day.day_type)
+    classes = sorted({c for g in groups for c in allowed_classes(day, g[0])})
+    subsets = [set(c) for r in range(1, len(classes) + 1) for c in itertools.combinations(classes, r)]
     costs = [[c for _, c in drop_costs(day, g)] for g in groups]
     best = float("inf")
     for missing in itertools.product(*(range(len(g) + 1) for g in groups)):
-        used = defaultdict(int)
+        kept = defaultdict(int)  # (парк, допустимые классы) -> нарядов
         for g, m in zip(groups, missing):
-            used[(g[0].park_id, allowed_classes(day, g[0])[0])] += len(g) - m
-        if sum(used.values()) > limit or any(used[k] > supply[k] for k in used):
-            continue
-        best = min(best, sum(sum(c[:m]) for c, m in zip(costs, missing)))
+            kept[(g[0].park_id, frozenset(allowed_classes(day, g[0])))] += len(g) - m
+        ok = True
+        for park in day.parks.values():
+            here = {k: n for (p, k), n in kept.items() if p == park.id}
+            limit = 0 if park.state == "down" else park.release(day.day_type)
+            ok = ok and sum(here.values()) <= limit and all(
+                sum(n for k, n in here.items() if k <= sub) <= sum(supply[(park.id, c)] for c in sub)
+                for sub in subsets)
+        if ok:
+            best = min(best, sum(sum(c[:m]) for c, m in zip(costs, missing)))
     return best
+
+
+def multiclass_day(seed: int, share: float) -> Day:
+    """Малый день, где маршруты допускают несколько классов, а лимит выпуска меньше нарядов."""
+    data = generate("case", WEEKDAY, seed=seed, **TINY)
+    extra = {"medium": "big", "big": "extra_big", "extra_big": "big"}
+    for i, route in enumerate(sorted(data["routes"], key=lambda r: r["id"])):
+        if i % 2 == seed % 2:
+            route["allowed_classes"].insert(0, extra[route["allowed_classes"][0]])  # чужой класс первым
+    data["parks"][0]["release_weekday"] -= seed % 3 + 1
+    return with_shortage(Day.from_dict(data), share, seed)
 
 
 class TestVehicles(unittest.TestCase):
@@ -69,6 +91,18 @@ class TestVehicles(unittest.TestCase):
                 self.assertAlmostEqual(total_cost(day, plan), brute_force_cost(day), places=6)
                 checked += 1
         self.assertEqual(checked, 15)
+
+    def test_optimal_with_several_classes_and_release_limit(self):
+        """Маршруты на несколько классов и действующий лимит выпуска: тоже точный оптимум."""
+        reasons = set()
+        for seed in range(1, 6):
+            for share in (0.2, 0.4):
+                day = multiclass_day(seed, share)
+                plan = solve_vehicles(day)
+                self.assertEqual(check_plan(day, plan, drivers=False), [])
+                self.assertAlmostEqual(total_cost(day, plan), brute_force_cost(day), places=6)
+                reasons |= set(plan.unfilled.values())
+        self.assertIn("release_limit", reasons)  # лимит выпуска действительно ограничивал
 
     def test_reserve_goes_first(self):
         day = with_shortage(Day.load(SAMPLES / "park7_weekday.json"), 0.06, 1)

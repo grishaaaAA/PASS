@@ -27,14 +27,15 @@
 так теряется меньше часов работы на линии. Резерв выпадает раньше любого
 наряда на линии.
 
-Почему это лучший план, а не просто хороший. Пока каждый маршрут
-допускает один класс автобусов (так в данных генератора; маршруты на
-несколько классов - отдельная задача), задача распадается на части «парк x класс»
-с двумя ограничениями: автобусов класса и лимит выпуска парка. Цена
-каждого следующего пропуска на маршруте не меньше предыдущей. Для такой
-задачи жадный выбор - каждый следующий автобус туда, где его отсутствие
-дороже всего - даёт точный оптимум (жадный алгоритм на ламинарном
-матроиде). Тесты сверяют это полным перебором на малых примерах.
+Почему это лучший план, а не просто хороший. Наряды одного маршрута
+взаимозаменяемы, цена каждого следующего пропуска на маршруте не меньше
+предыдущей. Наборы нарядов, которые можно закрыть исправными автобусами
+допустимых классов в пределах лимита выпуска парка, образуют матроид
+(трансверсальный, усечённый лимитом). Для такой задачи жадный выбор -
+каждый следующий автобус туда, где его отсутствие дороже всего, с
+проверкой «набор ещё выполним» - даёт точный оптимум. Если маршрут
+допускает несколько классов, проверка ищет цепочку перестановок нарядов
+между классами. Тесты сверяют это полным перебором на малых примерах.
 
 Какой именно автобус на какой наряд: сначала маршрут получает «свои»
 автобусы (закреплённые за ним), потом остальные.
@@ -89,10 +90,54 @@ def _groups(day: Day) -> dict:
     return groups
 
 
+class _Classes:
+    """Какой класс автобусов закрывает каждый выбранный наряд парка.
+
+    Наряд маршрута может допускать несколько классов. Новый наряд берёт
+    свободный класс, а если свободных нет - ищется цепочка перестановок:
+    наряд A уступает свой класс и переходит на другой допустимый, где есть
+    место, и так далее. Так набор выбранных нарядов остаётся выполнимым
+    тогда и только тогда, когда автобусов хватает на всех.
+    """
+
+    def __init__(self, supply: dict):
+        self.free = dict(supply)              # (парк, класс) -> свободных автобусов
+        self.of = {}                          # наряд -> класс
+        self.holders = defaultdict(list)      # (парк, класс) -> наряды
+
+    def add(self, day: Day, duty) -> bool:
+        park = duty.park_id
+        start = allowed_classes(day, duty)
+        parent = {c: None for c in start}     # класс -> (откуда, какой наряд переезжает)
+        queue = list(start)
+        while queue:
+            cls = queue.pop(0)
+            if self.free.get((park, cls), 0) > 0:
+                self._shift(day, duty, park, cls, parent)
+                return True
+            for other in self.holders[(park, cls)]:
+                for nxt in allowed_classes(day, day.duties[other]):
+                    if nxt not in parent:
+                        parent[nxt] = (cls, other)
+                        queue.append(nxt)
+        return False
+
+    def _shift(self, day: Day, duty, park: str, cls: str, parent: dict) -> None:
+        self.free[(park, cls)] -= 1
+        while parent[cls] is not None:        # по цепочке назад: каждый наряд переезжает
+            prev, mover = parent[cls]
+            self.holders[(park, prev)].remove(mover)
+            self.holders[(park, cls)].append(mover)
+            self.of[mover] = cls
+            cls = prev
+        self.holders[(park, cls)].append(duty.id)
+        self.of[duty.id] = cls
+
+
 def choose_duties(day: Day, weights: dict = PRIORITY_WEIGHT) -> tuple:
     """Какие наряды закрыть: жадно по убыванию цены пропуска.
 
-    Возвращает (множество закрываемых нарядов, причины для остальных).
+    Возвращает (выбранные наряды -> класс автобуса, причины для остальных).
     """
     supply = defaultdict(int)  # (парк, класс) -> исправных автобусов
     for v in day.vehicles.values():
@@ -105,22 +150,18 @@ def choose_duties(day: Day, weights: dict = PRIORITY_WEIGHT) -> tuple:
         units.extend((cost, duty.id) for duty, cost in drop_costs(day, duties, weights))
     units.sort(key=lambda u: (-u[0], u[1]))
 
-    chosen, reasons = set(), {}
+    classes, reasons = _Classes(supply), {}
     for _, duty_id in units:
         duty = day.duties[duty_id]
-        classes = allowed_classes(day, duty)
-        cls = next((c for c in classes if supply[(duty.park_id, c)] > 0), None)
         if day.parks[duty.park_id].state == "down":
             reasons[duty_id] = "park_down"
         elif limit[duty.park_id] <= 0:
             reasons[duty_id] = "release_limit"
-        elif cls is None:
+        elif not classes.add(day, duty):
             reasons[duty_id] = "no_vehicle"
         else:
-            supply[(duty.park_id, cls)] -= 1
             limit[duty.park_id] -= 1
-            chosen.add(duty_id)
-    return chosen, reasons
+    return classes.of, reasons
 
 
 def solve_vehicles(day: Day, weights: dict = PRIORITY_WEIGHT) -> Plan:
@@ -138,19 +179,15 @@ def solve_vehicles(day: Day, weights: dict = PRIORITY_WEIGHT) -> Plan:
     waiting = []
     for duty_id in ordered:
         duty = day.duties[duty_id]
-        for cls in allowed_classes(day, duty):
-            pool = free[(duty.park_id, cls)]
-            own = next((v for v in pool if duty.route_id and v.home_route_id == duty.route_id), None)
-            if own is not None:
-                pool.remove(own)
-                plan.vehicles[duty_id] = own.id
-                break
-        else:
+        pool = free[(duty.park_id, chosen[duty_id])]
+        own = next((v for v in pool if duty.route_id and v.home_route_id == duty.route_id), None)
+        if own is None:
             waiting.append(duty_id)
+            continue
+        pool.remove(own)
+        plan.vehicles[duty_id] = own.id
     for duty_id in waiting:
-        duty = day.duties[duty_id]
-        cls = next(c for c in allowed_classes(day, duty) if free[(duty.park_id, c)])
-        pool = free[(duty.park_id, cls)]
+        pool = free[(day.duties[duty_id].park_id, chosen[duty_id])]
         # чужие закреплённые - в последнюю очередь
         vehicle = next((v for v in pool if v.home_route_id is None), pool[0])
         pool.remove(vehicle)
