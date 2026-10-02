@@ -11,6 +11,9 @@
 
 Ручной способ - аккуратная модель из naryad/solve/baseline.py: линия
 раньше резерва, свои автобусы на свои маршруты.
+
+Второе сравнение - нехватка водителей: часть водителей, работающих по
+графику, заболела. Показываем, на каких сменах остаются пустые места.
 """
 
 from __future__ import annotations
@@ -19,18 +22,20 @@ import argparse
 import dataclasses
 import random
 import statistics
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 
 from naryad.core.invariants import check_plan
 from naryad.core.model import Day, Plan
 
-from .baseline import baseline_vehicles
+from .baseline import baseline_drivers, baseline_vehicles
+from .drivers import solve_drivers
 from .vehicles import solve_vehicles, total_cost
 
 DEFAULT_DAY = Path(__file__).resolve().parents[2] / "data" / "samples" / "park7_weekday.json"
 SCENARIOS = {"нехватка 5%": 0.05, "нехватка 10%": 0.10, "нехватка 15%": 0.15, "нехватка 20%": 0.20}
 MORE_IS_BETTER = {"закрыто нарядов на линии", "свои автобусы на своих маршрутах, %"}
+DRIVER_SCENARIOS = {"болеют 10% водителей": 0.10, "болеют 20% водителей": 0.20, "болеют 30% водителей": 0.30}
 
 
 def with_shortage(day: Day, share: float, seed: int, by_class: bool = True) -> Day:
@@ -107,6 +112,45 @@ def compare(day: Day, seeds: int = 10) -> dict:
     return result
 
 
+def with_sick_drivers(day: Day, share: float, seed: int) -> Day:
+    """Копия дня, где доля водителей, работающих по графику, заболела."""
+    rng = random.Random(seed)
+    out = dataclasses.replace(day, drivers=dict(day.drivers))
+    working = sorted(d.id for d in day.drivers.values() if d.schedule == "work")
+    for driver_id in rng.sample(working, round(len(working) * share)):
+        out.drivers[driver_id] = dataclasses.replace(out.drivers[driver_id], schedule="sick")
+    return out
+
+
+def unfilled_shifts(day: Day, plan: Plan) -> Counter:
+    """Пустые смены на выпущенных нарядах: по важности маршрута и резерв."""
+    out = Counter()
+    for duty_id in plan.vehicles:
+        duty = day.duties[duty_id]
+        key = "резерв" if duty.type == "reserve" else f"важность {day.routes[duty.route_id].priority}"
+        out[key] += sum(s.id not in plan.drivers for s in day.shifts_by_duty.get(duty_id, []))
+    return out
+
+
+def compare_drivers(day: Day, seeds: int = 5, scenarios: dict = DRIVER_SCENARIOS) -> dict:
+    """{сценарий: {способ: {вид смены: пустых смен в день, среднее}}}."""
+    result = {}
+    for name, share in scenarios.items():
+        rows = {"вручную": Counter(), "наш план": Counter()}
+        for seed in range(1, seeds + 1):
+            scenario = with_sick_drivers(day, share, seed)
+            vehicles = solve_vehicles(scenario)
+            for label, plan in (("вручную", baseline_drivers(scenario, vehicles, {})),
+                                ("наш план", solve_drivers(scenario, vehicles))):
+                problems = check_plan(scenario, plan)
+                if problems:
+                    raise AssertionError(f"{label}: план недопустим: {problems[0]}")
+                rows[label] += unfilled_shifts(scenario, plan)
+        kinds = sorted(set(rows["вручную"]) | set(rows["наш план"]))
+        result[name] = {label: {k: round(c[k] / seeds, 1) for k in kinds} for label, c in rows.items()}
+    return result
+
+
 def _summary(items: list) -> dict:
     out = {}
     for key in items[0]:
@@ -133,6 +177,13 @@ def main(argv=None) -> int:
             cells = [f"{m:g}" if m == w else f"{m:g} ({w:g})" for m, w in
                      (table["вручную"][key], table["наш план"][key])]
             print(f"{key:{width}}  {cells[0]:>16}  {cells[1]:>16}")
+    seeds = min(args.seeds, 5)
+    print(f"\nНехватка водителей: пустых смен на выпущенных нарядах в день, среднее по {seeds} сценариям")
+    for name, table in compare_drivers(day, seeds).items():
+        print(f"\n{name}")
+        print(f"{'':12}  {'вручную':>10}  {'наш план':>10}")
+        for kind in table["вручную"]:
+            print(f"{kind:12}  {table['вручную'][kind]:>10g}  {table['наш план'][kind]:>10g}")
     return 0
 
 

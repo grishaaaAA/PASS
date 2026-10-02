@@ -60,8 +60,9 @@ def baseline_drivers(day: Day, vehicle_plan: Plan, yesterday: dict | None = None
                      labor: dict | None = None) -> Plan:
     """Ручная расстановка водителей.
 
-    Водитель идёт на смену своего закреплённого автобуса, остальные смены
-    в порядке начала получают первого свободного водителя с допуском.
+    Смены на линии раньше резерва, внутри - в порядке начала. Водитель идёт
+    на смену своего закреплённого автобуса, остальные смены получают
+    первого свободного водителя с допуском.
     Проверяются график, медосмотр, допуск и отдых по вчерашнему наряду:
     не меньше 11 ч и не меньше двойной смены (как в labor.json).
     Сокращённый отдых до 9 ч и счёт смен подряд вручную не ведутся.
@@ -87,8 +88,8 @@ def baseline_drivers(day: Day, vehicle_plan: Plan, yesterday: dict | None = None
     ready = [d for d in sorted(day.drivers.values(), key=lambda d: d.tab_number)
              if d.schedule == "work" and d.medical != "failed"]
     used = set()
-    shifts = sorted((s for duty_id in vehicle_plan.vehicles
-                     for s in day.shifts_by_duty.get(duty_id, [])), key=lambda s: (s.start, s.id))
+    shifts = sorted((s for duty_id in vehicle_plan.vehicles for s in day.shifts_by_duty.get(duty_id, [])),
+                    key=lambda s: (day.duties[s.duty_id].type != "line", s.start, s.id))
     for shift in shifts:
         duty = day.duties[shift.duty_id]
         vehicle = day.vehicles[vehicle_plan.vehicles[duty.id]]

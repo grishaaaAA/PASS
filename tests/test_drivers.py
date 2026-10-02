@@ -7,6 +7,7 @@ import unittest
 from naryad.core.invariants import check_plan, check_rest, load_labor
 from naryad.core.model import Day
 from naryad.data.generate import generate, generate_series
+from naryad.solve.compare import compare_drivers
 from naryad.solve.drivers import DriverState, History, _shift_value, rest_status, solve_drivers
 from naryad.solve.series import manual_series, series_report, solve_series
 from naryad.solve.vehicles import solve_vehicles
@@ -156,6 +157,15 @@ class TestSeries(unittest.TestCase):
         report = series_report(self.ours)  # внутри - check_plan на каждый день
         filled, needed = report["смен закрыто"].split(" из ")
         self.assertEqual(filled, needed)
+
+    def test_driver_shortage_spares_important_routes(self):
+        """Водителей не хватает: смен закрыто столько же, но пустеют второстепенные маршруты."""
+        day = Day.load(SAMPLES / "park7_weekday.json")
+        table = compare_drivers(day, seeds=2, scenarios={"20%": 0.2})["20%"]
+        ours, manual = table["наш план"], table["вручную"]
+        self.assertEqual(sum(ours.values()), sum(manual.values()))
+        self.assertEqual(ours.get("важность 1", 0), 0)
+        self.assertGreater(manual.get("важность 1", 0), 0)
 
     def test_home_drivers_kept(self):
         self.assertGreaterEqual(series_report(self.ours)["на своём закреплённом автобусе, %"], 35)
