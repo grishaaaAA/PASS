@@ -25,7 +25,7 @@ import statistics
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from naryad.core.invariants import check_plan
+from naryad.core.invariants import check_plan, use_labor_preset
 from naryad.core.model import Day, Plan
 
 from .baseline import baseline_drivers, baseline_vehicles
@@ -164,10 +164,14 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     parser.add_argument("day", nargs="?", default=str(DEFAULT_DAY))
     parser.add_argument("--seeds", type=int, default=10)
+    parser.add_argument("--labor", default=None,
+                        help="набор норм из naryad/core/labor_presets.json: current, likely, strict")
     args = parser.parse_args(argv)
+    use_labor_preset(args.labor)
     day = Day.load(args.day)
     lines = sum(d.day_type == day.day_type and d.type == "line" for d in day.duties.values())
-    print(f"Нарядов на линии: {lines}. В клетке: среднее по {args.seeds} сценариям (худший сценарий).")
+    print(f"Нарядов на линии: {lines}. Нормы: {args.labor or 'current'}. "
+          f"В клетке: среднее по {args.seeds} сценариям (худший сценарий).")
     for name, table in compare(day, args.seeds).items():
         print(f"\n{name}")
         keys = list(table["вручную"])

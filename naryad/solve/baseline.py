@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from naryad.core.invariants import load_labor, rest_minutes, work_minutes
+from naryad.core.invariants import load_labor, rest_minutes, shift_limit, work_minutes
 from naryad.core.model import Day, Plan
 
 from .drivers import day_base
@@ -66,6 +66,8 @@ def baseline_drivers(day: Day, vehicle_plan: Plan, yesterday: dict | None = None
     Проверяются график, медосмотр, допуск и отдых по вчерашнему наряду:
     не меньше 11 ч и не меньше двойной смены (как в labor.json).
     Сокращённый отдых до 9 ч и счёт смен подряд вручную не ведутся.
+    Смена, которая с подготовкой и медосмотрами длиннее дневной нормы,
+    остаётся пустой: на неё нельзя поставить никого.
 
     yesterday - водитель -> (конец вчерашней смены от общей точки отсчёта,
     её длина); дополняется сменами этого дня. None - отдых не проверяется
@@ -90,7 +92,11 @@ def baseline_drivers(day: Day, vehicle_plan: Plan, yesterday: dict | None = None
     used = set()
     shifts = sorted((s for duty_id in vehicle_plan.vehicles for s in day.shifts_by_duty.get(duty_id, [])),
                     key=lambda s: (day.duties[s.duty_id].type != "line", s.start, s.id))
+    limit = shift_limit(labor)
     for shift in shifts:
+        if work_minutes(shift.length, labor) > limit:
+            plan.unfilled[shift.id] = "no_driver"
+            continue
         duty = day.duties[shift.duty_id]
         vehicle = day.vehicles[vehicle_plan.vehicles[duty.id]]
         fits = [d for d in ready if d.id not in used and d.park_id == duty.park_id

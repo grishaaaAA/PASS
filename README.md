@@ -15,6 +15,7 @@
 | Модель дня и плана | `naryad/core/model.py` | Читает день (после проверки данных) и план движка |
 | Проверка плана | `naryad/core/invariants.py` | Ловит недопустимый план: автобус в двух местах, водитель без допуска, неисправный автобус на линии и т.д. |
 | Нормы труда | `naryad/core/labor.json` | Нормы Приказа Минтранса № 160 (действует с 01.09.2026, заменил № 424) с номерами пунктов, статусом и пометкой, где проверяются |
+| Наборы норм | `naryad/core/labor_presets.json` | Пока перевозчик не ответил: `current` (как в labor.json), `likely` (подготовка 20 + 10 мин, смены до 12 ч), `strict` (30 + 15 мин, норма 10 ч). Флаг `--labor` в `compare` и `series`, переменная `NARYAD_LABOR` для любой команды |
 | Отдых водителей | `naryad/core/invariants.py`, `check_rest` | Отдых между сменами (11 ч / 9 ч, двойная смена) и еженедельный отдых (45 ч) на серии дней |
 | Расстановка автобусов | `naryad/solve/vehicles.py` | Лучший возможный план по автобусам в принятой цене пропусков: при нехватке бережёт важные маршруты за счёт второстепенных, ставит свои автобусы на свои маршруты |
 | Расстановка водителей | `naryad/solve/drivers.py` | Водители по сменам с памятью о прошлых днях: отдых по Приказу № 160, допуски, закреплённые автобусы, ровные часы |
@@ -47,6 +48,8 @@ python -m naryad.data.generate                                   # 1 день п
 python -m naryad.data.generate --days 30 --out series/           # 30 дней подряд
 python -m naryad.data.generate --parks 3 --release 250 --routes 50 --mix 700,700,500
 python -m naryad.data.generate --preset park7 --out park7.json --csv park7_csv
+python -m naryad.solve.series --days 14 --labor likely          # нормы из набора likely
+NARYAD_LABOR=strict python -m naryad.ops.scenarios              # тот же набор для любой команды
 python -m unittest
 ```
 
