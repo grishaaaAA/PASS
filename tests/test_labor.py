@@ -8,7 +8,7 @@ from datetime import date, timedelta
 
 from naryad.core.invariants import LABOR_FILE, check_plan, check_rest, load_labor
 from naryad.core.model import Day, Plan
-from naryad.data.generate import generate
+from naryad.data.generate import generate, generate_series
 
 from tests.test_core import SMALL, WEEKDAY, codes, greedy_plan
 
@@ -106,6 +106,35 @@ class TestRest(unittest.TestCase):
         self.assertEqual(len(daily), 1)
         three = check_rest(series([(d, 6, 20) for d in range(4)]))
         self.assertEqual([v for v in three if v.code == "daily_rest"], [])
+
+
+
+class TestPrepTime(unittest.TestCase):
+    """Подготовка и медосмотры (п. 13 Приказа № 160) - рабочее время."""
+
+    PREP = dict(load_labor(), prep_before_min=15, prep_after_min=10)
+
+    def test_shift_with_prep_over_limit(self):
+        day = copy.copy(BASE)
+        day.shifts = dict(BASE.shifts)
+        plan = greedy_plan(day)
+        shift_id = next(iter(plan.drivers))
+        shift = day.shifts[shift_id]
+        day.shifts[shift_id] = dataclasses.replace(shift, end=shift.start + 9 * 60 + 40)
+        self.assertNotIn("driver_overtime", codes(check_plan(day, plan)))
+        self.assertIn("driver_overtime", codes(check_plan(day, plan, self.PREP)))  # 9:40 + 0:25 > 10 ч
+
+    def test_rest_without_prep_time(self):
+        week = series([(0, 18, 22), (1, 7 + 1 / 6, 11)])  # между сменами 9 ч 10 мин
+        self.assertEqual(check_rest(week), [])             # сокращённый отдых, законно
+        self.assertEqual(codes(check_rest(week, self.PREP)), {"daily_rest"})  # отдых 8 ч 45 мин
+
+    def test_solver_respects_prep_time(self):
+        from naryad.solve.series import solve_series
+        days = [Day.from_dict(d) for d in generate_series("park7", "2026-10-05", 5, 1, "morning")]
+        plans = solve_series(days, self.PREP)
+        self.assertEqual(check_rest(plans, self.PREP), [])
+        self.assertFalse([v for day, plan in plans for v in check_plan(day, plan, self.PREP)])
 
 
 if __name__ == "__main__":

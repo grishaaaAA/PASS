@@ -30,6 +30,16 @@ def load_labor(path: Path = LABOR_FILE) -> dict:
     return {name: item["value"] for name, item in raw.items() if not name.startswith("_")}
 
 
+def work_minutes(length: int, labor: dict) -> int:
+    """Рабочее время за смену: сама смена + подготовка и медосмотры до и после (п. 13)."""
+    return length + labor.get("prep_before_min", 0) + labor.get("prep_after_min", 0)
+
+
+def rest_minutes(end: int, start: int, labor: dict) -> int:
+    """Отдых между концом одной смены и началом следующей без подготовки и медосмотров."""
+    return start - end - labor.get("prep_before_min", 0) - labor.get("prep_after_min", 0)
+
+
 def shift_limit(labor: dict) -> int:
     """Дневная норма смены: 12 ч, если перевозчик так установил для городских маршрутов, иначе 10 ч (п. 4)."""
     return labor["max_shift_extended_min"] if labor["city_12h_allowed"] else labor["max_shift_min"]
@@ -175,7 +185,7 @@ def _driver_load(day: Day, plan: Plan, labor: dict) -> list:
                 out.append(Violation("driver_overlap",
                                      f"Водитель {tab}: смены {first.id} и {second.id} "
                                      f"пересекаются по времени", (driver_id, first.id, second.id)))
-        total = sum(s.length for s in shifts)
+        total = sum(work_minutes(s.length, labor) for s in shifts)
         limit = shift_limit(labor)
         if total > limit:
             note = ("" if labor["city_12h_allowed"] is not None else
@@ -295,7 +305,7 @@ def check_rest(series: list, labor: dict | None = None) -> list:
             if i + 1 == len(shifts):
                 break
             next_start, _, next_id = shifts[i + 1]
-            gap, work = next_start - end, end - start
+            gap, work = rest_minutes(end, next_start, labor), work_minutes(end - start, labor)
             if gap >= labor["min_weekly_rest_min"]:
                 reduced = in_row = 0
                 continue

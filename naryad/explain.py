@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from naryad.core.invariants import load_labor
+from naryad.core.invariants import load_labor, rest_minutes, work_minutes
 from naryad.core.model import REASONS, Day, Plan
 from naryad.solve.drivers import History, day_base, rest_status
 from naryad.solve.vehicles import allowed_classes, drop_costs, _groups
@@ -154,19 +154,19 @@ def _driver_blocker(day: Day, plan: Plan, driver, shift, history: History, labor
         return f"работает на смене {other}"
     state = history.get(driver.id)
     if rest_status(state, day_base(day) + shift.start, labor) is None:
-        return _rest_missing(state, day_base(day) + shift.start - state.last_end, labor)
+        return _rest_missing(state, rest_minutes(state.last_end, day_base(day) + shift.start, labor), labor)
     return "свободен; не поставлен, чтобы закрыть другие смены"
 
 
 def _rest_given(state, start: int, labor: dict) -> str:
     """Отдых перед сменой словами. Вердикт - тот же rest_status, что у расстановки."""
-    rest = start - state.last_end
+    rest = rest_minutes(state.last_end, start, labor)
     if rest_status(state, start, labor) is None:
         return "Нарушение: " + _rest_missing(state, rest, labor)
     if rest >= labor["min_weekly_rest_min"]:
         return f"Перед сменой отдыхал {_hm(rest)} - еженедельный отдых, не меньше 45 ч (п. 20 Приказа № 160)"
     need = max(labor["min_daily_rest_min"],
-               labor["rest_to_work_ratio"] * state.last_length - labor["meal_break_assumed_min"])
+               labor["rest_to_work_ratio"] * work_minutes(state.last_length, labor) - labor["meal_break_assumed_min"])
     if rest >= need:
         return f"После прошлой смены отдыхал {_hm(rest)}, нужно не меньше {_hm(need)} (п. 16-17 Приказа № 160)"
     return (f"После прошлой смены отдыхал {_hm(rest)} - сокращённый отдых: до 9 ч можно не больше "
@@ -178,7 +178,7 @@ def _rest_missing(state, rest: int, labor: dict) -> str:
     """Почему отдыха не хватает - в том же порядке, что проверяет rest_status."""
     if state.in_row >= labor["max_shifts_between_weekly_rests"]:
         return f"уже {state.in_row} смен подряд, положен еженедельный отдых 45 ч (п. 20 Приказа № 160)"
-    need = labor["rest_to_work_ratio"] * state.last_length - labor["meal_break_assumed_min"]
+    need = labor["rest_to_work_ratio"] * work_minutes(state.last_length, labor) - labor["meal_break_assumed_min"]
     if rest < need:
         return (f"не отдохнул: после смены {_hm(state.last_length)} отдых {_hm(rest)}, нужно {_hm(need)} "
                 f"(двойное время работы, п. 16 Приказа № 160)")

@@ -33,7 +33,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date
 
-from naryad.core.invariants import load_labor, shift_limit
+from naryad.core.invariants import load_labor, rest_minutes, shift_limit, work_minutes
 from naryad.core.model import Day, Plan
 
 from .vehicles import PRIORITY_WEIGHT, RESERVE_VALUE
@@ -71,12 +71,12 @@ def rest_status(state: DriverState, start: int, labor: dict) -> str | None:
     """
     if state.last_end is None:
         return "ok"
-    gap = start - state.last_end
+    gap = rest_minutes(state.last_end, start, labor)
     if gap >= labor["min_weekly_rest_min"]:
         return "ok"
     if state.in_row >= labor["max_shifts_between_weekly_rests"]:
         return None
-    need = labor["rest_to_work_ratio"] * state.last_length - labor["meal_break_assumed_min"]
+    need = labor["rest_to_work_ratio"] * work_minutes(state.last_length, labor) - labor["meal_break_assumed_min"]
     if gap < need:
         return None
     if gap >= labor["min_daily_rest_min"]:
@@ -117,7 +117,7 @@ def solve_drivers(day: Day, vehicle_plan: Plan, history: History | None = None,
     candidates = {}
     for shift, duty, vehicle in shifts:
         options = []
-        if shift.length <= limit:
+        if work_minutes(shift.length, labor) <= limit:
             for d in available:
                 if d.park_id != duty.park_id or vehicle.cls not in d.classes:
                     continue
@@ -164,7 +164,8 @@ def solve_drivers(day: Day, vehicle_plan: Plan, history: History | None = None,
         state = history.get(driver_id)
         if rest_status(state, base + shift.start, labor) == "reduced":
             state.reduced += 1
-        if state.last_end is not None and base + shift.start - state.last_end >= labor["min_weekly_rest_min"]:
+        if state.last_end is not None and rest_minutes(state.last_end, base + shift.start, labor) \
+                >= labor["min_weekly_rest_min"]:
             state.in_row, state.reduced = 0, 0
         state.in_row += 1
         state.last_end, state.last_length = base + shift.end, shift.length

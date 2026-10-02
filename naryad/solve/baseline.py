@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from naryad.core.invariants import load_labor
+from naryad.core.invariants import load_labor, rest_minutes, work_minutes
 from naryad.core.model import Day, Plan
 
 from .drivers import day_base
@@ -82,8 +82,8 @@ def baseline_drivers(day: Day, vehicle_plan: Plan, yesterday: dict | None = None
             return True
         end, length = yesterday[driver_id]
         need = max(labor["min_daily_rest_min"],
-                   labor["rest_to_work_ratio"] * length - labor["meal_break_assumed_min"])
-        return base + start - end >= need
+                   labor["rest_to_work_ratio"] * work_minutes(length, labor) - labor["meal_break_assumed_min"])
+        return rest_minutes(end, base + start, labor) >= need
 
     ready = [d for d in sorted(day.drivers.values(), key=lambda d: d.tab_number)
              if d.schedule == "work" and d.medical != "failed"]

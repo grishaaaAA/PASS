@@ -36,7 +36,7 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass, field
 
-from naryad.core.invariants import load_labor, shift_limit
+from naryad.core.invariants import load_labor, shift_limit, work_minutes
 from naryad.core.model import Day, Plan
 from naryad.solve.drivers import History, day_base, rest_status
 from naryad.solve.vehicles import GROWTH_POWER, PRIORITY_WEIGHT
@@ -208,7 +208,7 @@ def free_drivers(state: OpsState, duty, start: int, end: int, labor: dict) -> li
     выбыли, допуск к классу, отдых после вчерашней смены по нормам,
     смена не длиннее дневной нормы.
     """
-    if end - start > shift_limit(labor):
+    if work_minutes(end - start, labor) > shift_limit(labor):
         return []
     worked = {s.who for segs in state.drivers.values() for s in segs}
     base = day_base(state.day)
@@ -235,7 +235,7 @@ def _day_fits(state: OpsState, driver_id: str, start: int, end: int, labor: dict
     worked = state.driver_worked(driver_id)
     first = min([s.start for s in worked] + [start])
     last = max([s.end for s in worked] + [end])
-    return last - first <= shift_limit(labor)
+    return work_minutes(last - first, labor) <= shift_limit(labor)
 
 
 def _replacement_options(state: OpsState, duty_id: str, t: int, labor: dict,
@@ -509,7 +509,7 @@ def check_state(state: OpsState, labor: dict | None = None) -> list:
             out.append(f"автобус {who} неисправен с утра")
         if kind == "водитель":
             start, end = min(i[0] for i in items), max(i[1] for i in items)
-            if end - start > shift_limit(labor):
+            if work_minutes(end - start, labor) > shift_limit(labor):
                 out.append(f"водитель {who}: рабочий день {end - start} мин больше нормы")
             if rest_status(state.history.get(who), day_base(day) + start, labor) is None:
                 out.append(f"водитель {who}: не отдохнул после прошлой смены")
