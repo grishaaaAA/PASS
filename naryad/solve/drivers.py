@@ -88,6 +88,19 @@ def rest_status(state: DriverState, start: int, labor: dict) -> str | None:
     return None
 
 
+def remember(state: DriverState, start: int, end: int, month: str, labor: dict) -> None:
+    """Записать в память водителя смену с start до end: сокращения, смены подряд, часы."""
+    if rest_status(state, start, labor) == "reduced":
+        state.reduced += 1
+    if state.last_end is not None and rest_minutes(state.last_end, start, labor) >= labor["min_weekly_rest_min"]:
+        state.in_row, state.reduced = 0, 0
+    state.in_row += 1
+    state.last_end, state.last_length = end, end - start
+    if state.month != month:
+        state.month, state.month_minutes = month, 0
+    state.month_minutes += end - start
+
+
 def _shift_value(day: Day, duty, minutes_: int) -> float:
     if duty.type == "reserve":
         return RESERVE_VALUE * minutes_ / 60
@@ -176,17 +189,7 @@ def solve_drivers(day: Day, vehicle_plan: Plan, history: History | None = None,
 
     for shift_id, driver_id in taken.items():
         shift = day.shifts[shift_id]
-        state = history.get(driver_id)
-        if rest_status(state, base + shift.start, labor) == "reduced":
-            state.reduced += 1
-        if state.last_end is not None and rest_minutes(state.last_end, base + shift.start, labor) \
-                >= labor["min_weekly_rest_min"]:
-            state.in_row, state.reduced = 0, 0
-        state.in_row += 1
-        state.last_end, state.last_length = base + shift.end, shift.length
-        if state.month != month:
-            state.month, state.month_minutes = month, 0
-        state.month_minutes += shift.length
+        remember(history.get(driver_id), base + shift.start, base + shift.end, month, labor)
     return plan
 
 

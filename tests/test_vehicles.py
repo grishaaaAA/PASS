@@ -154,6 +154,8 @@ class TestVehicles(unittest.TestCase):
         self.assertLess(ours[important][1], manual[important][0])  # наш худший лучше их среднего
         self.assertEqual(ours["закрыто нарядов на линии"], manual["закрыто нарядов на линии"])
         self.assertLess(ours["цена пропусков"][0], manual["цена пропусков"][0])
+        jumps = "маршрутов с ростом интервала > 25%"
+        self.assertLess(ours[jumps][0], manual[jumps][0])  # куб в цене пропуска размазывает нехватку
 
     def test_report_counts_directly(self):
         day = with_shortage(Day.load(SAMPLES / "park7_weekday.json"), 0.15, 2, by_class=False)

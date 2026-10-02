@@ -8,7 +8,8 @@ from naryad.core.invariants import check_plan, check_rest, load_labor
 from naryad.core.model import Day
 from naryad.data.generate import generate, generate_series
 from naryad.solve.compare import compare_drivers
-from naryad.solve.drivers import DriverState, History, _keep_home, _shift_value, rest_status, solve_drivers
+from naryad.solve.drivers import (DriverState, History, _keep_home, _shift_value, remember, rest_status,
+                                  solve_drivers)
 from naryad.solve.series import manual_series, series_report, solve_series
 from naryad.solve.vehicles import solve_vehicles
 
@@ -55,6 +56,23 @@ class TestRestStatus(unittest.TestCase):
     def test_six_in_row(self):
         self.assertIsNone(rest_status(self.state(14, 8, in_row=6), 30 * H, LABOR))
         self.assertEqual(rest_status(self.state(14, 8, in_row=6), 14 * H + 45 * H, LABOR), "ok")
+
+
+class TestRemember(unittest.TestCase):
+    """Память водителя: сокращения и смены подряд сбрасываются только после отдыха 45 ч."""
+
+    def test_counters(self):
+        state = DriverState()
+        for start in (0, 14, 28):                       # смены по 4 ч, отдых 10 ч
+            remember(state, start * H, (start + 4) * H, "2026-10", LABOR)
+        self.assertEqual((state.in_row, state.reduced), (3, 2))
+        self.assertEqual(rest_status(state, 44 * H, LABOR), "ok")   # отдых 12 ч
+        self.assertEqual(state.reduced, 2)                            # проверка память не трогает
+        remember(state, 44 * H, 48 * H, "2026-10", LABOR)
+        self.assertEqual((state.in_row, state.reduced), (4, 2))     # 12 ч счётчики не сбрасывают
+        remember(state, 93 * H, 97 * H, "2026-10", LABOR)            # отдых 45 ч
+        self.assertEqual((state.in_row, state.reduced), (1, 0))
+        self.assertEqual(state.month_minutes, 5 * 4 * H)
 
 
 class TestDay(unittest.TestCase):
@@ -201,6 +219,10 @@ class TestSeries(unittest.TestCase):
         _keep_home(day, plan, candidates, holder, taken)
         self.assertEqual(taken, {morning.id: b, evening.id: a, foreign.id: x})
         self.assertEqual(holder, {b: morning.id, a: evening.id, x: foreign.id})
+
+    def test_hours_even(self):
+        low, high = series_report(self.ours)["часов у 80% водителей (без 10% крайних с каждой стороны)"].split("-")
+        self.assertLessEqual(int(high) - int(low), 14)  # за неделю 23-35 ч: часы выравниваются
 
     def test_home_drivers_kept(self):
         self.assertGreaterEqual(series_report(self.ours)["на своём закреплённом автобусе, %"], 39)

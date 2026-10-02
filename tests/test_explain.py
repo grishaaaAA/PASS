@@ -6,7 +6,7 @@ import random
 import time
 import unittest
 
-from naryad.core.model import Day
+from naryad.core.model import Day, Plan
 from naryad.explain import (CLASS_NAMES, day_summary, explain_option, interval, why_driver, why_unfilled,
                             why_vehicle)
 from naryad.ops.replan import Breakdown, OpsState, options_for
@@ -135,6 +135,30 @@ class TestExplain(unittest.TestCase):
                 if not expected.startswith("Нарушение"):
                     self.assertNotIn("Нарушение", text)
 
+    def test_reserve_vehicle_not_own_route(self):
+        duty_id = next(d for d in sorted(self.plan.vehicles) if self.day.duties[d].type == "reserve")
+        plan = Plan(vehicles=dict(self.plan.vehicles), unfilled=dict(self.plan.unfilled))
+        cls = self.day.duties[duty_id].vehicle_class
+        line_id, home_bus = next((d, v) for d, v in sorted(plan.vehicles.items())
+                                 if self.day.vehicles[v].home_route_id and self.day.vehicles[v].cls == cls)
+        plan.vehicles[duty_id], plan.vehicles[line_id] = home_bus, plan.vehicles[duty_id]
+        self.assertFalse(why_vehicle(self.day, plan, duty_id)["numbers"]["own_route"])  # у резерва нет маршрута
+
+    def test_unfilled_numbers_and_shortest(self):
+        duty_id = next(k for k, v in sorted(self.plan.unfilled.items())
+                       if v == "no_vehicle" and self.day.duties[k].type == "line")
+        duty = self.day.duties[duty_id]
+        classes = self.day.routes[duty.route_id].allowed_classes
+        busy = sum(1 for v in self.plan.vehicles.values() if self.day.vehicles[v].park_id == duty.park_id
+                   and self.day.vehicles[v].cls in classes)
+        item = why_unfilled(self.day, self.plan, duty_id)
+        self.assertEqual(item["numbers"]["vehicles_busy"], busy)
+        group = [d for d in self.day.duties.values() if d.route_id == duty.route_id
+                 and d.day_type == self.day.day_type]
+        shortest = min(group, key=lambda d: (d.end - d.start, d.id))
+        self.assertIn(shortest.id, self.plan.unfilled)  # на маршруте с потерями первым выпадает самый короткий
+        self.assertIn("самый короткий наряд", " ".join(why_unfilled(self.day, self.plan, shortest.id)["reasons"]))
+
     def test_option_explained(self):
         day = Day.load(SAMPLES / "park7_weekday.json")
         state = OpsState.from_plan(day, solve_drivers(day, solve_vehicles(day)))
@@ -147,6 +171,11 @@ class TestExplain(unittest.TestCase):
         self.assertIn(f"остальные {len(state.vehicles) - item['numbers']['touched_duties']}",
                       " ".join(item["reasons"]))
         self.assertIn("хуже", item["reasons"][-1])
+        expected = {"none": 0, "idle": 1, "reserve": 2, "donor": 2}
+        for i, option in enumerate(options_for(state, Breakdown(state.vehicle_at(duty_id, at), at), limit=None)):
+            touched = explain_option(state, None, options_for(
+                state, Breakdown(state.vehicle_at(duty_id, at), at), limit=None), i)["numbers"]["touched_duties"]
+            self.assertEqual(touched, expected[option.kind], option.kind)
 
     def test_interval(self):
         day = Day.load(SAMPLES / "park7_weekday.json")

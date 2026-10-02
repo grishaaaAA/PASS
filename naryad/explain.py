@@ -232,8 +232,8 @@ def why_unfilled(day: Day, plan: Plan, item_id: str, history: History | None = N
         if iv["planned_min"] and iv["actual_min"]:
             reasons.append(f"Интервал в {_clock(mid)}: по плану {iv['planned_min']} мин, "
                            f"сейчас {iv['actual_min']} мин")
-        reasons.append("Нехватку система распределяет так, чтобы важные маршруты не теряли "
-                       "нарядов и ни на одном маршруте интервал не вырос резко")
+        reasons.append("Нехватку система распределяет по цене пропуска: важные маршруты теряют "
+                       "наряды последними, каждый следующий пропуск на одном маршруте дороже")
         numbers.update(iv)
     return _answer(question, answer, reasons, {**numbers, "reason": reason,
                                                "reason_text": REASONS.get(reason, "")})

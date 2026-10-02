@@ -120,6 +120,7 @@ class TestValidPlans(unittest.TestCase):
         self.assertEqual(stats["line_duties"], 326)
         plan = greedy_plan(day)
         self.assertEqual(stats["line_filled"], sum(day.duties[d].type == "line" for d in plan.vehicles))
+        self.assertEqual(stats["shifts_filled"], len(plan.drivers))
         self.assertEqual(sum(p["total"] for p in stats["by_priority"].values()), 326)
 
 

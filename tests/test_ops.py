@@ -298,6 +298,64 @@ class TestFreeDrivers(unittest.TestCase):
         self.assertEqual(free_drivers(state, duty, MORNING, MORNING + 11 * 60, load_labor()), [])
 
 
+class TestEveryOption(unittest.TestCase):
+    """Любой предложенный вариант, а не только лучший, даёт допустимое состояние дня."""
+
+    def check_all(self, state, event):
+        options = options_for(state, event, limit=None)
+        self.assertTrue(options)
+        for option in options:
+            with self.subTest(option.title):
+                self.assertEqual(check_state(apply(state, event, option)), [])
+                if option.kind == "donor":
+                    donor = state.day.duties[option.changes[0][1]]
+                    self.assertNotEqual(donor.route_id, state.day.duties[state.duty_of_vehicle(
+                        event.vehicle_id, event.at)].route_id)
+        return options
+
+    def test_park7_both_classes_and_no_show(self):
+        state = morning_state()
+        day = state.day
+        for cls in ("big", "extra_big"):
+            duty = next(d for d in sorted(day.duties.values(), key=lambda d: d.id) if d.type == "line"
+                        and d.vehicle_class == cls and d.start < MORNING < d.end - 60
+                        and state.vehicle_at(d.id, MORNING))
+            self.check_all(state, Breakdown(state.vehicle_at(duty.id, MORNING), MORNING))
+        shift = next(s for s in sorted(day.shifts.values(), key=lambda s: (s.start, s.id))
+                     if state.driver_at(s.id, s.start) and s.start >= 5 * 60)
+        options = self.check_all(state, NoShow(state.driver_at(shift.id, shift.start), shift.start - 20))
+        self.assertIn("reserve_driver", [o.kind for o in options])
+        # водитель резерва с допуском только к классу своего резервного автобуса
+        # не предлагается на наряд другого класса
+        reserve_shift = next(o for o in options if o.kind == "reserve_driver").changes[0][1]
+        reserve_driver = state.driver_at(reserve_shift, day.shifts[reserve_shift].start)
+        own_cls = day.vehicles[state.vehicle_at(day.shifts[reserve_shift].duty_id,
+                                                 day.shifts[reserve_shift].start)].cls
+        day.drivers[reserve_driver] = dataclasses.replace(day.drivers[reserve_driver], classes=(own_cls,))
+        other = next(s for s in sorted(day.shifts.values(), key=lambda s: (s.start, s.id))
+                     if s.start >= day.shifts[reserve_shift].start and state.driver_at(s.id, s.start)
+                     and day.duties[s.duty_id].type == "line"
+                     and day.vehicles[state.vehicle_at(s.duty_id, s.start)].cls != own_cls)
+        for option in self.check_all(state, NoShow(state.driver_at(other.id, other.start), other.start - 20)):
+            self.assertFalse(option.kind == "reserve_driver" and option.changes[-1][2].who == reserve_driver)
+
+    def test_city_no_spares(self):
+        day = Day.from_dict(generate("case", WEEKDAY, seed=1))
+        state = morning_state(day)
+        busy = {s.who for segs in state.vehicles.values() for s in segs}
+        for v in list(day.vehicles.values()):  # без свободных автобусов: остаются резерв и доноры
+            if v.id not in busy:
+                day.vehicles[v.id] = dataclasses.replace(v, condition="repair")
+        duty = important_running(state)
+        kinds = [o.kind for o in self.check_all(state, Breakdown(state.vehicle_at(duty.id, MORNING), MORNING))]
+        self.assertIn("reserve", kinds)
+        for reserve in [d for d in day.duties.values() if d.type == "reserve" and d.park_id == duty.park_id]:
+            for segment in state.vehicles.pop(reserve.id, []):  # свой резерв кончился - чужой не берём
+                state.down_vehicles[segment.who] = 0
+        kinds = [o.kind for o in self.check_all(state, Breakdown(state.vehicle_at(duty.id, MORNING), MORNING))]
+        self.assertNotIn("reserve", kinds)
+
+
 class TestAccidentAndDriver(unittest.TestCase):
 
     def test_accident_driver_out(self):
