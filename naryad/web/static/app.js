@@ -13,6 +13,33 @@
   var result = null;       // последний ответ генератора
   var lastRequest = null;  // по каким вводным он получен
 
+  /* Откуда брать данные: сервер на Python (локальный запуск) или генератор внутри страницы (ссылка). */
+  function post(path, body) {
+    return fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  }
+  var API = window.AUTODISP_API || {
+    local: true,
+    defaults: function () { return fetch("/api/defaults").then(function (r) { return r.json(); }); },
+    generate: function (req) {
+      return post("/api/generate", req).then(function (r) {
+        return r.json().then(function (b) { if (!r.ok) throw new Error(b.error || "сервер не ответил"); return b; });
+      });
+    },
+    save: function (req, format) {
+      return post("/api/export", Object.assign({}, req, { format: format })).then(function (r) {
+        if (!r.ok) return r.json().then(function (b) { throw new Error(b.error); });
+        var name = ((r.headers.get("Content-Disposition") || "").split('filename="')[1] || "autodisp").replace(/"$/, "");
+        return r.blob().then(function (blob) {
+          var a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = name;
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+        });
+      });
+    }
+  };
+
   function num(n) { return Number(n).toLocaleString("ru-RU"); }
   function esc(s) {
     return String(s == null ? "-" : s).replace(/[&<>"]/g, function (c) {
@@ -206,11 +233,9 @@
     showError("");
     btn.disabled = true;
     btn.querySelector("span").textContent = "Генерируем…";
-    fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request) })
-      .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
-      .then(function (r) {
-        if (!r.ok) throw new Error(r.body.error || "сервер не ответил");
-        result = r.body;
+    API.generate(request)
+      .then(function (body) {
+        result = body;
         lastRequest = JSON.stringify(request);
         render(result);
         markStale();
@@ -220,23 +245,10 @@
   });
 
   function download(format, btn) {
-    var label = btn.innerHTML;
     btn.disabled = true;
-    fetch("/api/export", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(Object.assign(JSON.parse(lastRequest), { format: format })) })
-      .then(function (r) {
-        if (!r.ok) return r.json().then(function (b) { throw new Error(b.error); });
-        var name = (r.headers.get("Content-Disposition") || "").split('filename="')[1] || "autodisp";
-        return r.blob().then(function (blob) {
-          var a = document.createElement("a");
-          a.href = URL.createObjectURL(blob);
-          a.download = name.replace(/"$/, "");
-          document.body.appendChild(a); a.click(); a.remove();
-          setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
-        });
-      })
-      .catch(function (err) { showError(err.message); })
-      .then(function () { btn.innerHTML = label; markStale(); });
+    API.save(JSON.parse(lastRequest), format)
+      .catch(function (err) { if (err && err.message) showError(err.message); })
+      .then(function () { markStale(); });
   }
   $("exportJson").addEventListener("click", function () { download("json", this); });
   $("exportCsv").addEventListener("click", function () { download("csv", this); });
@@ -247,12 +259,12 @@
     $("fatal").hidden = false;
     $("fatal").innerHTML = esc(title) + "<p>" + html + "</p>";
   }
-  if (location.protocol === "file:") {
+  if (API.local && location.protocol === "file:") {
     fatal("Страница открыта как файл, а не через сервер",
       "Запустите <code>start.bat</code> (Windows) или <code>start.command</code> (Mac) в папке проекта - браузер откроется сам.");
     return;
   }
-  fetch("/api/defaults").then(function (r) { return r.json(); }).then(function (d) {
+  API.defaults().then(function (d) {
     if (d.version !== VERSION || !d.parks) {
       fatal("Запущен старый сервер генератора",
         "Закройте все окна с сервером (или нажмите в них Ctrl+C) и запустите заново <code>start.bat</code> / <code>start.command</code>.");

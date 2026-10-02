@@ -1,8 +1,8 @@
 /* Генератор на день: всё на одном экране. Цвета, шрифты, отступы - только токены AUTODISP. */
 * { box-sizing: border-box; }
-html, body { margin: 0; }
-body { height: 100vh; display: flex; flex-direction: column; }
-@media (max-height: 740px) { body { height: auto; min-height: 100vh; } }
+html, body { margin: 0; height: 100%; }
+body { display: flex; flex-direction: column; background: var(--bg); }
+@media (max-height: 740px), (max-width: 900px) { html, body { height: auto; } body { min-height: 100%; } }
 .label { font: var(--text-label); color: var(--ink); }
 .caption { font: var(--text-caption); }
 .muted { color: var(--ink-muted); }
@@ -82,3 +82,5 @@ input[type="checkbox"] { width: 20px; height: 20px; margin: 0; accent-color: var
   color: var(--on-fill); border-radius: var(--radius-md); font: var(--text-body-strong); }
 .fatal p { margin: var(--space-2) 0 0; font: var(--text-body); }
 .fatal code { font: 500 16px/24px var(--font-sans); background: var(--surface); color: var(--ink); padding: 0 var(--space-2); border-radius: var(--radius-sm); }
+.name strong { overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 600px) { .stats { grid-template-columns: minmax(0, 1fr); } }
