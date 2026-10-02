@@ -90,6 +90,27 @@ class TestExplain(unittest.TestCase):
         self.assertIn("не отдохнул", text)
         self.assertIn("выходной по графику", text)
 
+    def test_rest_explained_like_solver_decides(self):
+        """Законный сокращённый отдых - не нарушение; после 45 ч отдыха счётчик смен не мешает."""
+        day = Day.load(SAMPLES / "park7_weekday.json")
+        plan = solve_drivers(day, solve_vehicles(day))
+        shift_id, driver_id = sorted(plan.drivers.items())[0]
+        start = day_base(day) + day.shifts[shift_id].start
+        history = History()
+        state = history.get(driver_id)
+        cases = [(10 * 60, 4 * 60, 0, "сокращённый отдых"),         # 9-11 ч после короткой смены
+                 (50 * 60, 8 * 60, 6, "еженедельный отдых"),        # 6 смен, но потом 50 ч отдыха
+                 (20 * 60, 8 * 60, 6, "Нарушение: уже 6 смен подряд"),
+                 (8 * 60, 4 * 60, 0, "Нарушение: не отдохнул")]
+        for rest, length, in_row, expected in cases:
+            with self.subTest(expected):
+                state.last_end, state.last_length, state.in_row = start - rest, length, in_row
+                text = " ".join(why_driver(day, plan, shift_id, history)["reasons"])
+                self.assertIn(expected, text)
+                self.assertIn("Приказа № 160", text)
+                if not expected.startswith("Нарушение"):
+                    self.assertNotIn("Нарушение", text)
+
     def test_option_explained(self):
         day = Day.load(SAMPLES / "park7_weekday.json")
         state = OpsState.from_plan(day, solve_drivers(day, solve_vehicles(day)))

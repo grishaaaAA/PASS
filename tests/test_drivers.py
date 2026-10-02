@@ -23,7 +23,7 @@ def week(preset="park7", days=7, seed=1):
 
 
 class TestRestStatus(unittest.TestCase):
-    """Можно ли выйти на смену после предыдущей (п. 18, 19 Приказа № 424)."""
+    """Можно ли выйти на смену после предыдущей (п. 16, 17, 20 Приказа № 160)."""
 
     def state(self, end_h, length_h, in_row=1, reduced=0):
         return DriverState(last_end=end_h * H, last_length=length_h * H, in_row=in_row, reduced=reduced)

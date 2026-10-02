@@ -31,8 +31,8 @@ def load_labor(path: Path = LABOR_FILE) -> dict:
 
 
 def shift_limit(labor: dict) -> int:
-    """Дневная норма смены: 12 ч при согласовании с профсоюзом, иначе 10 ч (п. 6)."""
-    return labor["max_shift_extended_min"] if labor["city_12h_agreed"] else labor["max_shift_min"]
+    """Дневная норма смены: 12 ч, если перевозчик так установил для городских маршрутов, иначе 10 ч (п. 4)."""
+    return labor["max_shift_extended_min"] if labor["city_12h_allowed"] else labor["max_shift_min"]
 
 
 @dataclass(frozen=True)
@@ -178,8 +178,9 @@ def _driver_load(day: Day, plan: Plan, labor: dict) -> list:
         total = sum(s.length for s in shifts)
         limit = shift_limit(labor)
         if total > limit:
-            note = ("" if labor["city_12h_agreed"] is not None else
-                    "; до 12 ч можно, если с профсоюзом согласовано (п. 6 Приказа № 424)")
+            note = ("" if labor["city_12h_allowed"] is not None else
+                    "; на городских маршрутах до 12 ч, если перевозчик так установил с учётом "
+                    "мнения профсоюза (п. 4 Приказа Минтранса № 160)")
             out.append(Violation("driver_overtime",
                                  f"Водитель {tab}: {_hm(total)} за день, норма {_hm(limit)}{note}",
                                  (driver_id, *(s.id for s in shifts))))
@@ -262,12 +263,12 @@ def metrics(day: Day, plan: Plan) -> dict:
 def check_rest(series: list, labor: dict | None = None) -> list:
     """Отдых водителей на серии дней: список пар (день, план) по порядку дат.
 
-    Проверяет то, что нельзя увидеть в одном дне (Приказ № 424):
+    Проверяет то, что нельзя увидеть в одном дне (Приказ Минтранса № 160):
     - отдых между сменами не меньше 11 ч, до 9 ч - не больше 3 раз
-      между еженедельными отдыхами (п. 18);
-    - отдых вместе с перерывом на питание - не меньше двух длин
-      предыдущей смены (п. 18);
-    - не больше 6 смен подряд без отдыха 45 ч (п. 19).
+      между еженедельными отдыхами (п. 17);
+    - отдых не меньше двойного времени работы в предыдущую смену (п. 16):
+      2 x смена - 30 мин, подробнее в labor.json, meal_break_assumed_min;
+    - не больше 6 смен подряд без отдыха 45 ч (п. 20).
     Что было до первого дня серии, неизвестно: считаем, что перед ней
     у всех был еженедельный отдых.
     """
@@ -289,7 +290,7 @@ def check_rest(series: list, labor: dict | None = None) -> list:
                 out.append(Violation("weekly_rest",
                                      f"Водитель {driver_id}: смена {shift_id} - уже {in_row}-я "
                                      f"подряд без отдыха 45 ч, можно не больше "
-                                     f"{labor['max_shifts_between_weekly_rests']} (п. 19)",
+                                     f"{labor['max_shifts_between_weekly_rests']} (п. 20 Приказа № 160)",
                                      (driver_id, shift_id)))
             if i + 1 == len(shifts):
                 break
@@ -303,7 +304,7 @@ def check_rest(series: list, labor: dict | None = None) -> list:
                 out.append(Violation("rest_ratio",
                                      f"Водитель {driver_id}: между {shift_id} и {next_id} отдых "
                                      f"{_hm(gap)}, а после смены {_hm(work)} нужно не меньше "
-                                     f"{_hm(need)} (двойная смена минус перерыв на питание, п. 18)",
+                                     f"{_hm(need)} (двойное время работы, п. 16 Приказа № 160)",
                                      (driver_id, shift_id, next_id)))
             if gap < labor["min_daily_rest_min"]:
                 reduced += 1
@@ -311,6 +312,6 @@ def check_rest(series: list, labor: dict | None = None) -> list:
                     out.append(Violation("daily_rest",
                                          f"Водитель {driver_id}: между {shift_id} и {next_id} "
                                          f"отдых {_hm(gap)}; нужно 11 ч, сократить до 9 ч можно "
-                                         f"не больше {labor['max_reduced_rests']} раз (п. 18)",
+                                         f"не больше {labor['max_reduced_rests']} раз (п. 17 Приказа № 160)",
                                          (driver_id, shift_id, next_id)))
     return out

@@ -20,7 +20,7 @@ from collections import Counter
 
 from naryad.core.invariants import load_labor
 from naryad.core.model import REASONS, Day, Plan
-from naryad.solve.drivers import History, day_base
+from naryad.solve.drivers import History, day_base, rest_status
 from naryad.solve.vehicles import allowed_classes, drop_costs, _groups
 
 CLASS_NAMES = {"medium": "средний", "big": "большой", "extra_big": "особо большой"}
@@ -129,10 +129,7 @@ def why_driver(day: Day, plan: Plan, shift_id: str, history: History | None = No
                f"допуск к классу «{CLASS_NAMES[day.vehicles[vehicle_id].cls]}»",
                f"Смена {_hm(shift.length)} - в пределах дневной нормы"]
     if state.last_end is not None:
-        rest = day_base(day) + shift.start - state.last_end
-        need = max(labor["min_daily_rest_min"],
-                   labor["rest_to_work_ratio"] * state.last_length - labor["meal_break_assumed_min"])
-        reasons.append(f"После прошлой смены отдыхал {_hm(rest)} (нужно не меньше {_hm(need)}, п. 18 Приказа № 424)")
+        reasons.append(_rest_given(state, day_base(day) + shift.start, labor))
     if state.month_minutes:
         reasons.append(f"В этом месяце отработал {_hm(state.month_minutes)}")
     own = driver.home_vehicle_id == vehicle_id
@@ -156,15 +153,39 @@ def _driver_blocker(day: Day, plan: Plan, driver, shift, history: History, labor
     if other is not None:
         return f"работает на смене {other}"
     state = history.get(driver.id)
-    if state.last_end is not None:
-        rest = day_base(day) + shift.start - state.last_end
-        need = max(labor["min_daily_rest_min"],
-                   labor["rest_to_work_ratio"] * state.last_length - labor["meal_break_assumed_min"])
-        if rest < need:
-            return f"не отдохнул: после прошлой смены {_hm(rest)}, нужно {_hm(need)} (п. 18)"
-        if state.in_row >= labor["max_shifts_between_weekly_rests"]:
-            return f"уже {state.in_row} смен подряд, положен отдых 45 ч (п. 19)"
+    if rest_status(state, day_base(day) + shift.start, labor) is None:
+        return _rest_missing(state, day_base(day) + shift.start - state.last_end, labor)
     return "свободен; не поставлен, чтобы закрыть другие смены"
+
+
+def _rest_given(state, start: int, labor: dict) -> str:
+    """Отдых перед сменой словами. Вердикт - тот же rest_status, что у расстановки."""
+    rest = start - state.last_end
+    if rest_status(state, start, labor) is None:
+        return "Нарушение: " + _rest_missing(state, rest, labor)
+    if rest >= labor["min_weekly_rest_min"]:
+        return f"Перед сменой отдыхал {_hm(rest)} - еженедельный отдых, не меньше 45 ч (п. 20 Приказа № 160)"
+    need = max(labor["min_daily_rest_min"],
+               labor["rest_to_work_ratio"] * state.last_length - labor["meal_break_assumed_min"])
+    if rest >= need:
+        return f"После прошлой смены отдыхал {_hm(rest)}, нужно не меньше {_hm(need)} (п. 16-17 Приказа № 160)"
+    return (f"После прошлой смены отдыхал {_hm(rest)} - сокращённый отдых: до 9 ч можно не больше "
+            f"{labor['max_reduced_rests']} раз между еженедельными отдыхами, это {state.reduced + 1}-й "
+            f"(п. 17 Приказа № 160)")
+
+
+def _rest_missing(state, rest: int, labor: dict) -> str:
+    """Почему отдыха не хватает - в том же порядке, что проверяет rest_status."""
+    if state.in_row >= labor["max_shifts_between_weekly_rests"]:
+        return f"уже {state.in_row} смен подряд, положен еженедельный отдых 45 ч (п. 20 Приказа № 160)"
+    need = labor["rest_to_work_ratio"] * state.last_length - labor["meal_break_assumed_min"]
+    if rest < need:
+        return (f"не отдохнул: после смены {_hm(state.last_length)} отдых {_hm(rest)}, нужно {_hm(need)} "
+                f"(двойное время работы, п. 16 Приказа № 160)")
+    if rest < labor["min_daily_rest_reduced_min"]:
+        return f"не отдохнул: после прошлой смены {_hm(rest)}, нужно 11 ч, сократить можно до 9 ч (п. 17 Приказа № 160)"
+    return (f"не отдохнул: после прошлой смены {_hm(rest)}, а сокращать отдых до 9 ч можно не больше "
+            f"{labor['max_reduced_rests']} раз между еженедельными отдыхами, уже {state.reduced} (п. 17 Приказа № 160)")
 
 
 # --- почему не закрыто ----------------------------------------------------------

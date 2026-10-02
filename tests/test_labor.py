@@ -49,11 +49,14 @@ class TestLaborFile(unittest.TestCase):
             with self.subTest(name):
                 self.assertIn("value", item)
                 self.assertTrue(item["rule"] and item["status"] and item["checked"])
-                self.assertIn("p424", item)
+                self.assertIn("p424", item)  # отменённый № 424 - для истории
+                if name != "max_shifts_per_driver_day":  # наше допущение, в приказе его нет
+                    self.assertTrue(item["p160"])  # действующий Приказ Минтранса № 160
+        self.assertIn("№ 160", raw["_about"])
 
 
 class TestShiftLength(unittest.TestCase):
-    """Смена 11 ч: нарушение, пока нет согласования с профсоюзом на 12 ч."""
+    """Смена 11 ч: нарушение, пока неизвестно, установил ли перевозчик смены до 12 ч."""
 
     def setUp(self):
         self.day = copy.copy(BASE)
@@ -66,10 +69,10 @@ class TestShiftLength(unittest.TestCase):
     def test_eleven_hours_without_agreement(self):
         found = check_plan(self.day, self.plan)
         self.assertIn("driver_overtime", codes(found))
-        self.assertTrue(any("п. 6" in v.text for v in found))
+        self.assertTrue(any("п. 4 Приказа Минтранса № 160" in v.text for v in found))
 
     def test_eleven_hours_with_agreement(self):
-        labor = dict(load_labor(), city_12h_agreed=True)
+        labor = dict(load_labor(), city_12h_allowed=True)
         self.assertNotIn("driver_overtime", codes(check_plan(self.day, self.plan, labor)))
 
 
