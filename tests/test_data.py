@@ -133,12 +133,22 @@ class TestSeries(unittest.TestCase):
                     self.assertEqual((nxt["condition"], nxt["repair_days_left"]),
                                      ("repair", left - 1))
 
-    def test_rota_five_two(self):
+    def test_rota(self):
+        from naryad.data.presets import DYNAMICS
+        cycle = DYNAMICS["work_days"] + DYNAMICS["rest_days"]
         first = self.days[0]["drivers"]
         driver = next(i for i, d in enumerate(first) if all(
-            day["drivers"][i]["schedule"] in ("work", "day_off") for day in self.days[:7]))
-        week = [day["drivers"][driver]["schedule"] for day in self.days[:7]]
-        self.assertEqual(week.count("day_off"), 2)
+            day["drivers"][i]["schedule"] in ("work", "day_off") for day in self.days[:cycle]))
+        week = [day["drivers"][driver]["schedule"] for day in self.days[:cycle]]
+        self.assertEqual(week.count("day_off"), DYNAMICS["rest_days"])
+
+    def test_park7_lengths_from_sheet(self):
+        routes = {r["number"]: r for r in generate("park7", WEEKDAY)["routes"]}
+        self.assertEqual(routes["26"]["length_km"], 24.38)
+        self.assertEqual(routes["263"]["length_km"], 19.55)
+        self.assertEqual(routes["400Э"]["length_km"], 13.78)
+        self.assertIn("203", routes)
+        self.assertNotIn("205", routes)
 
     def test_no_errors(self):
         for data in self.days:

@@ -1,5 +1,5 @@
 ﻿id;board_number;plate;model;class;fuel;park_id;condition;repair_days_left;home_route_id
-P07-V0001;7001;УТ 868 178;VOLGABUS 5270G;big;gas;P07;maintenance;1;
+P07-V0001;7001;АК 695 178;VOLGABUS 5270G;big;gas;P07;maintenance;1;
 P07-V0002;7002;АТ 952 198;VOLGABUS 5270G;big;gas;P07;ok;;P07-R12
 P07-V0003;7003;ЕН 202 98;VOLGABUS 5270G;big;gas;P07;ok;;
 P07-V0004;7004;НМ 843 178;VOLGABUS 5270G;big;gas;P07;ok;;
