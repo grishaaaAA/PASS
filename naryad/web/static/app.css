@@ -76,3 +76,9 @@ input[type="checkbox"] { width: 20px; height: 20px; margin: 0; accent-color: var
   .parks { padding-left: var(--space-3); padding-right: var(--space-3); }
   .name { max-width: 210px; }
 }
+
+/* Страница не может работать: крупно и понятно, что сделать */
+.fatal { margin: var(--space-4) var(--space-6) 0; padding: var(--space-4) var(--space-5); background: var(--danger-fill);
+  color: var(--on-fill); border-radius: var(--radius-md); font: var(--text-body-strong); }
+.fatal p { margin: var(--space-2) 0 0; font: var(--text-body); }
+.fatal code { font: 500 16px/24px var(--font-sans); background: var(--surface); color: var(--ink); padding: 0 var(--space-2); border-radius: var(--radius-sm); }

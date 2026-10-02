@@ -1,6 +1,7 @@
 /* Генератор на день: парки с вводными -> /api/generate -> результат в тех же строках. */
 (function () {
   "use strict";
+  var VERSION = "2026-10-02.2";  // как в server.py
   var CLASSES = ["medium", "big", "extra_big"];
   var LABELS = { medium: "средний класс", big: "большой класс", extra_big: "особо большой класс" };
   var MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа",
@@ -242,8 +243,25 @@
 
   $("date").value = today();
   $("weekday").textContent = weekdayOf($("date").value);
+  function fatal(title, html) {
+    $("fatal").hidden = false;
+    $("fatal").innerHTML = esc(title) + "<p>" + html + "</p>";
+  }
+  if (location.protocol === "file:") {
+    fatal("Страница открыта как файл, а не через сервер",
+      "Запустите <code>start.bat</code> (Windows) или <code>start.command</code> (Mac) в папке проекта - браузер откроется сам.");
+    return;
+  }
   fetch("/api/defaults").then(function (r) { return r.json(); }).then(function (d) {
+    if (d.version !== VERSION || !d.parks) {
+      fatal("Запущен старый сервер генератора",
+        "Закройте все окна с сервером (или нажмите в них Ctrl+C) и запустите заново <code>start.bat</code> / <code>start.command</code>.");
+      return;
+    }
     parks = d.parks;
     reset();
-  }).catch(function () { showError("сервер генератора не запущен"); });
+  }).catch(function () {
+    fatal("Сервер генератора не отвечает",
+      "Запустите <code>start.bat</code> (Windows) или <code>start.command</code> (Mac) в папке проекта и не закрывайте окно сервера.");
+  });
 })();

@@ -18,10 +18,10 @@ from __future__ import annotations
 import argparse
 import io
 import json
-import mimetypes
 import re
 import sys
 import tempfile
+import webbrowser
 import zipfile
 from datetime import date as Date
 from http import HTTPStatus
@@ -36,6 +36,15 @@ from ..data.generate import day_numbers, generate
 from ..data.presets import CITY_PARKS, CLASS_LABELS, CLASSES, PARK7
 
 STATIC = Path(__file__).parent / "static"
+# Меняется вместе со страницей: страница сверяет его и просит перезапустить старый сервер.
+VERSION = "2026-10-02.2"
+# Типы файлов задаём сами: на Windows системный реестр бывает неверным,
+# и браузер тогда молча не применяет стили или не запускает скрипт.
+TYPES = {
+    ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8", ".json": "application/json; charset=utf-8",
+    ".svg": "image/svg+xml", ".ttf": "font/ttf", ".md": "text/plain; charset=utf-8",
+}
 WEEKDAYS = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
 PARK_NAMES = {park_id: name for park_id, name, _ in CITY_PARKS}
 
@@ -71,7 +80,7 @@ def defaults() -> dict:
             "readiness": round(entry["readiness"] * 100, 1),
             "sheet": sheet if park_id == PARK7["id"] else None,
         })
-    return {"parks": parks, "classes": {cls: CLASS_LABELS[cls] for cls in CLASSES}}
+    return {"version": VERSION, "parks": parks, "classes": {cls: CLASS_LABELS[cls] for cls in CLASSES}}
 
 
 def parse_request(raw: dict) -> dict:
@@ -223,9 +232,7 @@ class Handler(BaseHTTPRequestHandler):
         target = (STATIC / relative).resolve()
         if STATIC.resolve() not in target.parents or not target.is_file():
             return self._json(HTTPStatus.NOT_FOUND, {"error": "нет такого файла"})
-        kind = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
-        if kind.startswith("text/") or kind == "application/javascript":
-            kind += "; charset=utf-8"
+        kind = TYPES.get(target.suffix.lower(), "application/octet-stream")
         return self._send(HTTPStatus.OK, target.read_bytes(), kind)
 
 
@@ -233,9 +240,27 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Сервер генератора AUTODISP")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--no-open", action="store_true", help="не открывать браузер")
     args = parser.parse_args(argv)
-    server = ThreadingHTTPServer((args.host, args.port), Handler)
-    print(f"Генератор: http://{args.host}:{args.port}  (остановить - Ctrl+C)")
+    if sys.version_info < (3, 10):
+        print("Нужен Python 3.10 или новее, у вас " + sys.version.split()[0])
+        return 1
+    server = None
+    for port in range(args.port, args.port + 20):
+        try:
+            server = ThreadingHTTPServer((args.host, port), Handler)
+            break
+        except OSError:  # порт занят - скорее всего, старым сервером
+            print(f"Порт {port} занят, пробую {port + 1}")
+    if server is None:
+        print("Не нашёл свободный порт. Закройте старые окна с сервером и запустите снова.")
+        return 1
+    url = f"http://{args.host if args.host != '0.0.0.0' else '127.0.0.1'}:{server.server_address[1]}/"
+    print(f"AUTODISP, генератор данных, версия {VERSION}")
+    print(f"Откройте в браузере: {url}")
+    print("Остановить - Ctrl+C или закрыть это окно.")
+    if not args.no_open:
+        webbrowser.open(url)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
