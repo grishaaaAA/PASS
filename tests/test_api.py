@@ -9,10 +9,31 @@ from http.server import ThreadingHTTPServer
 
 from naryad.core.invariants import check_rest
 from naryad.core.model import Plan
+from naryad.data.generate import generate
 from naryad.web.api import EXAMPLES_FILE, Engine, Handler, make_examples
 
 PARK7 = {"preset": "park7", "date": "2026-10-05", "seed": 1, "moment": "morning"}
 DUTY, SHIFT, ROUTE = "P07-R01-WD01", "P07-R01-WD01-S1", "P07-R01"
+CITY = dict(release_per_park=40, routes_total=6,
+            class_mix={"medium": 30, "big": 30, "extra_big": 20})
+
+
+def city_day(parks: int = 2, shortage: float = 0.2, short_park: str = "P02",
+             gas_park: str | None = None) -> dict:
+    """Небольшой город, где в одном парке часть автобусов не вышла.
+
+    gas_park - весь парк переводится на газ: так видно, работает ли запрет
+    отдавать газовый автобус в парк без газовой инфраструктуры.
+    """
+    raw = generate("case", "2026-10-05", seed=1, park_count=parks, **CITY)
+    if gas_park:
+        for vehicle in raw["vehicles"]:
+            if vehicle["park_id"] == gas_park:
+                vehicle["fuel"] = "gas"
+    ok_now = [v for v in raw["vehicles"] if v["park_id"] == short_park and v["condition"] == "ok"]
+    for vehicle in ok_now[:round(len(ok_now) * shortage)]:
+        vehicle["condition"], vehicle["repair_days_left"] = "repair", 3
+    return raw
 
 
 def ok(result):
@@ -79,6 +100,7 @@ class TestPlanAndExplain(unittest.TestCase):
         self.assertEqual(len(plan.vehicles), 350)
         self.assertEqual(len(plan.drivers), 717)
         self.assertEqual(self.planned["violations"], [])
+        self.assertEqual(self.planned["plan"]["transfers"], [])  # один парк: перебрасывать некуда
         self.assertIn("326 из 326", self.planned["summary"]["answer"])
         self.assertLess(self.planned["seconds"], 10)
 
@@ -220,6 +242,63 @@ class TestEvents(unittest.TestCase):
         ok(self.engine.handle("POST", "/api/days/day-1/plan", None, {}))
         state = ok(self.engine.handle("GET", "/api/days/day-1/state"))
         self.assertEqual((state["meta"]["events"], state["log"], state["down_vehicles"]), (0, [], []))
+
+
+class TestTransfers(unittest.TestCase):
+    """План на несколько парков: лишние автобусы закрывают наряды соседа (А7)."""
+
+    def setUp(self):
+        self.engine = Engine()
+
+    def add(self, raw: dict) -> str:
+        return ok(self.engine.handle("POST", "/api/days", None, raw))["day_id"]
+
+    def plan(self, day_id: str, body: dict | None = None) -> dict:
+        return ok(self.engine.handle("POST", f"/api/days/{day_id}/plan", None, body or {}))
+
+    def test_city_transfers_by_default(self):
+        day_id = self.add(city_day())
+        planned = self.plan(day_id)
+        transfers = planned["plan"]["transfers"]
+        self.assertTrue(transfers, "в городе с нехваткой переброски должны появиться")
+        self.assertEqual(planned["violations"], [])
+        self.assertTrue(all(set(t) == {"vehicle_id", "to_park"} for t in transfers))
+        self.assertEqual(ok(self.engine.handle("GET", f"/api/days/{day_id}/state"))["transfers"],
+                         transfers)
+
+    def test_without_transfers_fewer_duties_closed(self):
+        day_id = self.add(city_day())
+        with_them = len(self.plan(day_id)["plan"]["vehicle_assignments"])
+        without = self.plan(day_id, {"transfers": False})
+        self.assertEqual(without["plan"]["transfers"], [])
+        self.assertEqual(without["violations"], [])
+        self.assertLess(len(without["plan"]["vehicle_assignments"]), with_them)
+
+    def test_one_park_has_nothing_to_transfer(self):
+        day_id = self.add(city_day(parks=1, short_park="P01"))
+        self.assertEqual(self.plan(day_id, {"transfers": True})["plan"]["transfers"], [])
+
+    def test_gas_vehicle_only_to_park_with_gas(self):
+        day_id = self.add(city_day(gas_park="P01"))
+        default = self.plan(day_id)["plan"]["transfers"]
+        self.assertTrue(default, "без ограничения газовые автобусы перебрасываются")
+        both = self.plan(day_id, {"gas_parks": ["P01", "P02"]})["plan"]["transfers"]
+        self.assertEqual(len(both), len(default))
+        blocked = self.plan(day_id, {"gas_parks": ["P01"]})
+        self.assertEqual(blocked["plan"]["transfers"], [],
+                         "в парк без газовой инфраструктуры газовый автобус не отдаём")
+        self.assertEqual(blocked["violations"], [])
+
+    def test_bad_transfer_options(self):
+        day_id = self.add(city_day())
+        cases = (({"transfers": "да"}, 400, "transfers"),
+                 ({"gas_parks": "P01"}, 400, "gas_parks"),
+                 ({"gas_parks": [1]}, 400, "gas_parks"),
+                 ({"gas_parks": ["P09"]}, 404, "P09"))
+        for body, status, word in cases:
+            got, payload = self.engine.handle("POST", f"/api/days/{day_id}/plan", None, body)
+            self.assertEqual(got, status, body)
+            self.assertIn(word, payload["error"], body)
 
 
 class TestExamplesFile(unittest.TestCase):

@@ -2,6 +2,8 @@
 API движка (Б5): день в памяти под номером, план, объяснения, события.
 
 Форматы - docs/CONTRACT.md, разделы «Состояние дня» и «API движка».
+План на день с несколькими парками строится с перебросками лишних
+автобусов между парками (А7), на один парк - без них: перебрасывать некуда.
 Образцы ответов - data/samples/api_examples.json: их пишет этот же модуль
 (--write-examples), а тест сверяет файл с живыми ответами.
 
@@ -39,6 +41,7 @@ from naryad.core.model import Day, Plan
 from naryad.data.check import check
 from naryad.data.generate import generate
 from naryad.ops.replan import Accident, Breakdown, NoShow, OpsState, apply, check_state, options_for
+from naryad.solve.city import add_transfers
 from naryad.solve.drivers import History, solve_drivers
 from naryad.solve.vehicles import solve_vehicles
 
@@ -210,14 +213,42 @@ class Engine:
                 raise ApiError(BAD, f"history_from: день {source} должен быть раньше {record.day.meta['date']}")
             history = copy.deepcopy(previous.history_after)
         record.history_before = copy.deepcopy(history)
+        transfers, gas_parks = self._transfer_options(record, body)
         started = time.perf_counter()
-        plan = solve_drivers(record.day, solve_vehicles(record.day), history)
+        vehicles = solve_vehicles(record.day)
+        if transfers:
+            add_transfers(record.day, vehicles, gas_parks=gas_parks)
+        plan = solve_drivers(record.day, vehicles, history)
         record.seconds = round(time.perf_counter() - started, 2)
         record.plan, record.history_after, record.log = plan, history, []
         record.state = OpsState.from_plan(record.day, plan, record.history_before)
         return {"plan": plan.to_dict(), "violations": _violations(check_plan(record.day, plan)),
                 "summary": explain.day_summary(record.day, plan, record.history_before),
                 "seconds": record.seconds}
+
+    @staticmethod
+    def _transfer_options(record: DayRecord, body: dict) -> tuple[bool, set | None]:
+        """Перебрасывать ли автобусы между парками и куда можно газовые.
+
+        По умолчанию переброски включены, когда в дне больше одного парка:
+        одному парку перебрасывать некуда. gas_parks - парки с газовой
+        инфраструктурой, куда можно отдать газовый автобус; без него
+        ограничения нет (в данных генератора признака газа у парка нет).
+        """
+        transfers = body.get("transfers")
+        if transfers is None:
+            transfers = len(record.day.parks) > 1
+        if not isinstance(transfers, bool):
+            raise ApiError(BAD, "transfers: true или false")
+        raw = body.get("gas_parks")
+        if raw is None:
+            return transfers, None
+        if not isinstance(raw, list) or not all(isinstance(p, str) for p in raw):
+            raise ApiError(BAD, "gas_parks: список номеров парков, например [\"P03\", \"P07\"]")
+        unknown = sorted(set(raw) - set(record.day.parks))
+        if unknown:
+            raise ApiError(NOT_FOUND, f"Нет парков: {', '.join(unknown)}")
+        return transfers, set(raw)
 
     def get_state(self, day_id, query, body):
         return _state_dict(self._planned(day_id))
