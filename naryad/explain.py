@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from naryad.core.invariants import load_labor, rest_minutes, work_minutes
+from naryad.core.invariants import load_labor, may_depart, rest_minutes, work_minutes
 from naryad.core.model import REASONS, Day, Plan
 from naryad.solve.drivers import History, day_base, rest_status
 from naryad.solve.vehicles import allowed_classes, drop_costs, _groups
@@ -147,7 +147,7 @@ def _driver_blocker(day: Day, plan: Plan, driver, shift, history: History, labor
     """Почему конкретный водитель не стоит на этой смене."""
     if driver.schedule != "work":
         return SCHEDULE_NAMES.get(driver.schedule, driver.schedule)
-    if driver.medical == "failed":
+    if driver.schedule == "work" and not may_depart(driver, day.meta.get("moment")):
         return "не прошёл медосмотр"
     other = next((s for s, d in plan.drivers.items() if d == driver.id), None)
     if other is not None:

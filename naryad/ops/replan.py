@@ -48,7 +48,8 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass, field
 
-from naryad.core.invariants import Violation, load_labor, shift_limit, work_minutes
+from naryad.core.invariants import (Violation, load_labor, may_depart, shift_limit,
+                                    work_minutes)
 from naryad.core.model import Day, Plan
 from naryad.solve.drivers import History, day_base, remember, rest_status
 from naryad.solve.vehicles import GROWTH_POWER, PRIORITY_WEIGHT
@@ -269,8 +270,9 @@ def free_drivers(state: OpsState, duty, start: int, end: int, labor: dict,
     cls = cls or state.day.duties[duty.id].vehicle_class
     out = []
     for d in state.day.drivers.values():
-        if (d.id in worked or d.id in state.down_drivers or d.schedule != "work"
-                or d.medical == "failed" or d.park_id != duty.park_id or cls not in d.classes):
+        if (d.id in worked or d.id in state.down_drivers
+                or not may_depart(d, state.day.meta.get("moment"))
+                or d.park_id != duty.park_id or cls not in d.classes):
             continue
         status = rest_status(state.history.get(d.id), base + start, labor)
         if status is not None:
@@ -663,9 +665,9 @@ def check_state(state: OpsState, labor: dict | None = None) -> list:
             if driver.schedule != "work":
                 bad("driver_not_working", f"смена {shift_id}: водитель {seg.who} не работает сегодня "
                                           f"({driver.schedule})", shift_id, seg.who)
-            if driver.medical == "failed":
-                bad("driver_medical", f"смена {shift_id}: водитель {seg.who} не прошёл медосмотр",
-                    shift_id, seg.who)
+            if driver.schedule == "work" and not may_depart(driver, day.meta.get("moment")):
+                bad("driver_medical", f"смена {shift_id}: водитель {seg.who} не допущен "
+                                      f"по медосмотру ({driver.medical})", shift_id, seg.who)
             for bus in state.vehicles.get(duty.id, []):
                 if bus.start < seg.end and seg.start < bus.end and day.vehicles[bus.who].cls not in driver.classes:
                     bad("driver_permit", f"смена {shift_id}: у водителя {seg.who} нет допуска "

@@ -68,6 +68,21 @@ def load_labor(path: Path = LABOR_FILE, preset: str | None = None) -> dict:
     return labor
 
 
+def may_depart(driver, moment: str | None) -> bool:
+    """Можно ли выпустить водителя на смену.
+
+    Утром дня (moment = morning) медосмотр должен быть пройден: водителя с
+    отметкой failed или pending и без отметки вовсе на линию не выпускают,
+    это делает автоматизированная система предрейсового осмотра. В плане на
+    завтра (moment = plan) медосмотра ещё не было, и pending - норма.
+    """
+    if driver.schedule != "work":
+        return False
+    if moment == "morning":
+        return driver.medical == "passed"
+    return driver.medical != "failed"
+
+
 def work_minutes(length: int, labor: dict) -> int:
     """Рабочее время за смену: сама смена + подготовка и медосмотры до и после (п. 13)."""
     return length + labor.get("prep_before_min", 0) + labor.get("prep_after_min", 0)
@@ -198,9 +213,10 @@ def _driver_fits(day: Day, plan: Plan) -> list:
             out.append(Violation("driver_not_working",
                                  f"{name}: по графику не работает ({driver.schedule})",
                                  (shift_id, driver_id)))
-        if driver.medical == "failed":
-            out.append(Violation("driver_medical",
-                                 f"{name}: не прошёл медосмотр", (shift_id, driver_id)))
+        if not may_depart(driver, day.meta.get("moment")) and driver.schedule == "work":
+            mark = {"failed": "не прошёл медосмотр", "pending": "медосмотр ещё не проходил",
+                    None: "нет отметки о медосмотре"}.get(driver.medical, f"медосмотр {driver.medical}")
+            out.append(Violation("driver_medical", f"{name}: {mark}", (shift_id, driver_id)))
     return out
 
 

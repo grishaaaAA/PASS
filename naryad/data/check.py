@@ -191,6 +191,10 @@ def check(data: dict) -> dict:
                           f"{vehicle['id']}, но нет допуска к классу {vehicle['class']}")
         if driver["schedule"] != "work" and driver["medical"] is not None:
             errors.append(f"drivers {driver['id']}: не работает сегодня, но указан медосмотр")
+        if (data.get("meta", {}).get("moment") == "morning" and driver["schedule"] == "work"
+                and driver["medical"] is None):
+            errors.append(f"drivers {driver['id']}: утро дня, водитель работает, "
+                          f"но отметки о медосмотре нет")
 
     shifts_of: dict = {}
     for shift in data["shifts"]:

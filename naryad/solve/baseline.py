@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from naryad.core.invariants import load_labor, rest_minutes, shift_limit, work_minutes
+from naryad.core.invariants import load_labor, may_depart, rest_minutes, shift_limit, work_minutes
 from naryad.core.model import Day, Plan
 
 from .drivers import day_base
@@ -88,7 +88,7 @@ def baseline_drivers(day: Day, vehicle_plan: Plan, yesterday: dict | None = None
         return rest_minutes(end, base + start, labor) >= need
 
     ready = [d for d in sorted(day.drivers.values(), key=lambda d: d.tab_number)
-             if d.schedule == "work" and d.medical != "failed"]
+             if may_depart(d, day.meta.get("moment"))]
     used = set()
     shifts = sorted((s for duty_id in vehicle_plan.vehicles for s in day.shifts_by_duty.get(duty_id, [])),
                     key=lambda s: (day.duties[s.duty_id].type != "line", s.start, s.id))

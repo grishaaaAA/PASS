@@ -44,7 +44,12 @@ class TestCity(unittest.TestCase):
         self.assertTrue(line_lost(day, without, "P03"))
         self.assertEqual(line_lost(day, plan), [])
         self.assertTrue(all(p == "P03" for p in plan.transfers.values()))
-        self.assertNotIn("no_driver", plan.unfilled.values())
+        # водителей без пройденного медосмотра утром не выпускают, поэтому смены
+        # без водителя возможны - но только на резерве, линия закрыта целиком
+        driverless = [sid for sid, reason in plan.unfilled.items() if reason == "no_driver"]
+        self.assertTrue(all(day.duties[day.shifts[sid].duty_id].type == "reserve"
+                            for sid in driverless),
+                        f"смены линии без водителя: {driverless}")
         donors = Counter(day.vehicles[v].park_id for v in plan.transfers)
         self.assertGreater(len(donors), 1)  # нагрузка распределена между парками
 

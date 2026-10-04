@@ -122,7 +122,7 @@
 | classes | `["medium", "big", "extra_big"]` | Допуски к классам |
 | home_vehicle_id | `"P07-V0345"` / `null` | Закреплённый автобус |
 | schedule | `"work"` / `"day_off"` / `"sick"` / `"vacation"` | Работает, выходной по графику, больничный, отпуск |
-| medical | `"passed"` / `"failed"` / `"pending"` / `null` | Медосмотр пройден / не пройден / ещё не проходил. У неработающих - `null` |
+| medical | `"passed"` / `"failed"` / `"pending"` / `null` | Медосмотр пройден / не пройден / ещё не проходил. У неработающих - `null`. Утром дня (`meta.moment = morning`) на линию выпускается только `passed`: `pending` и `null` у работающего водителя - он не допущен, и проверка плана даёт `driver_medical`. В плане на завтра (`moment = plan`) медосмотра ещё не было, `pending` там норма |
 
 ## Проверка
 
