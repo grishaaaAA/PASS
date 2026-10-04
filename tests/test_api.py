@@ -1,5 +1,7 @@
 """API движка (Б5): ручки, ошибки, образцы ответов, живой сервер. Запуск: python -m unittest"""
 
+import contextlib
+import io
 import json
 import threading
 import unittest
@@ -242,6 +244,80 @@ class TestEvents(unittest.TestCase):
         ok(self.engine.handle("POST", "/api/days/day-1/plan", None, {}))
         state = ok(self.engine.handle("GET", "/api/days/day-1/state"))
         self.assertEqual((state["meta"]["events"], state["log"], state["down_vehicles"]), (0, [], []))
+
+
+class TestNoCrash(unittest.TestCase):
+    """Ошибка не уходит наружу обрывом связи и не ломает сервис для следующих запросов."""
+
+    def setUp(self):
+        self.engine = Engine()
+        ok(self.engine.handle("POST", "/api/days", None, PARK7))
+
+    def days(self) -> int:
+        return len(ok(self.engine.handle("GET", "/api/days"))["days"])
+
+    def test_day_without_meta_rejected_and_list_survives(self):
+        empty = {"meta": {}, "parks": [], "routes": [], "duties": [],
+                 "shifts": [], "vehicles": [], "drivers": []}
+        status, payload = self.engine.handle("POST", "/api/days", None, empty)
+        self.assertEqual(status, 400)
+        self.assertIn("meta", payload["error"])
+        self.assertEqual(self.days(), 1, "битый день не должен попадать в память")
+        self.assertEqual(ok(self.engine.handle("GET", "/api/days/day-1"))["meta"]["date"], "2026-10-05")
+
+    def test_day_that_cannot_be_read_is_rejected(self):
+        raw = ok(self.engine.handle("GET", "/api/days/day-1"))
+        spoiled = dict(raw, meta=dict(raw["meta"]), duties=[dict(d) for d in raw["duties"]])
+        spoiled["duties"][0]["start"] = "утром"  # вместо ЧЧ:ММ
+        status, payload = self.engine.handle("POST", "/api/days", None, spoiled)
+        self.assertIn(status, (400, 500))
+        self.assertEqual(self.days(), 1)
+
+    def test_bodies_that_are_not_objects(self):
+        for body in ([1, 2], "привет", 7, True):
+            for path in ("/api/days", "/api/days/day-1/plan"):
+                status, payload = self.engine.handle("POST", path, None, body)
+                self.assertEqual(status, 400, (path, body))
+                self.assertIn("error", payload)
+
+    def test_engine_error_becomes_understandable_500(self):
+        self.engine.days["day-1"].day.meta.pop("day_type")  # имитируем ошибку движка
+        with contextlib.redirect_stderr(io.StringIO()) as noise:
+            status, payload = self.engine.handle("GET", "/api/days")
+        self.assertEqual(status, 500)
+        self.assertIn("Внутренняя ошибка", payload["error"])
+        self.assertNotIn("Traceback", json.dumps(payload, ensure_ascii=False))
+        self.assertIn("Traceback", noise.getvalue(), "трассировка должна уйти в журнал сервера")
+
+    def test_rejected_replan_keeps_plan_and_driver_memory(self):
+        ok(self.engine.handle("POST", "/api/days/day-1/plan", None, {}))
+        record = self.engine.days["day-1"]
+        before = len(record.history_after.drivers)
+        self.assertGreater(before, 0)
+        for body, status in (({"history_from": 123}, 400), ({"history_from": "day-9"}, 404),
+                             ({"gas_parks": ["P99"]}, 404), ({"transfers": "да"}, 400)):
+            got, _ = self.engine.handle("POST", "/api/days/day-1/plan", None, body)
+            self.assertEqual(got, status, body)
+            self.assertIsNotNone(record.plan, body)
+            self.assertEqual(len(record.history_after.drivers), before, body)
+            self.assertEqual(len(record.history_before.drivers), 0, body)
+
+    def test_second_event_answers_instead_of_breaking(self):
+        """Событие, после которого дневная проверка что-то нашла, раньше рвало связь."""
+        ok(self.engine.handle("POST", "/api/days/day-1/plan", None, {}))
+        state = self.engine.days["day-1"].state
+        first = {"type": "breakdown", "vehicle_id": state.vehicle_at(DUTY, 8 * 60 + 40), "at": "08:40"}
+        ok(self.engine.handle("POST", "/api/days/day-1/events/apply", None, {"event": first, "option": 1}))
+        second = {"type": "accident",
+                  "vehicle_id": self.engine.days["day-1"].state.vehicle_at(DUTY, 9 * 60 + 40),
+                  "at": "09:40"}
+        after = ok(self.engine.handle("POST", "/api/days/day-1/events/apply", None,
+                                      {"event": second, "option": 0}))
+        self.assertEqual(after["meta"]["events"], 2)
+        for violation in after["violations"]:
+            self.assertEqual(set(violation), {"code", "text", "ids"})
+            self.assertTrue(violation["code"] and violation["text"])
+        self.assertEqual(len(ok(self.engine.handle("GET", "/api/days/day-1/log"))["log"]), 2)
 
 
 class TestTransfers(unittest.TestCase):

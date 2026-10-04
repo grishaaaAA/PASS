@@ -216,7 +216,21 @@ class TestCheckState(unittest.TestCase):
     def broken(self, spoil):
         state = copy.deepcopy(self.state)
         spoil(state)
-        return " | ".join(check_state(state))
+        return " | ".join(v.text for v in check_state(state))
+
+    def test_state_problems_are_violation_objects(self):
+        """Дневная проверка отдаёт такие же объекты, как утренняя: код, текст, id."""
+        from naryad.core.invariants import Violation
+        state = copy.deepcopy(self.state)
+        duty = self.duty
+        bus = state.vehicles[duty.id][0]
+        state.vehicles[duty.id].append(Segment(bus.start, bus.end, bus.who))  # автобус дважды
+        found = check_state(state)
+        self.assertTrue(found)
+        self.assertTrue(all(isinstance(v, Violation) for v in found))
+        self.assertIn("vehicle_twice", {v.code for v in found})
+        self.assertTrue(all(v.text for v in found))
+        self.assertIn(bus.who, {i for v in found for i in v.ids})
 
     def test_each_problem_found(self):
         s, duty, t = self.state, self.duty, MORNING

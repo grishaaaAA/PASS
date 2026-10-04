@@ -27,6 +27,7 @@ import re
 import sys
 import threading
 import time
+import traceback
 from dataclasses import dataclass, field
 from datetime import date as Date
 from http import HTTPStatus
@@ -50,6 +51,7 @@ TIME = re.compile(r"^(\d{1,2}):(\d{2})$")
 MAX_WARNINGS = 50
 OK, BAD, NOT_FOUND, TOO_EARLY = (HTTPStatus.OK, HTTPStatus.BAD_REQUEST, HTTPStatus.NOT_FOUND,
                                  HTTPStatus.CONFLICT)
+SERVER_ERROR = HTTPStatus.INTERNAL_SERVER_ERROR
 EVENT_TYPES = ("breakdown", "accident", "no_show")
 
 
@@ -133,6 +135,12 @@ class Engine:
                 raise ApiError(NOT_FOUND, "нет такого адреса")
             except ApiError as error:
                 return error.status, error.payload
+            except Exception as error:  # ошибка движка, а не запроса
+                traceback.print_exc()
+                print(f"ОШИБКА ДВИЖКА: {method} {path}: {type(error).__name__}", file=sys.stderr)
+                return SERVER_ERROR, {"error": "Внутренняя ошибка сервиса, запрос не выполнен. "
+                                               "Подробности - в журнале сервера.",
+                                      "kind": type(error).__name__}
 
     # --- справочное --------------------------------------------------------------
 
@@ -161,14 +169,21 @@ class Engine:
         checked = check(raw)
         if checked["errors"]:
             raise ApiError(BAD, "данные с ошибками, день не принят", errors=checked["errors"][:MAX_WARNINGS])
-        record = DayRecord(id=f"day-{self._next}", raw=raw, day=Day.from_dict(raw))
+        meta = raw.get("meta") if isinstance(raw.get("meta"), dict) else None
+        if not meta or not meta.get("date") or not meta.get("day_type"):
+            raise ApiError(BAD, "meta: нужны дата дня (ГГГГ-ММ-ДД) и тип дня (weekday или weekend)")
+        try:
+            day = Day.from_dict(raw)
+        except (KeyError, TypeError, ValueError) as error:
+            raise ApiError(BAD, f"данные дня не читаются: {type(error).__name__} {error}") from None
+        day_id = f"day-{self._next}"
+        payload = {"day_id": day_id, "date": meta["date"], "day_type": meta["day_type"],
+                   "moment": meta.get("moment"), "preset": meta.get("preset"),
+                   "counts": {k: len(raw[k]) for k in ("parks", "routes", "duties", "shifts", "vehicles", "drivers")},
+                   "warnings": checked["warnings"][:MAX_WARNINGS]}
+        self.days[day_id] = DayRecord(id=day_id, raw=raw, day=day)  # последним: ответ уже собран
         self._next += 1
-        self.days[record.id] = record
-        meta = raw["meta"]
-        return {"day_id": record.id, "date": meta["date"], "day_type": meta["day_type"],
-                "moment": meta.get("moment"), "preset": meta.get("preset"),
-                "counts": {k: len(raw[k]) for k in ("parks", "routes", "duties", "shifts", "vehicles", "drivers")},
-                "warnings": checked["warnings"][:MAX_WARNINGS]}
+        return payload
 
     @staticmethod
     def _inputs(body: dict) -> dict:
@@ -204,27 +219,40 @@ class Engine:
         return self._day(day_id).raw
 
     def make_plan(self, day_id, query, body):
+        """Утренний план. Запись дня меняется только после удачного расчёта.
+
+        Сначала проверяется всё тело запроса: отклонённый запрос не должен
+        портить план и память водителей, которые уже показаны диспетчеру.
+        """
         record = self._day(day_id)
+        if not isinstance(body, dict):
+            raise ApiError(BAD, "тело запроса: объект JSON")
         history = History()
         source = body.get("history_from")
-        if source:
+        if source is not None:
+            if not isinstance(source, str):
+                raise ApiError(BAD, "history_from: номер дня строкой, например day-1")
             previous = self._planned(source)
             if previous.day.meta["date"] >= record.day.meta["date"]:
                 raise ApiError(BAD, f"history_from: день {source} должен быть раньше {record.day.meta['date']}")
             history = copy.deepcopy(previous.history_after)
-        record.history_before = copy.deepcopy(history)
         transfers, gas_parks = self._transfer_options(record, body)
+
         started = time.perf_counter()
+        before = copy.deepcopy(history)
         vehicles = solve_vehicles(record.day)
         if transfers:
             add_transfers(record.day, vehicles, gas_parks=gas_parks)
         plan = solve_drivers(record.day, vehicles, history)
-        record.seconds = round(time.perf_counter() - started, 2)
-        record.plan, record.history_after, record.log = plan, history, []
-        record.state = OpsState.from_plan(record.day, plan, record.history_before)
-        return {"plan": plan.to_dict(), "violations": _violations(check_plan(record.day, plan)),
-                "summary": explain.day_summary(record.day, plan, record.history_before),
-                "seconds": record.seconds}
+        seconds = round(time.perf_counter() - started, 2)
+        answer = {"plan": plan.to_dict(), "violations": _violations(check_plan(record.day, plan)),
+                  "summary": explain.day_summary(record.day, plan, before),
+                  "seconds": seconds}
+
+        record.history_before, record.history_after = before, history
+        record.plan, record.log, record.seconds = plan, [], seconds
+        record.state = OpsState.from_plan(record.day, plan, before)
+        return answer
 
     @staticmethod
     def _transfer_options(record: DayRecord, body: dict) -> tuple[bool, set | None]:
@@ -350,10 +378,12 @@ class Engine:
             raise ApiError(BAD, "option: номер варианта из ответа events/options") from None
         if not 0 <= index < len(options):
             raise ApiError(BAD, f"option: от 0 до {len(options) - 1}")
-        record.state = apply(record.state, event, options[index])
-        record.log.append({**_event_dict(event), "option": index, "title": options[index].title})
+        after = apply(record.state, event, options[index])
+        entry = {**_event_dict(event), "option": index, "title": options[index].title}
+        violations = _violations(check_state(after))
+        record.state, record.log = after, record.log + [entry]
         out = _state_dict(record)
-        out["violations"] = _violations(check_state(record.state))
+        out["violations"] = violations
         return out
 
 

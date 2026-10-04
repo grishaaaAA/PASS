@@ -41,7 +41,7 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass, field
 
-from naryad.core.invariants import load_labor, shift_limit, work_minutes
+from naryad.core.invariants import Violation, load_labor, shift_limit, work_minutes
 from naryad.core.model import Day, Plan
 from naryad.solve.drivers import History, day_base, rest_status
 from naryad.solve.vehicles import GROWTH_POWER, PRIORITY_WEIGHT
@@ -485,39 +485,60 @@ def _hm(t: int) -> str:
 # --- проверка состояния ---------------------------------------------------------
 
 def check_state(state: OpsState, labor: dict | None = None) -> list:
-    """Нарушения в состоянии дня. Пустой список - состояние допустимо."""
+    """Нарушения в состоянии дня. Пустой список - состояние допустимо.
+
+    Возвращает такие же объекты Violation (код, текст, id), как утренняя
+    проверка naryad.core.invariants.check_plan, и там, где правило то же,
+    использует тот же код: интерфейс и API разбирают оба списка одинаково.
+    """
     labor = labor or load_labor()
     day, out = state.day, []
+
+    def bad(code: str, text: str, *ids) -> None:
+        out.append(Violation(code, text, tuple(i for i in ids if i)))
+
     for table, place, of, bounds in ((state.vehicles, "наряд", "наряда", day.duties),
                                      (state.drivers, "смена", "смены", day.shifts)):
         for key, segments in table.items():
             items = sorted((s.start, s.end, s.who) for s in segments)
             for start, end, who in items:
                 if not bounds[key].start <= start < end <= bounds[key].end:
-                    out.append(f"{place} {key}: отрезок {who} {_hm(start)}-{_hm(end)} "
-                               f"пустой или вне времени {of}")
+                    bad("bad_segment", f"{place} {key}: отрезок {who} {_hm(start)}-{_hm(end)} "
+                                       f"пустой или вне времени {of}", key, who)
             for a, b in zip(items, items[1:]):
                 if b[0] < a[1]:
-                    out.append(f"{place} {key}: в {_hm(b[0])} сразу {a[2]} и {b[2]}")
+                    bad("segment_overlap", f"{place} {key}: в {_hm(b[0])} сразу {a[2]} и {b[2]}",
+                        key, a[2], b[2])
+
     for duty_id, segments in state.vehicles.items():
         duty = day.duties[duty_id]
         for seg in segments:
             vehicle = day.vehicles[seg.who]
             if vehicle.cls not in _classes(state, duty):
-                out.append(f"наряд {duty_id}: автобус {seg.who} класса {vehicle.cls} не подходит")
+                bad("vehicle_class", f"наряд {duty_id}: автобус {seg.who} класса {vehicle.cls} "
+                                     f"не подходит", duty_id, seg.who)
             if vehicle.park_id != duty.park_id and state.transfers.get(vehicle.id) != duty.park_id:
-                out.append(f"наряд {duty_id}: автобус {seg.who} из парка {vehicle.park_id} без переброски")
+                bad("vehicle_park", f"наряд {duty_id}: автобус {seg.who} из парка "
+                                    f"{vehicle.park_id} без переброски", duty_id, seg.who)
+
     for shift_id, segments in state.drivers.items():
         duty = day.duties[day.shifts[shift_id].duty_id]
         for seg in segments:
             driver = day.drivers[seg.who]
             if driver.park_id != duty.park_id:
-                out.append(f"смена {shift_id}: водитель {seg.who} из парка {driver.park_id}")
-            if driver.schedule != "work" or driver.medical == "failed":
-                out.append(f"смена {shift_id}: водитель {seg.who} не работает сегодня или не прошёл медосмотр")
+                bad("driver_park", f"смена {shift_id}: водитель {seg.who} из парка "
+                                   f"{driver.park_id}", shift_id, seg.who)
+            if driver.schedule != "work":
+                bad("driver_not_working", f"смена {shift_id}: водитель {seg.who} не работает сегодня "
+                                          f"({driver.schedule})", shift_id, seg.who)
+            if driver.medical == "failed":
+                bad("driver_medical", f"смена {shift_id}: водитель {seg.who} не прошёл медосмотр",
+                    shift_id, seg.who)
             for bus in state.vehicles.get(duty.id, []):
                 if bus.start < seg.end and seg.start < bus.end and day.vehicles[bus.who].cls not in driver.classes:
-                    out.append(f"смена {shift_id}: у водителя {seg.who} нет допуска к автобусу {bus.who}")
+                    bad("driver_permit", f"смена {shift_id}: у водителя {seg.who} нет допуска "
+                                         f"к автобусу {bus.who}", shift_id, seg.who, bus.who)
+
     busy = {}
     for table, kind in ((state.vehicles, "автобус"), (state.drivers, "водитель")):
         for key, segments in table.items():
@@ -527,16 +548,18 @@ def check_state(state: OpsState, labor: dict | None = None) -> list:
         items.sort()
         for a, b in zip(items, items[1:]):
             if b[0] < a[1]:
-                out.append(f"{kind} {who} одновременно на {a[2]} и {b[2]}")
+                bad("vehicle_twice" if kind == "автобус" else "driver_overlap",
+                    f"{kind} {who} одновременно на {a[2]} и {b[2]}", who, a[2], b[2])
         down = (state.down_vehicles if kind == "автобус" else state.down_drivers).get(who)
         if down is not None and any(end > down for _, end, _ in items):
-            out.append(f"{kind} {who} выбыл в {_hm(down)}, но стоит после этого")
+            bad("down_but_working", f"{kind} {who} выбыл в {_hm(down)}, но стоит после этого", who)
         if kind == "автобус" and day.vehicles[who].condition != "ok":
-            out.append(f"автобус {who} неисправен с утра")
+            bad("vehicle_broken", f"автобус {who} неисправен с утра", who)
         if kind == "водитель":
             start, end = min(i[0] for i in items), max(i[1] for i in items)
             if work_minutes(end - start, labor) > shift_limit(labor):
-                out.append(f"водитель {who}: рабочий день {end - start} мин больше нормы")
+                bad("driver_overtime", f"водитель {who}: рабочий день {end - start} мин "
+                                       f"больше нормы", who)
             if rest_status(state.history.get(who), day_base(day) + start, labor) is None:
-                out.append(f"водитель {who}: не отдохнул после прошлой смены")
+                bad("daily_rest", f"водитель {who}: не отдохнул после прошлой смены", who)
     return out
