@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import re
+from datetime import date as Date
 
 from .presets import CLASSES
 
@@ -56,8 +57,16 @@ SCHEMA = {
     ],
 }
 
+# Обязательные поля meta: без даты и типа дня день нельзя ни спланировать,
+# ни показать. moment и format_version не обязательны, но если есть - проверяются.
+META_ENUMS = {
+    "day_type": {"weekday", "weekend"},
+    "moment": {"plan", "morning"},
+}
+
 ENUMS = {
     ("parks", "state"): {"working", "emergency", "down"},
+    ("routes", "priority"): {1, 2, 3},  # веса важности движка: naryad/solve/vehicles.py
     ("routes", "allowed_classes"): set(CLASSES),
     ("duties", "type"): {"line", "reserve"},
     ("duties", "vehicle_class"): set(CLASSES),
@@ -80,9 +89,35 @@ def _minutes(text: str) -> int:
     return int(hours) * 60 + int(minutes)
 
 
+def _meta(data: dict, errors: list) -> None:
+    """Блок meta: дата и тип дня обязательны, остальное - если есть."""
+    meta = data.get("meta")
+    if not isinstance(meta, dict):
+        errors.append("нет блока meta: нужны дата дня и тип дня")
+        return
+    date = meta.get("date")
+    if not isinstance(date, str) or not date:
+        errors.append("meta: нет даты дня (поле date в виде ГГГГ-ММ-ДД)")
+    else:
+        try:
+            Date.fromisoformat(date)
+        except ValueError:
+            errors.append(f"meta: date = {date!r}, нужно ГГГГ-ММ-ДД")
+    for field, allowed in META_ENUMS.items():
+        value = meta.get(field)
+        if field == "day_type" and value is None:
+            errors.append("meta: нет типа дня (поле day_type: weekday или weekend)")
+            continue
+        if value is not None and value not in allowed:
+            errors.append(f"meta: {field} = {value!r}, допустимо {sorted(allowed)}")
+
+
 def _fields(data: dict, errors: list) -> None:
     for entity, fields in SCHEMA.items():
-        for item in data.get(entity, []):
+        for position, item in enumerate(data.get(entity, []), 1):
+            if not isinstance(item, dict):
+                errors.append(f"{entity}: запись {position} не объект, а {type(item).__name__}")
+                continue
             name = item.get("id", "?")
             for field, kind, nullable in fields:
                 if field not in item:
@@ -101,7 +136,8 @@ def _fields(data: dict, errors: list) -> None:
                     values = value if kind == "list" else [value]
                     bad = [v for v in values if v not in allowed]
                     if bad:
-                        errors.append(f"{entity} {name}: {field} = {bad}, "
+                        shown = bad if kind == "list" else bad[0]
+                        errors.append(f"{entity} {name}: {field} = {shown!r}, "
                                       f"допустимо {sorted(allowed)}")
 
 
@@ -109,6 +145,7 @@ def check(data: dict) -> dict:
     errors: list = []
     warnings: list = []
 
+    _meta(data, errors)
     for entity in SCHEMA:
         if not isinstance(data.get(entity), list):
             errors.append(f"нет списка {entity}")
@@ -146,6 +183,9 @@ def check(data: dict) -> dict:
         ref("drivers", driver, "park_id", parks)
         ref("drivers", driver, "home_vehicle_id", vehicles)
         vehicle = vehicles.get(driver["home_vehicle_id"])
+        if vehicle and vehicle["park_id"] != driver["park_id"]:
+            errors.append(f"drivers {driver['id']}: водитель парка {driver['park_id']} "
+                          f"закреплён за автобусом парка {vehicle['park_id']}")
         if vehicle and vehicle["class"] not in driver["classes"]:
             errors.append(f"drivers {driver['id']}: закреплён за "
                           f"{vehicle['id']}, но нет допуска к классу {vehicle['class']}")
@@ -166,6 +206,9 @@ def check(data: dict) -> dict:
             else:
                 ref("duties", duty, "route_id", routes)
                 route = routes.get(duty["route_id"])
+                if route and route["park_id"] != duty["park_id"]:
+                    errors.append(f"duties {did}: наряд парка {duty['park_id']}, "
+                                  f"а маршрут {route['number']} - парка {route['park_id']}")
                 if route and duty["vehicle_class"] not in route["allowed_classes"]:
                     errors.append(f"duties {did}: класс {duty['vehicle_class']} "
                                   f"не допущен на маршрут {route['number']}")
@@ -195,6 +238,12 @@ def check(data: dict) -> dict:
                 errors.append(f"duties {did}: смены не доходят до конца наряда")
 
     day_type = data.get("meta", {}).get("day_type")
+    if day_type in ("weekday", "weekend") and data["duties"]:
+        same = sum(d["day_type"] == day_type for d in data["duties"])
+        if not same:
+            kinds = sorted({d["day_type"] for d in data["duties"]})
+            errors.append(f"в дне нет ни одного наряда на тип дня {day_type}: "
+                          f"в нарядах указано {kinds}. Движок построит пустой план")
     for park in data["parks"]:
         pid = park["id"]
         own_vehicles = [v for v in data["vehicles"] if v["park_id"] == pid]
@@ -202,6 +251,9 @@ def check(data: dict) -> dict:
             errors.append(f"парк {pid}: по документам {park['list_count']} автобусов, "
                           f"в списке {len(own_vehicles)}")
         own_duties = [d for d in data["duties"] if d["park_id"] == pid]
+        if park["state"] != "working" and own_duties:
+            warnings.append(f"парк {pid}: состояние {park['state']}, но нарядов "
+                            f"{len(own_duties)} - движок их не закроет")
         if day_type in ("weekday", "weekend"):
             line = sum(d["type"] == "line" for d in own_duties)
             reserve = len(own_duties) - line

@@ -261,7 +261,7 @@ class TestNoCrash(unittest.TestCase):
                  "shifts": [], "vehicles": [], "drivers": []}
         status, payload = self.engine.handle("POST", "/api/days", None, empty)
         self.assertEqual(status, 400)
-        self.assertIn("meta", payload["error"])
+        self.assertIn("meta", json.dumps(payload, ensure_ascii=False))
         self.assertEqual(self.days(), 1, "битый день не должен попадать в память")
         self.assertEqual(ok(self.engine.handle("GET", "/api/days/day-1"))["meta"]["date"], "2026-10-05")
 
