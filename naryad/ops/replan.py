@@ -52,12 +52,11 @@ from naryad.core.invariants import (Violation, load_labor, may_depart, shift_lim
                                     work_minutes)
 from naryad.core.model import Day, Plan
 from naryad.solve.drivers import History, day_base, remember, rest_status
-from naryad.solve.vehicles import GROWTH_POWER, PRIORITY_WEIGHT
+from naryad.solve.vehicles import GROWTH_POWER, PRIORITY_WEIGHT, STOP_SHARE
 
 SUPPLY_MIN = 30
 TRANSFER_MIN = 20
 RESERVE_COST_PER_HOUR = 0.2  # цена часа израсходованного резерва
-STOP_SHARE = 0.25            # маршрут встал: считаем, что осталась четверть автобуса
 
 
 @dataclass
