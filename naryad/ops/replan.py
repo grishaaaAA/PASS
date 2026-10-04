@@ -359,7 +359,8 @@ def _replacement_options(state: OpsState, duty_id: str, t: int, labor: dict,
 
     # 2. Исправный автобус без наряда + свободный водитель.
     idle = [v for v in sorted(day.vehicles.values(), key=lambda v: v.board_number)
-            if v.condition == "ok" and v.park_id == duty.park_id and v.cls in classes
+            if v.condition == "ok" and v.cls in classes
+            and state.transfers.get(v.id, v.park_id) == duty.park_id  # отданный в другой парк - там и работает
             and v.id not in state.down_vehicles and not state.vehicle_busy_after(v.id, t)]
     v = idle[0] if idle else None
     free = (free_drivers(state, duty, arrive, drive_end, labor, v.cls)
@@ -419,9 +420,22 @@ def _replacement_options(state: OpsState, duty_id: str, t: int, labor: dict,
 # --- обработка событий ----------------------------------------------------------
 
 def options_for(state: OpsState, event, labor: dict | None = None, limit: int | None = 3) -> list:
-    """Варианты реакции на событие, от лучшего к худшему (по умолчанию до трёх)."""
+    """Варианты реакции на событие, от лучшего к худшему (по умолчанию до трёх).
+
+    Вариант «не заменять» остаётся в ответе всегда, даже если он дороже
+    остальных и не попал в лучшие: диспетчеру нужна точка отсчёта, с чем
+    сравнивать, и docs/CONTRACT.md обещает его в ответе.
+    """
     labor = labor or load_labor()
-    return _all_options(state, event, labor)[:limit]
+    everything = _all_options(state, event, labor)
+    if limit is None:
+        return everything
+    best = everything[:limit]
+    if not any(o.kind == "none" for o in best):
+        nothing = next((o for o in everything if o.kind == "none"), None)
+        if nothing is not None:
+            best = best + [nothing]
+    return best
 
 
 def _all_options(state: OpsState, event, labor: dict) -> list:

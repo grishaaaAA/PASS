@@ -372,7 +372,17 @@ class Engine:
             raise ApiError(NOT_FOUND, f"Нет маршрута {route_id}")
         if "t" not in query:
             raise ApiError(BAD, "нужен параметр t: момент в виде ЧЧ:ММ")
-        return explain.interval(record.day, record.plan, route_id, parse_time(query["t"], "t"))
+        at = parse_time(query["t"], "t")
+        numbers = explain.interval(record.day, record.plan, route_id, at)
+        route = record.day.routes[route_id]
+        planned, actual = numbers["planned_min"], numbers["actual_min"]
+        grew = actual - planned
+        return {"question": f"Какой интервал на маршруте {route.number} в {hm(at)}?",
+                "answer": f"По плану {planned} мин, сейчас {actual} мин"
+                          + (" - как по плану" if grew <= 0 else f", на {grew} мин больше"),
+                "reasons": [f"По плану на маршруте {numbers['planned_buses']} автобусов, "
+                            f"работает {numbers['running_buses']}"],
+                "numbers": numbers}
 
     # --- события ------------------------------------------------------------------
 
@@ -413,6 +423,8 @@ class Engine:
 
     def event_options(self, day_id, query, body):
         record = self._planned(day_id)
+        if not isinstance(body, dict):
+            raise ApiError(BAD, "тело запроса: объект JSON с полями события")
         event = self._event(record, body)
         options = options_for(record.state, event)
         return {"event": _event_dict(event),
@@ -420,6 +432,8 @@ class Engine:
 
     def event_apply(self, day_id, query, body):
         record = self._planned(day_id)
+        if not isinstance(body, dict):
+            raise ApiError(BAD, "тело запроса: объект JSON с полями event и option")
         event = self._event(record, body.get("event") or {})
         options = options_for(record.state, event)
         try:
@@ -548,8 +562,26 @@ def write_examples(path: Path = EXAMPLES_FILE) -> Path:
 
 # --- сервер -------------------------------------------------------------------------
 
+ALLOWED_ORIGINS = ("http://localhost", "http://127.0.0.1", "http://[::1]")
+
+
+def allowed_origin(origin: str | None) -> str | None:
+    """Можно ли отвечать этой странице. Разрешаем только свои, с этого же компьютера.
+
+    День целиком - это реестр перевозчика: номера автобусов, табельные номера
+    водителей, наряды. Заголовок «любой сайт» означал, что любая открытая в
+    браузере страница может его выкачать, пока у диспетчера запущен сервис.
+    """
+    if not origin:
+        return None
+    for prefix in ALLOWED_ORIGINS:
+        if origin == prefix or origin.startswith(prefix + ":"):
+            return origin
+    return None
+
+
 class Handler(BaseHTTPRequestHandler):
-    """Отдельный сервер API с заголовками CORS: страница с другого порта может звать его напрямую."""
+    """Отдельный сервер API. Отвечает только страницам с этого же компьютера."""
 
     engine: Engine = Engine()
 
@@ -559,15 +591,21 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = allowed_origin(self.headers.get("Origin"))
+        if origin:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
         self.end_headers()
         self.wfile.write(body)
 
     def do_OPTIONS(self):
-        self.send_response(HTTPStatus.NO_CONTENT)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        origin = allowed_origin(self.headers.get("Origin"))
+        self.send_response(HTTPStatus.NO_CONTENT if origin else HTTPStatus.FORBIDDEN)
+        if origin:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Vary", "Origin")
         self.send_header("Content-Length", "0")
         self.end_headers()
 

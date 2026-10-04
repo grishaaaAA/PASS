@@ -126,7 +126,10 @@ class TestPlanAndExplain(unittest.TestCase):
             self.assertEqual(set(payload), {"question", "answer", "reasons", "numbers"}, path)
             self.assertIn(word, payload["question"])
         interval = ok(self.engine.handle("GET", f"/api/days/day-1/explain/interval/{ROUTE}", {"t": "08:30"}))
-        self.assertEqual(set(interval), {"planned_min", "actual_min", "planned_buses", "running_buses"})
+        self.assertEqual(set(interval), {"question", "answer", "reasons", "numbers"})
+        self.assertEqual(set(interval["numbers"]),
+                         {"planned_min", "actual_min", "planned_buses", "running_buses"})
+        self.assertIn("08:30", interval["question"])
 
     def test_explain_errors(self):
         self.assertEqual(self.engine.handle("GET", "/api/days/day-1/explain/vehicle/нет")[0], 404)
@@ -179,7 +182,8 @@ class TestEvents(unittest.TestCase):
         payload = ok(self.engine.handle("POST", "/api/days/day-1/events/options", None, self.event))
         self.assertEqual(payload["event"], dict(self.event, duration_min=None))
         options = payload["options"]
-        self.assertTrue(1 <= len(options) <= 3)
+        self.assertTrue(1 <= len(options) <= 4)  # до трёх лучших плюс «не заменять»
+        self.assertEqual([o["kind"] for o in options].count("none"), 1)
         self.assertEqual([o["index"] for o in options], list(range(len(options))))
         self.assertEqual(options[0]["cost"], min(o["cost"] for o in options))
         for option in options:
@@ -479,10 +483,12 @@ class TestHttp(unittest.TestCase):
         cls.server.shutdown()
         cls.server.server_close()
 
-    def call(self, method, path, body=None):
+    def call(self, method, path, body=None, origin=None):
         data = json.dumps(body).encode("utf-8") if body is not None else None
-        request = urllib.request.Request(self.base + path, data=data, method=method,
-                                         headers={"Content-Type": "application/json"} if data else {})
+        headers = {"Content-Type": "application/json"} if data else {}
+        if origin:
+            headers["Origin"] = origin
+        request = urllib.request.Request(self.base + path, data=data, method=method, headers=headers)
         try:
             with urllib.request.urlopen(request) as response:
                 return response.status, dict(response.headers), json.loads(response.read() or b"null")
@@ -492,7 +498,7 @@ class TestHttp(unittest.TestCase):
     def test_round_trip(self):
         status, headers, payload = self.call("POST", "/api/days", PARK7)
         self.assertEqual(status, 200)
-        self.assertEqual(headers["Access-Control-Allow-Origin"], "*")
+        self.assertNotIn("Access-Control-Allow-Origin", headers, "без Origin заголовок не нужен")
         self.assertIn("charset=utf-8", headers["Content-Type"])
         day_id = payload["day_id"]
         self.assertEqual(self.call("GET", f"/api/days/{day_id}/state")[0], 409)
@@ -501,9 +507,24 @@ class TestHttp(unittest.TestCase):
         self.assertEqual(payload["violations"], [])
         status, headers, payload = self.call("GET", f"/api/days/{day_id}/explain/interval/{ROUTE}?t=08:30")
         self.assertEqual(status, 200)
-        self.assertIn("planned_min", payload)
+        self.assertIn("planned_min", payload["numbers"])
         self.assertEqual(self.call("GET", "/nothing")[0], 404)
         self.assertEqual(self.call("GET", "/api/labor")[2]["preset"], "current")
+
+    def test_only_own_pages_may_read_the_day(self):
+        """День - это реестр перевозчика: отдаём его только страницам с этого компьютера."""
+        own = self.call("GET", "/api/labor", origin="http://localhost:8000")
+        self.assertEqual(own[1]["Access-Control-Allow-Origin"], "http://localhost:8000")
+        self.assertEqual(own[1]["Vary"], "Origin")
+        for stranger in ("https://example.com", "http://localhost.evil.com", "null"):
+            status, headers, _ = self.call("GET", "/api/labor", origin=stranger)
+            self.assertEqual(status, 200, stranger)  # сам ответ не прячем
+            self.assertNotIn("Access-Control-Allow-Origin", headers, stranger)
+        request = urllib.request.Request(self.base + "/api/days", method="OPTIONS",
+                                         headers={"Origin": "https://example.com"})
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            urllib.request.urlopen(request)
+        self.assertEqual(caught.exception.code, 403)
 
     def test_bad_json_and_options(self):
         request = urllib.request.Request(self.base + "/api/days", data="{не json".encode("utf-8"), method="POST")
@@ -511,10 +532,12 @@ class TestHttp(unittest.TestCase):
             urllib.request.urlopen(request)
         self.assertEqual(caught.exception.code, 400)
         self.assertIn("JSON", json.loads(caught.exception.read())["error"])
-        request = urllib.request.Request(self.base + "/api/days", method="OPTIONS")
+        request = urllib.request.Request(self.base + "/api/days", method="OPTIONS",
+                                         headers={"Origin": "http://127.0.0.1:8000"})
         with urllib.request.urlopen(request) as response:
             self.assertEqual(response.status, 204)
             self.assertEqual(response.headers["Access-Control-Allow-Methods"], "GET, POST, OPTIONS")
+            self.assertEqual(response.headers["Access-Control-Allow-Origin"], "http://127.0.0.1:8000")
 
 
 if __name__ == "__main__":

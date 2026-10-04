@@ -86,6 +86,23 @@ class TestHttp(unittest.TestCase):
                 self.get(path)
             self.assertEqual(caught.exception.code, 404)
 
+    def test_bad_path_answers_instead_of_dropping(self):
+        """Нулевой байт в пути роняет pathlib: ответ должен быть обычным 404.
+
+        Браузер так не умеет, но сырой запрос - умеет, и раньше сервер отвечал
+        пустотой с трассировкой в журнале.
+        """
+        import socket
+        for raw in (b"GET /\x00 HTTP/1.1\r\nHost: x\r\n\r\n",
+                    b"GET /app.js\x00.css HTTP/1.1\r\nHost: x\r\n\r\n",
+                    b"GET /ds/\x00/style.css HTTP/1.1\r\nHost: x\r\n\r\n"):
+            link = socket.create_connection(("127.0.0.1", self.server.server_address[1]), timeout=5)
+            link.sendall(raw)
+            answer = link.recv(200)
+            link.close()
+            self.assertTrue(answer, f"пустой ответ на {raw!r}")
+            self.assertIn(b"404", answer.split(b"\r\n")[0], answer[:80])
+
     def test_generate_and_error(self):
         request = urllib.request.Request(self.base + "/api/generate", method="POST",
                                          data=json.dumps({"preset": "park7", "days": "1"}).encode())

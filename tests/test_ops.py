@@ -43,11 +43,18 @@ class TestBreakdown(unittest.TestCase):
         self.assertEqual(check_state(self.state), [])
 
     def test_options_sorted_and_useful(self):
+        """До трёх лучших вариантов плюс «не заменять» как точка отсчёта (docs/CONTRACT.md)."""
         options = options_for(self.state, self.event)
-        self.assertLessEqual(len(options), 3)
-        self.assertEqual([o.cost for o in options], sorted(o.cost for o in options))
+        self.assertLessEqual(len(options), 4)
+        self.assertLessEqual(sum(o.kind != "none" for o in options), 3)
+        self.assertEqual([o.kind for o in options].count("none"), 1,
+                         "вариант «не заменять» должен быть в ответе всегда")
+        real = [o.cost for o in options if o.kind != "none"]
+        self.assertEqual(real, sorted(real))
         self.assertNotEqual(options[0].kind, "none")
         self.assertEqual(options[0].lost_minutes, SUPPLY_MIN)
+        nothing = next(o for o in options if o.kind == "none")
+        self.assertGreaterEqual(nothing.lost_minutes, options[0].lost_minutes)
 
     def test_apply_keeps_day_valid_and_stable(self):
         after = apply(self.state, self.event, options_for(self.state, self.event)[0])

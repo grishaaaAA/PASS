@@ -231,8 +231,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def _static(self, path: str):
         relative = "index.html" if path in ("", "/") else path.lstrip("/")
-        target = (STATIC / relative).resolve()
-        if STATIC.resolve() not in target.parents or not target.is_file():
+        try:
+            target = (STATIC / relative).resolve()
+            inside = STATIC.resolve() in target.parents and target.is_file()
+        except (ValueError, OSError):
+            inside = False  # например нулевой байт в пути: тот же ответ, что на любой плохой путь
+        if not inside:
             return self._json(HTTPStatus.NOT_FOUND, {"error": "нет такого файла"})
         kind = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
         if kind.startswith("text/") or kind in ("application/javascript",):
