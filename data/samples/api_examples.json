@@ -4466,6 +4466,7 @@
     "transfers": []
    },
    "violations": [],
+   "rest_violations": [],
    "summary": {
     "question": "Сводка на 2026-10-05",
     "answer": "На линии 326 из 326 нарядов, водители на 717 из 717 смен",
@@ -4482,6 +4483,7 @@
      "no_driver_by_route": {}
     }
    },
+   "notes": [],
    "seconds": 0.24
   }
  },

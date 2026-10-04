@@ -12,6 +12,8 @@ from http.server import ThreadingHTTPServer
 from naryad.core.invariants import check_rest
 from naryad.core.model import Plan
 from naryad.data.generate import generate
+from naryad.solve.drivers import DriverState
+from naryad.web.api import hm
 from naryad.web.api import EXAMPLES_FILE, Engine, Handler, make_examples
 
 PARK7 = {"preset": "park7", "date": "2026-10-05", "seed": 1, "moment": "morning"}
@@ -375,6 +377,75 @@ class TestTransfers(unittest.TestCase):
             got, payload = self.engine.handle("POST", f"/api/days/{day_id}/plan", None, body)
             self.assertEqual(got, status, body)
             self.assertIn(word, payload["error"], body)
+
+
+class TestRestBetweenDays(unittest.TestCase):
+    """Нормы отдыха между днями: главное, что мы продаём, должно быть видно в ответе.
+
+    До этой правки API отвечал «нарушений 0», ничего про отдых не проверив:
+    check_rest вызывался только из командной строки.
+    """
+
+    def setUp(self):
+        self.engine = Engine()
+        self.ids = [ok(self.engine.handle("POST", "/api/days", None, dict(PARK7, date=date)))["day_id"]
+                    for date in ("2026-10-05", "2026-10-06", "2026-10-07")]
+
+    def plan(self, index, body=None):
+        return ok(self.engine.handle("POST", f"/api/days/{self.ids[index]}/plan", None, body or {}))
+
+    def test_first_day_is_clean(self):
+        first = self.plan(0)
+        self.assertEqual(first["violations"], [])
+        self.assertEqual(first["rest_violations"], [])
+        self.assertEqual(first["notes"], [])
+
+    def test_days_planned_separately_show_rest_violations(self):
+        self.plan(0)
+        second = self.plan(1)
+        self.assertEqual(second["violations"], [], "сам день законен")
+        self.assertTrue(second["rest_violations"], "а отдых между днями нарушен")
+        self.assertTrue(any("history_from" in note for note in second["notes"]))
+        codes = {v["code"] for v in second["rest_violations"]}
+        self.assertTrue(codes <= {"daily_rest", "rest_ratio", "weekly_rest"}, codes)
+        for violation in second["rest_violations"]:
+            self.assertEqual(set(violation), {"code", "text", "ids"})
+
+    def test_chained_days_have_no_rest_violations(self):
+        self.plan(0)
+        self.assertEqual(self.plan(1, {"history_from": self.ids[0]})["rest_violations"], [])
+        self.assertEqual(self.plan(2, {"history_from": self.ids[1]})["rest_violations"], [])
+
+    def test_memory_follows_what_actually_happened(self):
+        """Водитель, которого не допустили до начала смены, не считается работавшим."""
+        self.plan(0)
+        record = self.engine.days[self.ids[0]]
+        state, day = record.state, record.day
+        shift = min((s for s in day.shifts.values()
+                     if s.start > 9 * 60 and day.duties[s.duty_id].type == "line"
+                     and state.driver_at(s.id, s.start) is not None),
+                    key=lambda s: (s.start, s.id))
+        driver = state.driver_at(shift.id, shift.start)
+        self.assertIsNotNone(record.history_after.drivers.get(driver))
+        event = {"type": "no_show", "driver_id": driver, "at": hm(shift.start - 20)}
+        options = ok(self.engine.handle("POST", f"/api/days/{self.ids[0]}/events/options", None, event))
+        chosen = next(o["index"] for o in options["options"] if o["kind"] != "none")
+        ok(self.engine.handle("POST", f"/api/days/{self.ids[0]}/events/apply", None,
+                              {"event": event, "option": chosen}))
+        after = record.history_after.drivers
+        self.assertIsNone(after.get(driver, DriverState()).last_end,
+                          "не вышедший водитель не должен считаться работавшим")
+        self.assertTrue(any("применено событий" in note
+                            for note in self.plan(1, {"history_from": self.ids[0]})["notes"]))
+
+    def test_other_city_is_not_counted_as_yesterday(self):
+        """День другого города не должен считаться предыдущей сменой тех же водителей."""
+        self.plan(0)
+        other = ok(self.engine.handle("POST", "/api/days", None,
+                                      {"preset": "case", "date": "2026-10-06", "seed": 1}))["day_id"]
+        answer = ok(self.engine.handle("POST", f"/api/days/{other}/plan", None, {}))
+        self.assertEqual(answer["rest_violations"], [])
+        self.assertEqual(answer["notes"], [])
 
 
 class TestExamplesFile(unittest.TestCase):

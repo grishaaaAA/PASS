@@ -36,12 +36,13 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from naryad import explain
-from naryad.core.invariants import (LABOR_FILE, check_plan, labor_preset_name, labor_presets,
-                                    load_labor, use_labor_preset)
+from naryad.core.invariants import (LABOR_FILE, check_plan, check_rest, labor_preset_name,
+                                    labor_presets, load_labor, use_labor_preset)
 from naryad.core.model import Day, Plan
 from naryad.data.check import check
 from naryad.data.generate import generate
-from naryad.ops.replan import Accident, Breakdown, NoShow, OpsState, apply, check_state, options_for
+from naryad.ops.replan import (Accident, Breakdown, NoShow, OpsState, apply, check_state,
+                               history_after, options_for)
 from naryad.solve.city import add_transfers
 from naryad.solve.drivers import History, solve_drivers
 from naryad.solve.vehicles import solve_vehicles
@@ -85,6 +86,7 @@ class DayRecord:
     history_after: History = field(default_factory=History)    # то же плюс этот день
     log: list = field(default_factory=list)
     seconds: float = 0.0
+    source: str | None = None   # день, от которого взята память водителей
 
 
 ROUTES = [
@@ -227,8 +229,9 @@ class Engine:
         record = self._day(day_id)
         if not isinstance(body, dict):
             raise ApiError(BAD, "тело запроса: объект JSON")
-        history = History()
+        history, labor = History(), load_labor()
         source = body.get("history_from")
+        notes = []
         if source is not None:
             if not isinstance(source, str):
                 raise ApiError(BAD, "history_from: номер дня строкой, например day-1")
@@ -236,6 +239,14 @@ class Engine:
             if previous.day.meta["date"] >= record.day.meta["date"]:
                 raise ApiError(BAD, f"history_from: день {source} должен быть раньше {record.day.meta['date']}")
             history = copy.deepcopy(previous.history_after)
+            if previous.log:
+                notes.append(f"память водителей взята по факту дня {source}: "
+                             f"в нём применено событий {len(previous.log)}")
+        earlier = self._earlier(record)
+        if source is None and earlier:
+            notes.append("history_from не передан: водители считаются полностью отдохнувшими. "
+                         f"Есть более ранние дни этого же набора данных с планом: "
+                         f"{', '.join(r.id for r in earlier)}")
         transfers, gas_parks = self._transfer_options(record, body)
 
         started = time.perf_counter()
@@ -245,14 +256,53 @@ class Engine:
             add_transfers(record.day, vehicles, gas_parks=gas_parks)
         plan = solve_drivers(record.day, vehicles, history)
         seconds = round(time.perf_counter() - started, 2)
+        series = [(r.day, r.plan) for r in earlier] + [(record.day, plan)]
         answer = {"plan": plan.to_dict(), "violations": _violations(check_plan(record.day, plan)),
+                  "rest_violations": _violations(check_rest(series, labor)),
                   "summary": explain.day_summary(record.day, plan, before),
-                  "seconds": seconds}
+                  "notes": notes, "seconds": seconds}
 
-        record.history_before, record.history_after = before, history
+        record.history_before, record.source = before, source
         record.plan, record.log, record.seconds = plan, [], seconds
         record.state = OpsState.from_plan(record.day, plan, before)
+        record.history_after = history_after(record.state, labor)
         return answer
+
+    def _earlier(self, record: DayRecord) -> list:
+        """Дни с планами до этого дня, по одному на дату: для проверки отдыха.
+
+        Берутся все дни в памяти, а не только цепочка history_from: если
+        диспетчер построил два дня независимо, нарушения отдыха между ними
+        всё равно надо показать. Считаются только дни одного и того же
+        набора данных (те же парки, та же настройка, тот же номер набора):
+        у другого города номера водителей могут совпадать случайно, и
+        сверять по ним отдых нельзя. Если на одну дату загружено несколько
+        вариантов дня, берётся последний загруженный.
+        """
+        key, today = self._city_key(record.day), record.day.meta["date"]
+        by_date: dict = {}
+        for other in self.days.values():
+            if other.id == record.id or other.plan is None:
+                continue
+            date_of = other.day.meta["date"]
+            if date_of >= today or self._city_key(other.day) != key:
+                continue
+            kept = by_date.get(date_of)
+            if kept is None or self._number(other.id) > self._number(kept.id):
+                by_date[date_of] = other
+        return [r for _, r in sorted(by_date.items())]
+
+    @staticmethod
+    def _city_key(day) -> tuple:
+        """Признак «это тот же набор данных»: парки, настройка, вводные, номер набора."""
+        meta = day.meta
+        return (frozenset(day.parks), meta.get("preset"), meta.get("seed"),
+                json.dumps(meta.get("inputs") or {}, sort_keys=True, ensure_ascii=False))
+
+    @staticmethod
+    def _number(day_id: str) -> int:
+        tail = day_id.rsplit("-", 1)[-1]
+        return int(tail) if tail.isdigit() else 0
 
     @staticmethod
     def _transfer_options(record: DayRecord, body: dict) -> tuple[bool, set | None]:
@@ -382,6 +432,7 @@ class Engine:
         entry = {**_event_dict(event), "option": index, "title": options[index].title}
         violations = _violations(check_state(after))
         record.state, record.log = after, record.log + [entry]
+        record.history_after = history_after(after)  # память по факту, а не по утреннему плану
         out = _state_dict(record)
         out["violations"] = violations
         return out

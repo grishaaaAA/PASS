@@ -50,7 +50,7 @@ from dataclasses import dataclass, field
 
 from naryad.core.invariants import Violation, load_labor, shift_limit, work_minutes
 from naryad.core.model import Day, Plan
-from naryad.solve.drivers import History, day_base, rest_status
+from naryad.solve.drivers import History, day_base, remember, rest_status
 from naryad.solve.vehicles import GROWTH_POWER, PRIORITY_WEIGHT
 
 SUPPLY_MIN = 30
@@ -544,6 +544,28 @@ def _hold(table: dict, who: str, start: int, end: int | None) -> None:
             if end is not None and segment.end > end:
                 kept.append(Segment(max(segment.start, end), segment.end, segment.who))
         table[key] = [s for s in kept if s.end > s.start]
+
+
+def history_after(state: OpsState, labor: dict | None = None) -> History:
+    """Память водителей по фактически отработанным отрезкам дня.
+
+    Утренний план помнит то, что назначил движок, а внутри дня людей
+    меняют: кто-то не вышел, кого-то сняли с резерва, кто-то вышел вместо
+    него. Плану на следующий день нужна фактическая картина, иначе отдых
+    посчитается не по той смене. Рабочий день водителя берётся целиком,
+    от начала первого отрезка до конца последнего.
+    """
+    labor = labor or load_labor()
+    out = copy.deepcopy(state.history)
+    base, month = day_base(state.day), state.day.meta["date"][:7]
+    worked: dict = {}
+    for segments in state.drivers.values():
+        for segment in segments:
+            start, end = worked.get(segment.who, (segment.start, segment.end))
+            worked[segment.who] = (min(start, segment.start), max(end, segment.end))
+    for driver_id, (start, end) in sorted(worked.items(), key=lambda item: (item[1][0], item[0])):
+        remember(out.get(driver_id), base + start, base + end, month, labor)
+    return out
 
 
 def _end(table: dict, key: str, t: int, who: str | None = None) -> None:
