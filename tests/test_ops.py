@@ -435,5 +435,123 @@ class TestScenarios(unittest.TestCase):
         self.assertTrue(options)
 
 
+class TestSegmentDiscipline(unittest.TestCase):
+    """Дисциплина отрезков: ресурс не ставится поверх уже занятого.
+
+    Три сценария из проверки агентами: второй сход на том же наряде ставил
+    второй автобус поверх уже вернувшегося своего; выбывший автобус
+    оставался в плане на другом наряде; резервного водителя отдавали на два
+    наряда. Плюс общее свойство: у водителя есть допуск к классу того
+    автобуса, который он реально ведёт.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.base = morning_state()
+        cls.duty = important_running(cls.base)
+
+    def assertLegal(self, state, what=""):
+        found = check_state(state)
+        self.assertEqual(found, [], f"{what}: {[v.text for v in found]}")
+
+    def assertPermits(self, state, what=""):
+        """У каждого водителя есть допуск к классу автобуса на его наряде."""
+        day = state.day
+        for shift_id, segments in state.drivers.items():
+            duty_id = day.shifts[shift_id].duty_id
+            for seg in segments:
+                for bus in state.vehicles.get(duty_id, []):
+                    if bus.start < seg.end and seg.start < bus.end:
+                        self.assertIn(day.vehicles[bus.who].cls, day.drivers[seg.who].classes,
+                                      f"{what}: {seg.who} ведёт {bus.who}")
+
+    def test_second_breakdown_on_the_same_duty(self):
+        first = Breakdown(self.base.vehicle_at(self.duty.id, MORNING), MORNING, 60)
+        after = apply(self.base, first, options_for(self.base, first)[0])
+        self.assertLegal(after, "первый сход")
+        own_back = [s for s in after.vehicles[self.duty.id] if s.start > MORNING]
+        self.assertTrue(own_back, "свой автобус должен вернуться")
+        later = MORNING + 40
+        second_vehicle = after.vehicle_at(self.duty.id, later)
+        if second_vehicle is None:
+            self.skipTest("на этом наряде подмены в это время нет")
+        for duration in (None, 20, 90):
+            event = Breakdown(second_vehicle, later, duration)
+            for option in options_for(after, event, limit=None):
+                state = apply(after, event, option)
+                self.assertLegal(state, f"второй сход, {option.kind}")
+                self.assertPermits(state, f"второй сход, {option.kind}")
+
+    def test_departed_vehicle_leaves_every_duty(self):
+        event = Breakdown(self.base.vehicle_at(self.duty.id, MORNING), MORNING, 120)
+        reserve = next((o for o in options_for(self.base, event, limit=None) if o.kind == "reserve"), None)
+        if reserve is None:
+            self.skipTest("вариант с резервом не предложен")
+        after = apply(self.base, event, reserve)
+        self.assertLegal(after, "замена резервом")
+        on_line = after.vehicle_at(self.duty.id, MORNING + 40)
+        elsewhere = [k for k, segs in after.vehicles.items()
+                     if k != self.duty.id and any(s.who == on_line for s in segs)]
+        self.assertTrue(elsewhere, "резервный автобус должен вернуться в свой наряд")
+        crash = Accident(on_line, MORNING + 60)
+        state = apply(after, crash, options_for(after, crash)[0])
+        self.assertLegal(state, "ДТП с резервным автобусом")
+        for key, segs in state.vehicles.items():
+            for seg in segs:
+                self.assertFalse(seg.who == on_line and seg.end > MORNING + 60,
+                                 f"выбывший автобус остался на {key}")
+
+    def test_reserve_driver_is_not_given_twice(self):
+        shift = self.base.shift_at(self.duty.id, MORNING)
+        event = NoShow(self.base.driver_at(shift.id, MORNING), MORNING)
+        chosen = next((o for o in options_for(self.base, event, limit=None)
+                       if o.kind == "reserve_driver"), None)
+        if chosen is None:
+            self.skipTest("вариант с водителем резерва не предложен")
+        after = apply(self.base, event, chosen)
+        self.assertLegal(after, "неявка закрыта водителем резерва")
+        later = MORNING + 40
+        reserve_driver = next(s.who for segs in after.drivers.values() for s in segs
+                              if s.start <= later < s.end
+                              and s.who in {c[2].who for c in chosen.changes if c[0] == "driver"})
+        other = next(d for d in sorted(self.base.day.duties.values(), key=lambda d: d.id)
+                     if d.type == "line" and d.id != self.duty.id
+                     and d.start < later < d.end and after.vehicle_at(d.id, later))
+        second = Breakdown(after.vehicle_at(other.id, later), later, None)
+        for option in options_for(after, second, limit=None):
+            state = apply(after, second, option)
+            self.assertLegal(state, f"второе событие, {option.kind}")
+            self.assertPermits(state, f"второе событие, {option.kind}")
+            busy = [(shift_id, s.start, s.end) for shift_id, segs in state.drivers.items()
+                    for s in segs if s.who == reserve_driver and s.start <= later < s.end]
+            self.assertLessEqual(len(busy), 1,
+                                 f"водителя {reserve_driver} отдали дважды: {busy}")
+
+    def test_many_events_keep_the_day_legal(self):
+        """Перебор: несколько нарядов, разное время, все виды событий и все варианты."""
+        day = self.base.day
+        line = sorted((d for d in day.duties.values()
+                       if d.type == "line" and d.day_type == day.day_type
+                       and d.start + 120 < d.end and self.base.vehicle_at(d.id, d.start + 60)),
+                      key=lambda d: d.id)[:6]
+        applied = 0
+        for duty in line:
+            for moment in (duty.start + 60, (duty.start + duty.end) // 2):
+                vehicle = self.base.vehicle_at(duty.id, moment)
+                shift = self.base.shift_at(duty.id, moment)
+                driver = self.base.driver_at(shift.id, moment) if shift else None
+                events = [Breakdown(vehicle, moment, None), Breakdown(vehicle, moment, 30),
+                          Accident(vehicle, moment)]
+                if driver:
+                    events.append(NoShow(driver, moment))
+                for event in events:
+                    for option in options_for(self.base, event, limit=None):
+                        state = apply(self.base, event, option)
+                        applied += 1
+                        self.assertLegal(state, f"{duty.id} {type(event).__name__} {option.kind}")
+                        self.assertPermits(state, f"{duty.id} {option.kind}")
+        self.assertGreater(applied, 50, "перебор должен был проверить хотя бы 50 применений")
+
+
 if __name__ == "__main__":
     unittest.main()
