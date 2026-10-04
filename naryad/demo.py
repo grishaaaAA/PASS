@@ -147,6 +147,7 @@ class Demo:
 
     def event(self, event: dict) -> None:
         """Варианты на событие, объяснение лучшего, применение и проверка."""
+        before = self.call("GET", f"/api/days/{self.day_id}/state")
         options = self.call("POST", f"/api/days/{self.day_id}/events/options", event)["options"]
         if not options:
             raise DemoError("движок не дал ни одного варианта")
@@ -164,12 +165,19 @@ class Demo:
         violations = after["violations"]
         print(f"  Проверка дня после замены: нарушений {len(violations)}"
               + ("" if not violations else f", первое: {violations[0]['text']}"))
-        self.changes(after)
+        self.changes(before, after)
 
-    def changes(self, state: dict) -> None:
-        """Что именно поменялось в дне: отрезки нарядов и смен, кто выбыл."""
-        duties = [d for d in state["duties"] if len(d["vehicles"]) > 1]
-        shifts = [s for s in state["shifts"] if len(s["drivers"]) > 1]
+    def changes(self, before: dict, state: dict) -> None:
+        """Что именно поменялось в дне: сравнение с состоянием до события.
+
+        Считать изменённым то, где больше одного отрезка, нельзя: замена
+        водителя, который не вышел до начала смены, даёт ровно один отрезок,
+        и показ сообщал «изменено 0», хотя замена была.
+        """
+        was_duties = {d["duty_id"]: d["vehicles"] for d in before["duties"]}
+        was_shifts = {s["shift_id"]: s["drivers"] for s in before["shifts"]}
+        duties = [d for d in state["duties"] if d["vehicles"] != was_duties.get(d["duty_id"])]
+        shifts = [s for s in state["shifts"] if s["drivers"] != was_shifts.get(s["shift_id"])]
         print(f"  Изменено нарядов: {len(duties)}, смен: {len(shifts)}; "
               f"остальные наряды без изменений: {len(state['duties']) - len(duties)}")
         for duty in duties[:3]:

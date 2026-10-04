@@ -1,6 +1,7 @@
 """Проверки генератора, проверки данных и CSV. Запуск: python -m unittest"""
 
 import copy
+import json
 import tempfile
 import unittest
 from collections import Counter
@@ -321,6 +322,37 @@ class TestMetaAndSelfContradiction(unittest.TestCase):
         data["routes"][0]["park_id"] = "P08"
         errors = check(data)["errors"]
         self.assertTrue(any("а маршрут" in e for e in errors), errors)
+
+    def test_rules_promised_by_the_contract(self):
+        """Правила, которые docs/CONTRACT.md называет прямо, и базовые правила полей."""
+        cases = (
+            ("повтор номера", lambda d: d["vehicles"].append(dict(d["vehicles"][0])), "повторяется"),
+            ("ссылка в никуда", lambda d: d["vehicles"][0].update(park_id="P99"), "такого нет"),
+            ("ссылка маршрута в никуда", lambda d: d["duties"][0].update(route_id="нет"), "такого нет"),
+            ("нет списка", lambda d: d.pop("shifts"), "нет списка shifts"),
+            ("список не список", lambda d: d.update(vehicles={}), "нет списка vehicles"),
+            ("нет поля", lambda d: d["vehicles"][0].pop("board_number"), "нет поля board_number"),
+            ("поле пустое", lambda d: d["vehicles"][0].update(board_number=None), "пустое"),
+            ("не тот тип", lambda d: d["vehicles"][0].update(board_number=7001), "должно быть str"),
+            ("число строкой", lambda d: d["parks"][0].update(list_count="420"), "должно быть int"),
+            ("правда вместо числа", lambda d: d["parks"][0].update(list_count=True), "должно быть int"),
+        )
+        for name, change, word in cases:
+            with self.subTest(name):
+                errors = self.spoiled(change)["errors"]
+                self.assertTrue(errors, name)
+                self.assertTrue(any(word in e for e in errors), (name, errors[:3]))
+
+    def test_good_day_passes_every_rule(self):
+        """Образцы в репозитории обязаны проходить проверку без ошибок и предупреждений."""
+        from pathlib import Path as _Path
+        samples = _Path(__file__).resolve().parent.parent / "data" / "samples"
+        for name in ("park7_weekday.json", "park7_weekend.json", "case_day1.json"):
+            with self.subTest(name):
+                data = json.loads((samples / name).read_text(encoding="utf-8"))
+                result = check(data)
+                self.assertEqual(result["errors"], [], name)
+                self.assertEqual(result["warnings"], [], name)
 
     def test_park_not_working_with_duties_is_a_warning(self):
         result = self.spoiled(lambda d: d["parks"][0].update(state="down"))

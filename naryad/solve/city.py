@@ -160,9 +160,17 @@ def solve_city(day: Day, transfers: bool = True, cost: float = TRANSFER_COST,
 
 
 def with_park_shortage(day: Day, park_id: str, share: float, seed: int = 1) -> Day:
-    """Копия дня, где в одном парке доля исправных автобусов не вышла (ЧП в парке)."""
+    """Копия дня, где в одном парке доля исправных автобусов не вышла (ЧП в парке).
+
+    Копируются все словари дня, а не только автобусы: иначе правка парка или
+    наряда в полученном дне меняет и исходный, и сценарии начинают зависеть
+    друг от друга.
+    """
     rng = random.Random(seed)
-    out = dataclasses.replace(day, vehicles=dict(day.vehicles))
+    out = dataclasses.replace(day, meta=dict(day.meta), parks=dict(day.parks),
+                              routes=dict(day.routes), duties=dict(day.duties),
+                              shifts=dict(day.shifts), vehicles=dict(day.vehicles),
+                              drivers=dict(day.drivers))
     ok = sorted((v for v in day.vehicles.values() if v.park_id == park_id and v.condition == "ok"),
                 key=lambda v: v.id)
     for v in rng.sample(ok, round(len(ok) * share)):

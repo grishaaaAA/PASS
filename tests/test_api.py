@@ -18,6 +18,8 @@ from naryad.web.api import EXAMPLES_FILE, Engine, Handler, make_examples
 
 PARK7 = {"preset": "park7", "date": "2026-10-05", "seed": 1, "moment": "morning"}
 DUTY, SHIFT, ROUTE = "P07-R01-WD01", "P07-R01-WD01-S1", "P07-R01"
+# все виды вариантов из docs/CONTRACT.md, раздел «API движка»
+KINDS = ("none", "idle", "reserve", "donor", "free_driver", "reserve_driver")
 CITY = dict(release_per_park=40, routes_total=6,
             class_mix={"medium": 30, "big": 30, "extra_big": 20})
 
@@ -187,9 +189,22 @@ class TestEvents(unittest.TestCase):
         self.assertEqual([o["index"] for o in options], list(range(len(options))))
         self.assertEqual(options[0]["cost"], min(o["cost"] for o in options))
         for option in options:
-            self.assertIn(option["kind"], ("none", "idle", "reserve", "donor", "free_driver"))
+            self.assertIn(option["kind"], KINDS)
             self.assertEqual(set(option["explanation"]), {"question", "answer", "reasons", "numbers"})
         self.assertEqual(self.engine.days["day-1"].log, [])  # ничего не изменилось
+
+    def test_every_kind_is_in_the_contract(self):
+        """Вид варианта, который отдаёт движок, должен быть описан в контракте."""
+        from pathlib import Path as _Path
+        import re as _re
+        contract = (_Path(__file__).resolve().parent.parent / "docs" / "CONTRACT.md").read_text(encoding="utf-8")
+        row = next(line for line in contract.splitlines() if line.startswith("| kind |"))
+        described = set(_re.findall(r"`([a-z_]+)`", row))
+        self.assertEqual(set(KINDS), described, "список видов в тесте и в контракте разошёлся")
+        source = (_Path(__file__).resolve().parent.parent / "naryad" / "ops" / "replan.py").read_text(encoding="utf-8")
+        in_code = set(_re.findall(r'Option\(\s*"([a-z_]+)"', source))
+        self.assertTrue(in_code <= described,
+                        f"движок отдаёт виды, которых нет в контракте: {sorted(in_code - described)}")
 
     def test_apply_and_log(self):
         options = ok(self.engine.handle("POST", "/api/days/day-1/events/options", None, self.event))["options"]
