@@ -112,7 +112,8 @@ class TestPlanAndExplain(unittest.TestCase):
 
     def test_state_before_events_is_the_plan(self):
         state = ok(self.engine.handle("GET", "/api/days/day-1/state"))
-        self.assertEqual(state["meta"], {"day_id": "day-1", "date": "2026-10-05", "events": 0, "labor": "current"})
+        self.assertEqual(state["meta"], {"day_id": "day-1", "date": "2026-10-05", "events": 0,
+                                         "edits": 0, "labor": "current"})
         self.assertEqual(len(state["duties"]), 350)
         self.assertTrue(all(len(d["vehicles"]) == 1 for d in state["duties"]))
         one = next(d for d in state["duties"] if d["duty_id"] == DUTY)
@@ -265,6 +266,209 @@ class TestEvents(unittest.TestCase):
         ok(self.engine.handle("POST", "/api/days/day-1/plan", None, {}))
         state = ok(self.engine.handle("GET", "/api/days/day-1/state"))
         self.assertEqual((state["meta"]["events"], state["log"], state["down_vehicles"]), (0, [], []))
+
+
+class TestManualEdits(unittest.TestCase):
+    """Ручная правка плана диспетчером: кого можно поставить, отказ, force, журнал."""
+
+    def setUp(self):
+        self.engine = Engine()
+        ok(self.engine.handle("POST", "/api/days", None, PARK7))
+        ok(self.engine.handle("POST", "/api/days/day-1/plan", None, {}))
+        self.record = self.engine.days["day-1"]
+        self.state = ok(self.engine.handle("GET", "/api/days/day-1/state"))
+
+    def edit(self, body):
+        return self.engine.handle("POST", "/api/days/day-1/edits", None, body)
+
+    def options(self, **query):
+        return ok(self.engine.handle("GET", "/api/days/day-1/edits/options", query, None))
+
+    def busy_vehicle(self, except_duty: str = DUTY) -> str:
+        return next(d["vehicles"][0]["vehicle_id"] for d in self.state["duties"]
+                    if d["duty_id"] != except_duty and d["vehicles"])
+
+    # --- кого можно поставить --------------------------------------------------
+
+    def test_options_offer_only_free_and_suitable_vehicles(self):
+        answer = self.options(duty_id=DUTY)
+        self.assertEqual((answer["duty_id"], answer["from"], answer["to"]), (DUTY, "04:50", "25:20"))
+        self.assertEqual(answer["shown"], min(answer["total"], 50))
+        day, state = self.record.day, self.record.state
+        duty, standing = day.duties[DUTY], set()
+        for segments in state.vehicles.values():
+            standing |= {seg.who for seg in segments}
+        self.assertTrue(answer["total"] > 0)
+        for item in answer["vehicles"]:
+            vehicle = day.vehicles[item["vehicle_id"]]
+            self.assertNotIn(vehicle.id, standing, "предложен автобус, который уже на наряде")
+            self.assertEqual(vehicle.condition, "ok")
+            self.assertEqual(vehicle.park_id, duty.park_id)
+            self.assertIn(vehicle.cls, day.routes[duty.route_id].allowed_classes)
+
+    def test_options_need_exactly_one_target(self):
+        self.assertEqual(self.engine.handle("GET", "/api/days/day-1/edits/options", {}, None)[0], 400)
+        self.assertEqual(self.engine.handle("GET", "/api/days/day-1/edits/options",
+                                            {"duty_id": DUTY, "shift_id": SHIFT}, None)[0], 400)
+
+    def test_offered_vehicle_can_actually_be_set(self):
+        """Что показано в списке выбора, то и ставится без нарушений."""
+        for item in self.options(duty_id=DUTY)["vehicles"][:3]:
+            engine = Engine()
+            ok(engine.handle("POST", "/api/days", None, PARK7))
+            ok(engine.handle("POST", "/api/days/day-1/plan", None, {}))
+            status, payload = engine.handle("POST", "/api/days/day-1/edits", None,
+                                            {"type": "set_vehicle", "duty_id": DUTY,
+                                             "vehicle_id": item["vehicle_id"]})
+            self.assertEqual((status, payload["new_violations"]), (200, []), item)
+
+    def test_offered_driver_can_actually_be_set(self):
+        answer = self.options(shift_id=SHIFT)
+        self.assertTrue(answer["total"] > 0)
+        self.assertEqual(answer["for_vehicle"], self.record.state.vehicle_at(DUTY, 4 * 60 + 50))
+        status, payload = self.edit({"type": "set_driver", "shift_id": SHIFT,
+                                     "driver_id": answer["drivers"][0]["driver_id"]})
+        self.assertEqual((status, payload["new_violations"]), (200, []))
+
+    # --- постановка и снятие ---------------------------------------------------
+
+    def test_set_free_vehicle_changes_state_and_log(self):
+        vehicle = self.options(duty_id=DUTY)["vehicles"][0]["vehicle_id"]
+        payload = ok(self.edit({"type": "set_vehicle", "duty_id": DUTY, "vehicle_id": vehicle}))
+        self.assertEqual(payload["new_violations"], [])
+        duty = next(d for d in payload["duties"] if d["duty_id"] == DUTY)
+        self.assertEqual(duty["vehicles"], [{"from": "04:50", "to": "25:20", "vehicle_id": vehicle}])
+        self.assertEqual((payload["meta"]["edits"], payload["meta"]["events"]), (1, 0))
+        entry = payload["log"][0]
+        self.assertEqual(entry["kind"], "edit")
+        self.assertEqual(entry["type"], "set_vehicle")
+        self.assertEqual((entry["forced"], entry["violations"]), (False, []))
+        self.assertIn("Диспетчер поставил автобус", entry["title"])
+        state = ok(self.engine.handle("GET", "/api/days/day-1/state"))
+        self.assertEqual(state, {k: v for k, v in payload.items()
+                                 if k not in ("violations", "new_violations")})
+
+    def test_clear_puts_duty_into_unfilled_and_set_takes_it_back(self):
+        payload = ok(self.edit({"type": "clear_vehicle", "duty_id": DUTY}))
+        self.assertNotIn(DUTY, [d["duty_id"] for d in payload["duties"]])
+        self.assertIn({"id": DUTY, "reason": "removed_by_dispatcher"}, payload["unfilled"])
+        vehicle = self.options(duty_id=DUTY)["vehicles"][0]["vehicle_id"]
+        back = ok(self.edit({"type": "set_vehicle", "duty_id": DUTY, "vehicle_id": vehicle}))
+        self.assertNotIn(DUTY, [u["id"] for u in back["unfilled"]])
+
+    def test_window_leaves_the_rest_of_the_duty_alone(self):
+        before = next(d for d in self.state["duties"] if d["duty_id"] == DUTY)["vehicles"][0]
+        payload = ok(self.edit({"type": "clear_vehicle", "duty_id": DUTY, "from": "10:00", "to": "12:00"}))
+        duty = next(d for d in payload["duties"] if d["duty_id"] == DUTY)
+        self.assertEqual(duty["vehicles"], [{"from": before["from"], "to": "10:00",
+                                             "vehicle_id": before["vehicle_id"]},
+                                            {"from": "12:00", "to": before["to"],
+                                             "vehicle_id": before["vehicle_id"]}])
+        self.assertEqual(payload["unfilled"], [], "наряд закрыт частично, он не незакрытый")
+
+    def test_dispatcher_moves_bus_from_one_duty_to_another(self):
+        """Снять с второстепенного и поставить на важный - две правки, ноль нарушений."""
+        donor = next(d["duty_id"] for d in self.state["duties"] if d["duty_id"] != DUTY)
+        moved = next(d["vehicles"][0]["vehicle_id"] for d in self.state["duties"]
+                     if d["duty_id"] == donor)
+        ok(self.edit({"type": "clear_vehicle", "duty_id": donor, "reason": "нужен на важном маршруте"}))
+        offered = [v["vehicle_id"] for v in self.options(duty_id=DUTY)["vehicles"]]
+        self.assertIn(moved, offered, "освободившийся автобус должен попасть в список выбора")
+        payload = ok(self.edit({"type": "set_vehicle", "duty_id": DUTY, "vehicle_id": moved}))
+        self.assertEqual(payload["new_violations"], [])
+        self.assertEqual(payload["meta"]["edits"], 2)
+        self.assertEqual(payload["log"][0]["reason"], "нужен на важном маршруте")
+
+    # --- отказ и ответственность диспетчера -------------------------------------
+
+    def test_edit_against_norms_is_refused_and_changes_nothing(self):
+        busy = self.busy_vehicle()
+        status, payload = self.edit({"type": "set_vehicle", "duty_id": DUTY, "vehicle_id": busy})
+        self.assertEqual(status, 409)
+        self.assertEqual([v["code"] for v in payload["violations"]], ["vehicle_twice"])
+        self.assertIn("force", payload["hint"])
+        self.assertEqual(ok(self.engine.handle("GET", "/api/days/day-1/state")), self.state,
+                         "отклонённая правка не должна менять состояние дня")
+
+    def test_force_applies_and_records_what_was_broken(self):
+        busy = self.busy_vehicle()
+        payload = ok(self.edit({"type": "set_vehicle", "duty_id": DUTY, "vehicle_id": busy,
+                                "force": True, "reason": "распоряжение начальника колонны"}))
+        self.assertEqual([v["code"] for v in payload["new_violations"]], ["vehicle_twice"])
+        entry = payload["log"][0]
+        self.assertTrue(entry["forced"])
+        self.assertEqual(entry["reason"], "распоряжение начальника колонны")
+        self.assertEqual([v["code"] for v in entry["violations"]], ["vehicle_twice"])
+
+    def test_old_violations_are_not_blamed_on_the_next_edit(self):
+        """Нарушение, которое уже было в дне, не мешает следующей законной правке."""
+        filled = [d for d in self.state["duties"] if d["duty_id"] != DUTY and d["vehicles"]]
+        donor, third = filled[0]["duty_id"], filled[1]["duty_id"]
+        ok(self.edit({"type": "set_vehicle", "duty_id": DUTY, "force": True,
+                      "vehicle_id": filled[0]["vehicles"][0]["vehicle_id"]}))
+        payload = ok(self.edit({"type": "clear_vehicle", "duty_id": third}))
+        self.assertEqual(payload["new_violations"], [], "старое нарушение приписано новой правке")
+        self.assertEqual([v["code"] for v in payload["violations"]], ["vehicle_twice"],
+                         "общий список нарушений дня должен помнить прежнее нарушение")
+        self.assertIn(donor, payload["violations"][0]["ids"])
+
+    # --- связь с остальным API ---------------------------------------------------
+
+    def test_event_after_edit_still_works(self):
+        """Запись правки в журнале не должна ломать проверку порядка событий."""
+        other = next(d["duty_id"] for d in self.state["duties"] if d["duty_id"] != DUTY)
+        ok(self.edit({"type": "clear_vehicle", "duty_id": other}))
+        vehicle = self.record.state.vehicle_at(DUTY, 8 * 60 + 40)
+        event = {"type": "breakdown", "vehicle_id": vehicle, "at": "08:40"}
+        payload = ok(self.engine.handle("POST", "/api/days/day-1/events/apply", None,
+                                        {"event": event, "option": 0}))
+        self.assertEqual((payload["meta"]["events"], payload["meta"]["edits"]), (1, 1))
+        self.assertEqual([e["kind"] for e in payload["log"]], ["edit", "event"])
+
+    def test_driver_memory_follows_the_edit(self):
+        driver = self.record.state.driver_at(SHIFT, 5 * 60)
+        self.assertIsNotNone(self.record.history_after.drivers.get(driver))
+        ok(self.edit({"type": "clear_driver", "shift_id": SHIFT}))
+        self.assertIsNone(self.record.history_after.drivers.get(driver, DriverState()).last_end,
+                          "снятый водитель не должен считаться работавшим")
+
+    def test_replan_clears_edits(self):
+        ok(self.edit({"type": "clear_vehicle", "duty_id": DUTY}))
+        ok(self.engine.handle("POST", "/api/days/day-1/plan", None, {}))
+        state = ok(self.engine.handle("GET", "/api/days/day-1/state"))
+        self.assertEqual((state["meta"]["edits"], state["log"]), (0, []))
+        self.assertEqual(state, self.state)
+
+    def test_edit_needs_a_plan(self):
+        second = ok(self.engine.handle("POST", "/api/days", None, PARK7))["day_id"]
+        for method, path, query in (("POST", f"/api/days/{second}/edits", None),
+                                    ("GET", f"/api/days/{second}/edits/options", {"duty_id": DUTY})):
+            status, payload = self.engine.handle(method, path, query,
+                                                 {"type": "clear_vehicle", "duty_id": DUTY})
+            self.assertEqual(status, 409, path)
+            self.assertIn("Сначала постройте план", payload["error"])
+
+    def test_edit_errors(self):
+        cases = [
+            ({"type": "нет"}, 400, "type:"),
+            ({"type": "clear_vehicle"}, 400, "нужно поле duty_id"),
+            ({"type": "clear_driver"}, 400, "нужно поле shift_id"),
+            ({"type": "clear_vehicle", "duty_id": "нет такого"}, 404, "Нет наряда"),
+            ({"type": "clear_driver", "shift_id": "нет такой"}, 404, "Нет смены"),
+            ({"type": "set_vehicle", "duty_id": DUTY, "vehicle_id": "нет"}, 404, "Нет автобуса"),
+            ({"type": "set_driver", "shift_id": SHIFT, "driver_id": "нет"}, 404, "Нет водителя"),
+            ({"type": "clear_vehicle", "duty_id": DUTY, "from": "03:00"}, 400, "выходит за время"),
+            ({"type": "clear_vehicle", "duty_id": DUTY, "from": "12:00", "to": "10:00"}, 400, "пустое"),
+            ({"type": "clear_vehicle", "duty_id": DUTY, "from": "утром"}, 400, "ЧЧ:ММ"),
+            ({"type": "clear_vehicle", "duty_id": DUTY, "force": "да"}, 400, "force:"),
+            ({"type": "clear_vehicle", "duty_id": DUTY, "reason": 5}, 400, "reason:"),
+            ([], 400, "объект JSON"),
+        ]
+        for body, code, text in cases:
+            status, payload = self.edit(body)
+            self.assertEqual(status, code, body)
+            self.assertIn(text, payload["error"], body)
+        self.assertEqual(self.engine.days["day-1"].log, [], "ошибки не должны ничего записывать")
 
 
 class TestNoCrash(unittest.TestCase):

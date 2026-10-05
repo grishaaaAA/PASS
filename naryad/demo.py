@@ -14,7 +14,9 @@
 
 Что видит заказчик по шагам: какой это день, утренний план и его проверка,
 событие дня, до трёх вариантов замены с ценой, объяснение лучшего простыми
-словами, план после замены и проверка законности.
+словами, план после замены и проверка законности, и напоследок ручная правка
+плана диспетчером: движок подсказывает, кого можно поставить, не пропускает
+нарушение молча и записывает решение человека в журнал.
 """
 
 from __future__ import annotations
@@ -199,10 +201,63 @@ class Demo:
             print(f"    Выбыл водитель {self.day.drivers[out['driver_id']].tab_number} "
                   f"с {out['since']}")
 
+    def dispatcher_edit(self) -> None:
+        """Диспетчер не согласен с движком и правит план сам.
+
+        Показывает три вещи подряд: движок подсказывает, кого законно можно
+        поставить; правку против норм он не пропускает молча; с явным
+        подтверждением пропускает и записывает в журнал.
+        """
+        state = self.call("GET", f"/api/days/{self.day_id}/state")
+        # наряды, которых события не касались: один отрезок на весь наряд.
+        # Иначе правка затёрла бы замену, только что показанную на шаге выше.
+        quiet = [d for d in state["duties"] if len(d["vehicles"]) == 1]
+        if len(quiet) < 2:
+            return
+        duty, donor = quiet[0]["duty_id"], quiet[1]
+        self.next_step("Диспетчер правит план сам")
+
+        free = self.call("GET", f"/api/days/{self.day_id}/edits/options", query={"duty_id": duty})
+        boards = ", ".join(v["board_number"] for v in free["vehicles"][:5])
+        print(f"  На наряд {duty} законно можно поставить автобусов: {free['total']}"
+              + (f" ({boards}...)" if boards else ""))
+
+        taken = donor["vehicles"][0]["vehicle_id"]
+        refused = self.refuse("POST", f"/api/days/{self.day_id}/edits",
+                              {"type": "set_vehicle", "duty_id": duty, "vehicle_id": taken})
+        print(f"\n  Диспетчер ставит автобус {self.day.vehicles[taken].board_number}, "
+              f"который уже занят на наряде {donor['duty_id']}:")
+        print(f"    Движок: {refused['error']}")
+        for violation in refused["violations"]:
+            print(f"    - {violation['text']}")
+        print("    Правка не применена, день не изменился. Движок не молчит и не решает за человека.")
+
+        if not free["vehicles"]:
+            return
+        good = free["vehicles"][0]
+        after = self.call("POST", f"/api/days/{self.day_id}/edits",
+                          {"type": "set_vehicle", "duty_id": duty, "vehicle_id": good["vehicle_id"],
+                           "reason": "решение диспетчера"})
+        print(f"\n  Диспетчер ставит свободный автобус {good['board_number']}:")
+        print(f"    Применено, новых нарушений: {len(after['new_violations'])}. "
+              "Правка записана в журнал дня.")
+        print("    Если бы диспетчер настоял на занятом автобусе, правка прошла бы с force,")
+        print("    и в журнале осталось бы, что именно он нарушил и почему.")
+
+    def refuse(self, method: str, path: str, body: dict) -> dict:
+        """Запрос, который движок обязан отклонить. Ответ 200 здесь - ошибка показа."""
+        status, payload = self.engine.handle(method, path, None, body)
+        if status != 409:
+            raise DemoError(f"{path}: ждали отказ 409, получили {status}")
+        return payload
+
     def journal(self) -> None:
         self.next_step("Журнал дня")
         for row in self.call("GET", f"/api/days/{self.day_id}/log")["log"]:
-            print(f"  {row['at']}  {row['title']}")
+            # у события есть время, у ручной правки - окно: журнал общий
+            when = row["at"] if row.get("kind", "event") == "event" else "правка"
+            mark = " (под ответственность диспетчера)" if row.get("forced") else ""
+            print(f"  {when:>6}  {row['title']}{mark}")
         print("\n  Весь разбор занял доли секунды на каждое событие. "
               "Диспетчер видит те же цифры и те же объяснения.")
 
@@ -217,6 +272,7 @@ def run(path: Path, at: int, duration: int | None, with_no_show: bool) -> None:
     if with_no_show:
         demo.no_show()
     demo.breakdown(at, duration)
+    demo.dispatcher_edit()
     demo.journal()
     print()
 

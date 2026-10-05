@@ -561,6 +561,81 @@ def _hold(table: dict, who: str, start: int, end: int | None) -> None:
         table[key] = [s for s in kept if s.end > s.start]
 
 
+# --- ручная правка плана диспетчером -------------------------------------------
+
+EDIT_TYPES = ("set_vehicle", "clear_vehicle", "set_driver", "clear_driver")
+
+
+@dataclass(frozen=True)
+class Edit:
+    """Ручная правка: поставить или снять ресурс на наряде (смене) в окне времени.
+
+    key - наряд для автобуса, смена для водителя. who - кого ставим, при
+    снятии None. Окно задаёт диспетчер; по умолчанию это всё время наряда
+    или смены.
+    """
+
+    type: str
+    key: str
+    who: str | None
+    start: int
+    end: int
+    title: str = "Правка диспетчера"
+
+
+def _clear_window(table: dict, key: str, start: int, end: int) -> None:
+    """Убрать с наряда (смены) key всё, что стоит в окне [start, end).
+
+    Отрезок, который начался раньше окна, обрезается по его началу;
+    хвост после окна остаётся отдельным отрезком. Так правка на середину
+    наряда не стирает то, что стоит до и после неё.
+    """
+    kept = []
+    for segment in table.get(key, []):
+        if segment.start < start:
+            kept.append(Segment(segment.start, min(segment.end, start), segment.who))
+        if segment.end > end:
+            kept.append(Segment(max(segment.start, end), segment.end, segment.who))
+    table[key] = [s for s in kept if s.end > s.start]
+
+
+def manual_edit(state: OpsState, edit: Edit) -> OpsState:
+    """Новое состояние дня после ручной правки.
+
+    Законность здесь не проверяется: это дело check_state. Так диспетчер
+    видит полный список того, что он нарушает, и решает сам, а движок не
+    отказывает молча.
+    """
+    out = copy.deepcopy(state)
+    table = out.vehicles if edit.type.endswith("vehicle") else out.drivers
+    _clear_window(table, edit.key, edit.start, edit.end)
+    if edit.type.startswith("set") and edit.who and edit.end > edit.start:
+        table.setdefault(edit.key, []).append(Segment(edit.start, edit.end, edit.who))
+        table[edit.key].sort(key=lambda s: s.start)
+    out.log.append(f"{_hm(edit.start)} {edit.title}")
+    return out
+
+
+def free_vehicles(state: OpsState, duty, start: int, end: int) -> list:
+    """Автобусы, которые законно можно поставить на наряд с start до end.
+
+    Исправны, не выбыли, подходящего класса, из парка наряда (или
+    переброшены в него утром), свободны на всём окне. Пара к free_drivers.
+    """
+    allowed = _classes(state, duty)
+    out = []
+    for vehicle in state.day.vehicles.values():
+        if (vehicle.condition != "ok" or vehicle.id in state.down_vehicles
+                or vehicle.cls not in allowed):
+            continue
+        if state.transfers.get(vehicle.id, vehicle.park_id) != duty.park_id:
+            continue
+        if _busy_until(state, "vehicle", vehicle.id, start, end) < end:
+            continue
+        out.append(vehicle.id)
+    return sorted(out)
+
+
 def history_after(state: OpsState, labor: dict | None = None) -> History:
     """Память водителей по фактически отработанным отрезкам дня.
 

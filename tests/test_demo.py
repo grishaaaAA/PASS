@@ -39,6 +39,18 @@ class TestDemo(unittest.TestCase):
         self.assertEqual(text.count("нарушений 0"), 3)  # план и два события
         self.assertLess(text.index("медосмотр"), text.index("сошёл"))
 
+    def test_dispatcher_edit_step(self):
+        """Шаг правки показывает подсказку, отказ по нормам и запись в журнал."""
+        code, text = run([])
+        self.assertEqual(code, 0, text)
+        for word in ("Диспетчер правит план сам", "законно можно поставить автобусов",
+                     "Правка нарушает нормы и не применена", "одновременно на",
+                     "Правка не применена, день не изменился",
+                     "Применено, новых нарушений: 0", "правка  Диспетчер поставил автобус"):
+            self.assertIn(word, text)
+        self.assertLess(text.index("Журнал дня"), text.index("правка  Диспетчер"))
+        self.assertLess(text.index("Применяем лучший вариант"), text.index("Диспетчер правит план сам"))
+
     def test_temporary_breakdown(self):
         code, text = run(["--duration", "20"])
         self.assertEqual(code, 0, text)
