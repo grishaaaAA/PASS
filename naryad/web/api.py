@@ -1,6 +1,6 @@
 """
-API движка (Б5): день в памяти под номером, план, объяснения, события,
-ручная правка плана диспетчером, загрузка реестров перевозчика.
+API движка (Б5): день под номером, план, объяснения, интервалы по парку,
+события, ручная правка плана диспетчером, загрузка реестров перевозчика.
 
 Форматы - docs/CONTRACT.md, разделы «Состояние дня» и «API движка».
 План на день с несколькими парками строится с перебросками лишних
@@ -122,6 +122,7 @@ ROUTES = [
     ("GET", r"/api/days/([^/]+)/explain/unfilled/([^/]+)", "explain_unfilled"),
     ("GET", r"/api/days/([^/]+)/explain/summary", "explain_summary"),
     ("GET", r"/api/days/([^/]+)/explain/interval/([^/]+)", "explain_interval"),
+    ("GET", r"/api/days/([^/]+)/intervals", "intervals"),
     ("POST", r"/api/days/([^/]+)/events/options", "event_options"),
     ("POST", r"/api/days/([^/]+)/events/apply", "event_apply"),
     ("GET", r"/api/days/([^/]+)/edits/options", "edit_options"),
@@ -518,6 +519,17 @@ class Engine:
                             f"работает {numbers['running_buses']}"],
                 "numbers": numbers}
 
+    def intervals(self, day_id, query, body):
+        """Интервалы по всем маршрутам: за день целиком или на момент t.
+
+        Считается по состоянию дня, а не по утреннему плану: диспетчеру
+        нужно, что с интервалами сейчас, после сходов и правок. Этим ручка
+        отличается от explain/interval, который объясняет утренний план.
+        """
+        record = self._planned(day_id)
+        at = parse_time(query["t"], "t") if query.get("t") is not None else None
+        return explain.intervals(record.day, record.state, at)
+
     # --- события ------------------------------------------------------------------
 
     def _event(self, record: DayRecord, body: dict):
@@ -850,6 +862,9 @@ def make_examples() -> dict:
     event = {"type": "breakdown", "vehicle_id": vehicle, "at": "08:40"}
     call("POST", f"/api/days/{day_id}/events/options", event)
     call("POST", f"/api/days/{day_id}/events/apply", {"event": event, "option": 1})
+    call("GET", f"/api/days/{day_id}/intervals",
+         note="после применённого варианта: видно, во сколько раз и когда вырос интервал. "
+              "Без параметров - за весь день, с ?t=08:30 - срез на момент")
     call("GET", f"/api/days/{day_id}/state", note="после события совпадает с ответом events/apply без поля violations")
     call("GET", f"/api/days/{day_id}/log")
 

@@ -7,10 +7,10 @@ import time
 import unittest
 
 from naryad.core.model import Day, Plan
-from naryad.explain import (CLASS_NAMES, day_summary, explain_option, interval, why_driver, why_unfilled,
-                            why_vehicle)
+from naryad.explain import (CLASS_NAMES, day_summary, explain_option, interval, intervals,
+                            route_interval, why_driver, why_unfilled, why_vehicle)
 from naryad.ops.replan import Breakdown, OpsState, options_for
-from naryad.solve.compare import with_shortage
+from naryad.solve.compare import with_shortage, worst_growth
 from naryad.solve.drivers import History, day_base, solve_drivers
 from naryad.solve.vehicles import solve_vehicles
 
@@ -252,3 +252,107 @@ class TestExplain(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestIntervals(unittest.TestCase):
+    """Интервалы по всем маршрутам сразу: показатель «ровные интервалы» на экране."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.day = Day.load(SAMPLES / "park7_weekday.json")
+        cls.plan = solve_drivers(cls.day, solve_vehicles(cls.day))
+        cls.state = OpsState.from_plan(cls.day, cls.plan)
+
+    def test_clean_day_has_no_growth_and_no_worst_route(self):
+        answer = intervals(self.day, self.state)
+        self.assertEqual(answer["answer"], "Интервалы как по плану")
+        self.assertEqual(answer["numbers"]["worst_growth"], 1.0)
+        self.assertIsNone(answer["numbers"]["worst_route"], "роста нет, винить некого")
+        self.assertIsNone(answer["numbers"]["worst_at"])
+        self.assertEqual(answer["numbers"]["over_25_percent"], 0)
+        self.assertEqual(answer["numbers"]["stopped_routes"], 0)
+
+    def test_routes_without_duties_today_are_left_out(self):
+        answer = intervals(self.day, self.state)
+        with_duties = {d.route_id for d in self.day.duties.values()
+                       if d.type == "line" and d.day_type == self.day.day_type}
+        self.assertEqual({r["route_id"] for r in answer["routes"]}, with_duties)
+        self.assertEqual(answer["numbers"]["routes_total"], len(with_duties))
+        self.assertLess(len(with_duties), len(self.day.routes), "в образце есть маршруты без нарядов")
+
+    def test_every_route_reports_its_normal_interval(self):
+        for row in intervals(self.day, self.state)["routes"]:
+            self.assertEqual(row["growth"], 1.0, row)
+            self.assertEqual(row["planned_min"], row["actual_min"], row)
+            self.assertGreater(row["planned_min"], 0, row)
+            self.assertEqual(row["planned_buses"], row["running_buses"], row)
+
+    def test_growth_matches_the_number_we_give_the_customer(self):
+        """Цифра на экране диспетчера обязана совпасть с цифрой в письме заказчику."""
+        day = with_shortage(self.day, 0.2, 7, by_class=False)
+        plan = solve_drivers(day, solve_vehicles(day))
+        state = OpsState.from_plan(day, plan)
+        by_route = {}
+        for duty in day.duties.values():
+            if duty.type == "line" and duty.day_type == day.day_type:
+                by_route.setdefault(duty.route_id, []).append(duty)
+        self.assertTrue(by_route)
+        checked = 0
+        for route_id, duties in by_route.items():
+            ours = route_interval(day, state, route_id, duties)
+            theirs = worst_growth(plan, duties)
+            if theirs == float("inf"):
+                self.assertGreater(ours["stopped_min"], 0, route_id)
+            else:
+                self.assertEqual(ours["growth"], round(theirs, 2), route_id)
+                checked += 1
+        self.assertGreater(checked, 10, "сверить надо не пару маршрутов")
+
+    def test_breakdown_without_replacement_is_worse_than_with_one(self):
+        duty = next(d for d in sorted(self.day.duties.values(), key=lambda d: d.id)
+                    if d.type == "line" and d.start < 8 * 60 + 40 < d.end)
+        event = Breakdown(self.plan.vehicles[duty.id], 8 * 60 + 40)
+        options = options_for(self.state, event)
+        from naryad.ops.replan import apply
+        nothing = next(o for o in options if o.kind == "none")
+        best = options[0]
+        self.assertNotEqual(best.kind, "none", "на этом наряде должна быть замена")
+        worse = intervals(self.day, apply(self.state, event, nothing))["numbers"]["worst_growth"]
+        better = intervals(self.day, apply(self.state, event, best))["numbers"]["worst_growth"]
+        self.assertGreater(worse, better, "замена обязана улучшить интервал")
+        self.assertEqual(intervals(self.day, self.state)["numbers"]["worst_growth"], 1.0)
+
+    def test_moment_matches_the_single_route_answer(self):
+        route = sorted(r for r in self.day.routes)[0]
+        whole = intervals(self.day, self.state, 8 * 60 + 30)
+        row = next(r for r in whole["routes"] if r["route_id"] == route)
+        single = interval(self.day, self.plan, route, 8 * 60 + 30)
+        self.assertEqual((row["planned_min"], row["actual_min"]),
+                         (single["planned_min"], single["actual_min"]))
+        self.assertEqual(row["at"], "08:30")
+
+    def test_time_does_not_wrap_past_midnight(self):
+        """Интерфейс сверяет этот момент с отрезками состояния, где часы идут дальше 24."""
+        late = max(d.end for d in self.day.duties.values()) - 10
+        self.assertGreater(late, 24 * 60)
+        answer = intervals(self.day, self.state, late)
+        self.assertEqual(answer["routes"][0]["at"], f"{late // 60:02d}:{late % 60:02d}")
+        self.assertIn(f"{late // 60:02d}:", answer["question"])
+
+    def test_route_that_stops_completely_is_counted_apart(self):
+        day = Day.load(SAMPLES / "park7_weekday.json")
+        plan = solve_drivers(day, solve_vehicles(day))
+        state = OpsState.from_plan(day, plan)
+        route = next(r for r, duties in
+                     sorted({d.route_id: [x for x in day.duties.values() if x.route_id == d.route_id
+                                          and x.type == "line" and x.day_type == day.day_type]
+                             for d in day.duties.values() if d.type == "line"}.items())
+                     if len(duties) <= 3)
+        for duty in [d for d in day.duties.values() if d.route_id == route]:
+            state.vehicles[duty.id] = []
+        answer = intervals(day, state)
+        row = next(r for r in answer["routes"] if r["route_id"] == route)
+        self.assertGreater(row["stopped_min"], 0)
+        self.assertIsNotNone(row["stopped_at"])
+        self.assertGreaterEqual(answer["numbers"]["stopped_routes"], 1)
+        self.assertIn("не осталось ни одного автобуса", " ".join(answer["reasons"]))

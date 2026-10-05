@@ -148,6 +148,46 @@ class TestPlanAndExplain(unittest.TestCase):
                          {"planned_min", "actual_min", "planned_buses", "running_buses"})
         self.assertIn("08:30", interval["question"])
 
+    def test_intervals_over_the_day_and_at_a_moment(self):
+        whole = ok(self.engine.handle("GET", "/api/days/day-1/intervals"))
+        self.assertEqual(set(whole), {"question", "answer", "reasons", "numbers", "routes"})
+        self.assertEqual(whole["numbers"]["worst_growth"], 1.0)
+        self.assertEqual(len(whole["routes"]), whole["numbers"]["routes_total"])
+        self.assertTrue(all(r["planned_min"] > 0 for r in whole["routes"]))
+        moment = ok(self.engine.handle("GET", "/api/days/day-1/intervals", {"t": "08:30"}, None))
+        self.assertIn("08:30", moment["question"])
+        self.assertTrue(all(r["at"] == "08:30" for r in moment["routes"]))
+
+    def test_intervals_follow_events_not_the_morning_plan(self):
+        """Диспетчеру нужно, что с интервалами сейчас, а не что было утром.
+
+        Свой движок: тест применяет событие, а день этого класса общий.
+        """
+        engine = Engine()
+        ok(engine.handle("POST", "/api/days", None, PARK7))
+        ok(engine.handle("POST", "/api/days/day-1/plan", None, {}))
+        before = ok(engine.handle("GET", "/api/days/day-1/intervals"))["numbers"]["worst_growth"]
+        vehicle = engine.days["day-1"].state.vehicle_at(DUTY, 8 * 60 + 40)
+        event = {"type": "breakdown", "vehicle_id": vehicle, "at": "08:40"}
+        options = ok(engine.handle("POST", "/api/days/day-1/events/options", None, event))["options"]
+        nothing = next(o["index"] for o in options if o["kind"] == "none")
+        ok(engine.handle("POST", "/api/days/day-1/events/apply", None,
+                         {"event": event, "option": nothing}))
+        after = ok(engine.handle("GET", "/api/days/day-1/intervals"))
+        self.assertGreater(after["numbers"]["worst_growth"], before)
+        self.assertIsNotNone(after["numbers"]["worst_route"])
+        self.assertIn("вырос", after["answer"])
+
+    def test_intervals_errors(self):
+        status, payload = self.engine.handle("GET", "/api/days/day-1/intervals", {"t": "утром"}, None)
+        self.assertEqual(status, 400)
+        self.assertIn("ЧЧ:ММ", payload["error"])
+        engine = Engine()
+        second = ok(engine.handle("POST", "/api/days", None, PARK7))["day_id"]
+        status, payload = engine.handle("GET", f"/api/days/{second}/intervals")
+        self.assertEqual(status, 409)
+        self.assertIn("Сначала постройте план", payload["error"])
+
     def test_explain_errors(self):
         self.assertEqual(self.engine.handle("GET", "/api/days/day-1/explain/vehicle/нет")[0], 404)
         self.assertEqual(self.engine.handle("GET", "/api/days/day-1/explain/driver/нет")[0], 404)

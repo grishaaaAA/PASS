@@ -39,6 +39,15 @@ class TestDemo(unittest.TestCase):
         self.assertEqual(text.count("нарушений 0"), 3)  # план и два события
         self.assertLess(text.index("медосмотр"), text.index("сошёл"))
 
+    def test_interval_line_after_the_replacement(self):
+        """Ровные интервалы - наш главный довод, он должен быть виден в показе."""
+        code, text = run([])
+        self.assertEqual(code, 0, text)
+        self.assertIn("Интервалы:", text)
+        self.assertIn("маршрутов с ростом больше четверти 0", text)
+        self.assertIn("без единого автобуса 0", text)
+        self.assertLess(text.index("Проверка дня после замены"), text.index("Интервалы:"))
+
     def test_dispatcher_edit_step(self):
         """Шаг правки показывает подсказку, отказ по нормам и запись в журнал."""
         code, text = run([])

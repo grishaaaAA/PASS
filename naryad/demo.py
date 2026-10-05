@@ -168,6 +168,15 @@ class Demo:
         print(f"  Проверка дня после замены: нарушений {len(violations)}"
               + ("" if not violations else f", первое: {violations[0]['text']}"))
         self.changes(before, after)
+        self.intervals()
+
+    def intervals(self) -> None:
+        """Что стало с интервалами для пассажира: одна строка, зато главная."""
+        answer = self.call("GET", f"/api/days/{self.day_id}/intervals")
+        numbers = answer["numbers"]
+        print(f"  Интервалы: {answer['answer'].lower()}; маршрутов с ростом больше четверти "
+              f"{numbers['over_25_percent']} из {numbers['routes_total']}, "
+              f"без единого автобуса {numbers['stopped_routes']}")
 
     def changes(self, before: dict, state: dict) -> None:
         """Что именно поменялось в дне: сравнение с состоянием до события.
