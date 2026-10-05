@@ -18,7 +18,10 @@ API движка (Б5): день в памяти под номером, план
 списком того, что нарушено. Движок не отказывает молча и не меняет решение
 диспетчера молча.
 
-Сервер ничего не пишет на диск: дни живут в памяти, перезапуск их стирает.
+Дни лежат в папке на диске и переживают перезапуск сервера (naryad/web/store.py).
+Папка задаётся при запуске (--store, по умолчанию store/days), --store none
+выключает запись совсем. Внутри процесса Engine() без папки ничего не пишет.
+В папке лежит реестр перевозчика: её нет в репозитории и не должно быть.
 Объяснения относятся к утреннему плану, состояние дня после событий - отрезками.
 Единственная точка входа - Engine.handle(метод, адрес, параметры, тело):
 отдаёт код ответа и JSON, сервер страницы генератора может звать её напрямую.
@@ -56,6 +59,8 @@ from naryad.ops.replan import (EDIT_TYPES, Accident, Breakdown, Edit, NoShow, Op
 from naryad.solve.city import add_transfers
 from naryad.solve.drivers import History, solve_drivers
 from naryad.solve.vehicles import solve_vehicles
+from naryad.web.store import (Store, history_from_dict, history_to_dict, plan_from_dict,
+                              plan_to_dict, state_from_dict, state_to_dict)
 
 EXAMPLES_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "samples" / "api_examples.json"
 TIME = re.compile(r"^(\d{1,2}):(\d{2})$")
@@ -68,6 +73,7 @@ EVENT_TYPES = ("breakdown", "accident", "no_show")
 MAX_CANDIDATES = 50
 MAX_BODY = 64 * 1024 * 1024   # реестр целого города и то меньше
 MAX_FILES = 24                # по файлу на сущность с запасом
+DEFAULT_STORE = "store/days"  # дни на диске; в них реестр перевозчика, в репозиторий не кладём
 
 
 class ApiError(Exception):
@@ -127,10 +133,49 @@ ROUTES = [
 class Engine:
     """Дни в памяти и ответы на запросы."""
 
-    def __init__(self):
+    def __init__(self, store=None):
         self.days: dict[str, DayRecord] = {}
         self._next = 1
         self._lock = threading.Lock()
+        self.store = Store(store)
+        self._restore()
+
+    # --- хранение на диске --------------------------------------------------------
+
+    def _restore(self) -> None:
+        """Прочитать дни из папки. Испорченный день пропускается с сообщением."""
+        highest = 0
+        for day_id, stored, live in self.store.read_all():
+            raw = stored.get("raw")
+            try:
+                day = Day.from_dict(raw)
+            except (KeyError, TypeError, ValueError) as error:
+                print(f"День {day_id} пропущен: данные больше не читаются "
+                      f"({type(error).__name__} {error})", file=sys.stderr)
+                continue
+            record = DayRecord(id=day_id, raw=raw, day=day)
+            if live and live.get("plan") and live.get("state"):
+                record.plan = plan_from_dict(live["plan"])
+                record.state = state_from_dict(live["state"], day)
+                record.history_before = history_from_dict(live.get("history_before"))
+                record.history_after = history_from_dict(live.get("history_after"))
+                record.log = list(live.get("log") or [])
+                record.seconds = live.get("seconds") or 0.0
+                record.source = live.get("source")
+            self.days[day_id] = record
+            highest = max(highest, self._number(day_id))
+        self._next = highest + 1
+
+    def _save(self, record: DayRecord) -> None:
+        """Записать живую часть дня: план, состояние, память водителей, журнал."""
+        if not self.store:
+            return
+        self.store.save_live(record.id, {
+            "plan": plan_to_dict(record.plan) if record.plan is not None else None,
+            "state": state_to_dict(record.state) if record.state is not None else None,
+            "history_before": history_to_dict(record.history_before),
+            "history_after": history_to_dict(record.history_after),
+            "log": record.log, "seconds": record.seconds, "source": record.source})
 
     def handle(self, method: str, path: str, query: dict | None = None,
                body: dict | None = None) -> tuple[int, dict]:
@@ -205,8 +250,11 @@ class Engine:
                    "moment": meta.get("moment"), "preset": meta.get("preset"),
                    "counts": {k: len(raw[k]) for k in ("parks", "routes", "duties", "shifts", "vehicles", "drivers")},
                    "warnings": checked["warnings"][:MAX_WARNINGS]}
-        self.days[day_id] = DayRecord(id=day_id, raw=raw, day=day)  # последним: ответ уже собран
+        record = DayRecord(id=day_id, raw=raw, day=day)
+        self.store.save_day(day_id, raw)
+        self.days[day_id] = record  # последним: ответ уже собран
         self._next += 1
+        self._save(record)
         return payload
 
     def import_registry(self, query, body):
@@ -351,6 +399,7 @@ class Engine:
         record.plan, record.log, record.seconds = plan, [], seconds
         record.state = OpsState.from_plan(record.day, plan, before)
         record.history_after = history_after(record.state, labor)
+        self._save(record)
         return answer
 
     def _earlier(self, record: DayRecord) -> list:
@@ -534,6 +583,7 @@ class Engine:
         violations = _violations(check_state(after))
         record.state, record.log = after, record.log + [entry]
         record.history_after = history_after(after)  # память по факту, а не по утреннему плану
+        self._save(record)
         out = _state_dict(record)
         out["violations"] = violations
         return out
@@ -633,6 +683,7 @@ class Engine:
             entry["reason"] = reason
         record.state, record.log = after, record.log + [entry]
         record.history_after = history_after(after)  # память по факту, а не по утреннему плану
+        self._save(record)
         out = _state_dict(record)
         out["violations"] = _violations(violations)
         out["new_violations"] = _violations(added)
@@ -934,6 +985,9 @@ def main(argv=None) -> int:
     parser.add_argument("--port", type=int, default=8001)
     parser.add_argument("--labor", default=None,
                         help="набор норм из naryad/core/labor_presets.json: current, likely, strict")
+    parser.add_argument("--store", default=DEFAULT_STORE,
+                        help=f"папка с днями, они переживают перезапуск (по умолчанию {DEFAULT_STORE}); "
+                             f"none - не писать на диск")
     parser.add_argument("--write-examples", action="store_true",
                         help="переписать data/samples/api_examples.json и выйти")
     args = parser.parse_args(argv)
@@ -941,9 +995,14 @@ def main(argv=None) -> int:
     if args.write_examples:
         print(f"Образцы записаны: {write_examples()}")
         return 0
+    folder = None if str(args.store).lower() in ("none", "", "нет") else args.store
+    Handler.engine = Engine(store=folder)
     server = ThreadingHTTPServer((args.host, args.port), Handler)
+    where = (f"дни в папке {Path(folder).expanduser().resolve()} (в ней реестр перевозчика, "
+             f"наружу не отдавать), загружено: {len(Handler.engine.days)}"
+             if folder else "дни только в памяти, перезапуск их сотрёт")
     print(f"API движка: http://{args.host}:{args.port}/api/labor  (нормы: {labor_preset_name()}, "
-          f"остановить - Ctrl+C)")
+          f"остановить - Ctrl+C)\n{where}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
