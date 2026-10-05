@@ -27,7 +27,7 @@
 | Ручной способ | `naryad/solve/baseline.py` | Аккуратные модели ручной расстановки (линия раньше резерва, свои автобусы, сверка отдыха со вчерашним нарядом) - точка отсчёта |
 | Сравнение | `naryad/solve/compare.py` | `python -m naryad.solve.compare` - ручной способ против нашего: нехватка автобусов 5-20% (среднее и худший из 10 сценариев) и нехватка водителей 10-30% |
 | Формат данных | `docs/CONTRACT.md` | Описание всех полей, включая формат плана, состояние дня после сходов и API движка (разделы «Состояние дня» и «API движка» - предложение, ждёт согласия Антона) |
-| API движка | `naryad/web/api.py` | `python -m naryad.web.api` - http://localhost:8001: загрузить день, построить план (с перебросками между парками), объяснения, варианты замены на сход / ДТП / неявку, состояние дня отрезками, ручная правка плана диспетчером с проверкой норм. Дни в памяти, ручки - в `docs/CONTRACT.md` |
+| API движка | `naryad/web/api.py` | `python -m naryad.web.api` - http://localhost:8001: загрузить день, построить план (с перебросками между парками), объяснения, варианты замены на сход / ДТП / неявку, состояние дня отрезками, ручная правка плана диспетчером с проверкой норм, загрузка реестров перевозчика. Дни в памяти, ручки - в `docs/CONTRACT.md` |
 | Показ заказчику | `naryad/demo.py` | `python -m naryad.demo` - готовый сценарий на одном парке через API: день, план, сход автобуса в 08:40, варианты с ценой, объяснение лучшего, план после замены, журнал. Данные из `data/samples`, интернет и генератор не нужны |
 | Образцы ответов API | `data/samples/api_examples.json` | Реальные ответы по контракту API с дня парка №7, их пишет `python -m naryad.web.api --write-examples`, тест сверяет файл с живым кодом |
 | Страница генератора | `naryad/web/` | Парки с вводными и результатом на день, выгрузка JSON / CSV |
@@ -65,6 +65,7 @@ python -m naryad.data.generate --parks 3 --release 250 --routes 50 --mix 700,700
 python -m naryad.data.generate --preset park7 --out park7.json --csv park7_csv
 python -m naryad.web.server                                       # страница генератора, http://localhost:8000
 python -m naryad.web.api                                         # API движка, http://localhost:8001
+python -m naryad.data.registry data/samples/park7_weekday_csv --date 2026-10-05   # загрузка реестра
 python -m naryad.demo --no-show                                  # показ: недопуск водителя и сход автобуса
 python -m naryad.solve.series --days 14 --labor likely          # нормы из набора likely
 NARYAD_LABOR=strict python -m naryad.ops.scenarios              # тот же набор для любой команды

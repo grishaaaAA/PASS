@@ -1,6 +1,6 @@
 """
 API движка (Б5): день в памяти под номером, план, объяснения, события,
-ручная правка плана диспетчером.
+ручная правка плана диспетчером, загрузка реестров перевозчика.
 
 Форматы - docs/CONTRACT.md, разделы «Состояние дня» и «API движка».
 План на день с несколькими парками строится с перебросками лишних
@@ -27,6 +27,8 @@ API движка (Б5): день в памяти под номером, план
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import copy
 import json
 import re
@@ -46,6 +48,7 @@ from naryad.core.invariants import (LABOR_FILE, check_plan, check_rest, labor_pr
                                     labor_presets, load_labor, use_labor_preset)
 from naryad.core.model import Day, Plan
 from naryad.data.check import check
+from naryad.data import registry
 from naryad.data.generate import generate
 from naryad.ops.replan import (EDIT_TYPES, Accident, Breakdown, Edit, NoShow, OpsState, apply,
                                check_state, free_drivers, free_vehicles, history_after,
@@ -63,6 +66,8 @@ BLOCKED = HTTPStatus.CONFLICT  # тот же 409: запрос понятен, �
 SERVER_ERROR = HTTPStatus.INTERNAL_SERVER_ERROR
 EVENT_TYPES = ("breakdown", "accident", "no_show")
 MAX_CANDIDATES = 50
+MAX_BODY = 64 * 1024 * 1024   # реестр целого города и то меньше
+MAX_FILES = 24                # по файлу на сущность с запасом
 
 
 class ApiError(Exception):
@@ -102,6 +107,7 @@ ROUTES = [
     ("GET", r"/api/labor", "labor"),
     ("GET", r"/api/days", "list_days"),
     ("POST", r"/api/days", "add_day"),
+    ("POST", r"/api/days/import", "import_registry"),
     ("GET", r"/api/days/([^/]+)", "get_day"),
     ("POST", r"/api/days/([^/]+)/plan", "make_plan"),
     ("GET", r"/api/days/([^/]+)/state", "get_state"),
@@ -180,6 +186,10 @@ class Engine:
             raw = body
         else:
             raw = generate(**self._inputs(body))
+        return self._register(raw)
+
+    def _register(self, raw: dict) -> dict:
+        """Проверить набор данных и положить день в память под новым номером."""
         checked = check(raw)
         if checked["errors"]:
             raise ApiError(BAD, "данные с ошибками, день не принят", errors=checked["errors"][:MAX_WARNINGS])
@@ -198,6 +208,69 @@ class Engine:
         self.days[day_id] = DayRecord(id=day_id, raw=raw, day=day)  # последним: ответ уже собран
         self._next += 1
         return payload
+
+    def import_registry(self, query, body):
+        """Загрузить день из реестра перевозчика: CSV в теле запроса или книга Excel.
+
+        Реестр не обязан совпадать с нашим форматом: столбцы узнаются по
+        синонимам, слова переводятся в коды, то, что движку не нужно,
+        заполняется само. Всё это попадает в report - отчёт о загрузке.
+        Он возвращается и при удаче, и при отказе: по нему видно, какой
+        столбец чем понят и что спросить у перевозчика.
+
+        dry_run: true читает реестр и отдаёт отчёт, но день не создаёт.
+        """
+        if not isinstance(body, dict):
+            raise ApiError(BAD, "тело запроса: объект JSON с полями files или workbook")
+        dry_run = body.get("dry_run", False)
+        if not isinstance(dry_run, bool):
+            raise ApiError(BAD, "dry_run: true или false")
+        files = self._files(body.get("files"))
+        workbook = self._workbook(body.get("workbook"))
+        if not files and workbook is None:
+            raise ApiError(BAD, "нужен хотя бы один файл: files с текстом CSV "
+                                "или workbook с книгой Excel в base64")
+        meta = body.get("meta") or {}
+        if not isinstance(meta, dict):
+            raise ApiError(BAD, "meta: объект с датой дня и типом дня")
+        if not meta.get("date") or not meta.get("day_type"):
+            raise ApiError(BAD, "meta: нужны дата дня (ГГГГ-ММ-ДД) и тип дня (weekday или weekend). "
+                                "В реестре их нет, поэтому их задаёт тот, кто его загружает")
+        try:
+            raw, report = registry.load(files=files, workbook=workbook, meta=meta)
+        except ValueError as error:
+            raise ApiError(BAD, f"реестр не прочитан: {error}") from None
+        if report["errors"]:
+            raise ApiError(BAD, "реестр прочитан с ошибками, день не принят", report=report)
+        counts = {line["entity"]: line["rows"] for line in report["entities"]}
+        if dry_run:
+            return {"day_id": None, "date": meta["date"], "day_type": meta["day_type"],
+                    "counts": counts, "warnings": [], "report": report}
+        payload = self._register(raw)
+        payload["report"] = report
+        payload["warnings"] = (report["warnings"] + payload["warnings"])[:MAX_WARNINGS]
+        return payload
+
+    @staticmethod
+    def _files(raw) -> dict:
+        if raw is None:
+            return {}
+        if not isinstance(raw, dict) or not all(isinstance(v, str) for v in raw.values()):
+            raise ApiError(BAD, "files: объект {название файла или листа: текст CSV}")
+        if len(raw) > MAX_FILES:
+            raise ApiError(BAD, f"files: не больше {MAX_FILES} файлов за раз")
+        return {str(k): v for k, v in raw.items()}
+
+    @staticmethod
+    def _workbook(raw):
+        if raw is None:
+            return None
+        if not isinstance(raw, str):
+            raise ApiError(BAD, "workbook: книга Excel (.xlsx) в base64 строкой")
+        try:
+            return base64.b64decode(raw, validate=True)
+        except (ValueError, binascii.Error):
+            raise ApiError(BAD, "workbook: строка не читается как base64") from None
 
     @staticmethod
     def _inputs(body: dict) -> dict:
@@ -741,6 +814,26 @@ def make_examples() -> dict:
               "тогда ответ такой же, но наряд стоит в unfilled с причиной removed_by_dispatcher. "
               "Здесь на него поставлен свободный автобус: new_violations пуст, правка в журнале")
 
+    # загрузка реестра перевозчика: нарочно маленький, с русскими заголовками
+    tiny = {
+        "Парки": "Код парка;Наименование;Состояние;Выпуск будни;Выпуск выходные\n"
+                 "П7;Автобусный парк №7;работает;1;1\n",
+        "Маршруты": "Код;Парк;Номер маршрута;Допустимые классы;Важность;Время оборота\n"
+                    "М3;П7;3;большой;высокая;160\n",
+        "Наряды": "Наряд;Парк;Тип;Маршрут;Класс автобуса;Тип дня;Выход;Заезд;Смен\n"
+                  "Н1;П7;линейный;М3;большой;будни;4:50;13:20;1\n",
+        "Смены": "Код смены;Номер наряда;Смена;Начало;Окончание\nС1;Н1;1;4:50;13:20\n",
+        "Автобусы": "Гаражный номер;Класс;Топливо;Парк;Тех. состояние\n"
+                    "7001;большой;газ;П7;исправен\n",
+        "Водители": "Табельный номер;ФИО;Парк;Допуск;График;Медосмотр\n"
+                    "070001;Макаров Д. В.;П7;большой;работает;прошел\n",
+    }
+    registry_meta = {"date": "2026-10-05", "day_type": "weekday", "moment": "morning"}
+    call("POST", "/api/days/import", {"files": tiny, "meta": registry_meta, "dry_run": True},
+         note="dry_run: реестр прочитан, отчёт отдан, день не создан. Без dry_run ответ тот же "
+              "плюс day_id и counts по созданному дню. Книга Excel передаётся полем workbook "
+              "в base64 вместо files")
+
     third = engine.handle("POST", "/api/days", None, {"preset": "park7"})[1]["day_id"]
     busy = engine.handle("GET", f"/api/days/{day_id}/state")[1]["duties"][0]
     out["ошибки"] = {
@@ -748,6 +841,10 @@ def make_examples() -> dict:
                              {"type": "breakdown", "vehicle_id": vehicle, "at": "09:00"})[1],
         "404": engine.handle("GET", "/api/days/day-9")[1],
         "409": engine.handle("GET", f"/api/days/{third}/explain/summary")[1],
+        "400 реестр с непонятым значением": engine.handle(
+            "POST", "/api/days/import", None,
+            {"files": dict(tiny, **{"Автобусы": tiny["Автобусы"].replace("исправен", "на ходу?")}),
+             "meta": registry_meta})[1],
         "409 правка нарушает нормы": engine.handle(
             "POST", f"/api/days/{day_id}/edits", None,
             {"type": "set_vehicle", "duty_id": spare,
@@ -819,6 +916,12 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         try:
             length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return self._json(BAD, {"error": "неверный заголовок Content-Length"})
+        if length > MAX_BODY:
+            return self._json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                              {"error": f"тело запроса больше {MAX_BODY // (1024 * 1024)} МБ"})
+        try:
             body = json.loads(self.rfile.read(length) or b"{}")
         except ValueError:
             return self._json(BAD, {"error": "тело запроса: неверный JSON"})

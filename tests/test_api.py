@@ -471,6 +471,93 @@ class TestManualEdits(unittest.TestCase):
         self.assertEqual(self.engine.days["day-1"].log, [], "ошибки не должны ничего записывать")
 
 
+class TestRegistryImport(unittest.TestCase):
+    """Загрузка реестра перевозчика через API: CSV, Excel, отчёт о понятом."""
+
+    META = {"date": "2026-10-05", "day_type": "weekday", "moment": "morning"}
+
+    def setUp(self):
+        self.engine = Engine()
+
+    @staticmethod
+    def park7_csv() -> dict:
+        from pathlib import Path as _Path
+        folder = _Path(__file__).resolve().parent.parent / "data" / "samples" / "park7_weekday_csv"
+        return {path.stem: path.read_text(encoding="utf-8-sig") for path in sorted(folder.glob("*.csv"))}
+
+    def post(self, body):
+        return self.engine.handle("POST", "/api/days/import", None, body)
+
+    def test_park7_csv_becomes_a_day_that_can_be_planned(self):
+        payload = ok(self.post({"files": self.park7_csv(), "meta": self.META}))
+        self.assertEqual(payload["day_id"], "day-1")
+        self.assertEqual(payload["counts"], {"parks": 1, "routes": 24, "duties": 350,
+                                             "shifts": 717, "vehicles": 420, "drivers": 1315})
+        self.assertEqual(payload["report"]["errors"], [])
+        plan = ok(self.engine.handle("POST", "/api/days/day-1/plan", None, {}))
+        self.assertEqual(plan["violations"], [])
+        self.assertEqual(len(plan["plan"]["vehicle_assignments"]), 350)
+
+    def test_russian_registry_is_understood_and_reported(self):
+        from tests.test_registry import RUSSIAN
+        payload = ok(self.post({"files": RUSSIAN, "meta": self.META}))
+        line = next(x for x in payload["report"]["entities"] if x["entity"] == "vehicles")
+        self.assertEqual(line["matched"]["condition"], "Тех. состояние")
+        self.assertEqual(line["derived"], ["id"], "код собирается из гаражного номера")
+        self.assertTrue(payload["warnings"], "то, что заполнено само, должно быть видно")
+        plan = ok(self.engine.handle("POST", f"/api/days/{payload['day_id']}/plan", None, {}))
+        self.assertEqual(plan["violations"], [])
+
+    def test_excel_workbook(self):
+        from tests.test_registry import TestExcel, workbook
+        from naryad.data.registry import encode
+        payload = ok(self.post({"workbook": encode(workbook(TestExcel.SHEETS)), "meta": self.META}))
+        self.assertEqual(payload["counts"]["duties"], 2)
+        plan = ok(self.engine.handle("POST", f"/api/days/{payload['day_id']}/plan", None, {}))
+        self.assertEqual(len(plan["plan"]["vehicle_assignments"]), 2)
+
+    def test_dry_run_reads_but_creates_nothing(self):
+        payload = ok(self.post({"files": self.park7_csv(), "meta": self.META, "dry_run": True}))
+        self.assertIsNone(payload["day_id"])
+        self.assertEqual(payload["counts"]["vehicles"], 420)
+        self.assertEqual(ok(self.engine.handle("GET", "/api/days"))["days"], [])
+
+    def test_registry_with_errors_is_refused_with_the_report(self):
+        files = self.park7_csv()
+        files["vehicles"] = files["vehicles"].replace("ok", "работает как-то")
+        status, payload = self.post({"files": files, "meta": self.META})
+        self.assertEqual(status, 400)
+        self.assertIn("с ошибками", payload["error"])
+        self.assertTrue(any("работает как-то" in e for e in payload["report"]["errors"]))
+        self.assertEqual(payload["report"]["unknown_values"][0]["field"], "condition")
+        self.assertEqual(ok(self.engine.handle("GET", "/api/days"))["days"], [],
+                         "отклонённый реестр не должен создавать день")
+
+    def test_import_errors(self):
+        cases = [
+            ({}, "хотя бы один файл"),
+            ({"files": self.park7_csv()}, "meta:"),
+            ({"files": self.park7_csv(), "meta": {"date": "2026-10-05"}}, "meta:"),
+            ({"files": {"parks": 1}, "meta": self.META}, "files:"),
+            ({"files": {str(i): "" for i in range(30)}, "meta": self.META}, "не больше"),
+            ({"workbook": "это не base64!!", "meta": self.META}, "base64"),
+            ({"workbook": 5, "meta": self.META}, "workbook:"),
+            ({"files": self.park7_csv(), "meta": self.META, "dry_run": "да"}, "dry_run:"),
+            ([], "объект JSON"),
+        ]
+        for body, text in cases:
+            status, payload = self.post(body)
+            self.assertEqual(status, 400, body if isinstance(body, list) else sorted(body))
+            self.assertIn(text, payload["error"])
+
+    def test_not_an_excel_file(self):
+        from naryad.data.registry import encode
+        status, payload = self.post({"workbook": encode(b"obviously not a workbook"),
+                                     "meta": self.META})
+        self.assertEqual(status, 400)
+        self.assertIn("zip", payload["error"])
+
+
 class TestNoCrash(unittest.TestCase):
     """Ошибка не уходит наружу обрывом связи и не ломает сервис для следующих запросов."""
 
@@ -713,6 +800,29 @@ class TestHttp(unittest.TestCase):
                 return response.status, dict(response.headers), json.loads(response.read() or b"null")
         except urllib.error.HTTPError as error:
             return error.code, dict(error.headers), json.loads(error.read())
+
+    def test_body_that_is_too_large_is_refused_before_reading(self):
+        """Реестр - первое большое тело в API: заявленный размер проверяем сразу."""
+        import http.client
+        from naryad.web.api import MAX_BODY
+        link = http.client.HTTPConnection("127.0.0.1", self.server.server_address[1], timeout=5)
+        link.putrequest("POST", "/api/days/import")
+        link.putheader("Content-Type", "application/json")
+        link.putheader("Content-Length", str(MAX_BODY + 1))
+        link.endheaders()
+        answer = link.getresponse()
+        self.assertEqual(answer.status, 413)
+        self.assertIn("больше", json.loads(answer.read())["error"])
+        link.close()
+
+    def test_broken_content_length(self):
+        import http.client
+        link = http.client.HTTPConnection("127.0.0.1", self.server.server_address[1], timeout=5)
+        link.putrequest("POST", "/api/days")
+        link.putheader("Content-Length", "many")
+        link.endheaders()
+        self.assertEqual(link.getresponse().status, 400)
+        link.close()
 
     def test_round_trip(self):
         status, headers, payload = self.call("POST", "/api/days", PARK7)

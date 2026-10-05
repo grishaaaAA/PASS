@@ -4484,7 +4484,7 @@
     }
    },
    "notes": [],
-   "seconds": 0.24
+   "seconds": 0.25
   }
  },
  "GET /api/days": {
@@ -36985,6 +36985,180 @@
    "new_violations": []
   }
  },
+ "POST /api/days/import": {
+  "_note": "dry_run: реестр прочитан, отчёт отдан, день не создан. Без dry_run ответ тот же плюс day_id и counts по созданному дню. Книга Excel передаётся полем workbook в base64 вместо files",
+  "request": {
+   "files": {
+    "Парки": "Код парка;Наименование;Состояние;Выпуск будни;Выпуск выходные\nП7;Автобусный парк №7;работает;1;1\n",
+    "Маршруты": "Код;Парк;Номер маршрута;Допустимые классы;Важность;Время оборота\nМ3;П7;3;большой;высокая;160\n",
+    "Наряды": "Наряд;Парк;Тип;Маршрут;Класс автобуса;Тип дня;Выход;Заезд;Смен\nН1;П7;линейный;М3;большой;будни;4:50;13:20;1\n",
+    "Смены": "Код смены;Номер наряда;Смена;Начало;Окончание\nС1;Н1;1;4:50;13:20\n",
+    "Автобусы": "Гаражный номер;Класс;Топливо;Парк;Тех. состояние\n7001;большой;газ;П7;исправен\n",
+    "Водители": "Табельный номер;ФИО;Парк;Допуск;График;Медосмотр\n070001;Макаров Д. В.;П7;большой;работает;прошел\n"
+   },
+   "meta": {
+    "date": "2026-10-05",
+    "day_type": "weekday",
+    "moment": "morning"
+   },
+   "dry_run": true
+  },
+  "response": {
+   "day_id": null,
+   "date": "2026-10-05",
+   "day_type": "weekday",
+   "counts": {
+    "parks": 1,
+    "routes": 1,
+    "duties": 1,
+    "shifts": 1,
+    "vehicles": 1,
+    "drivers": 1
+   },
+   "warnings": [],
+   "report": {
+    "entities": [
+     {
+      "entity": "parks",
+      "source": "Парки",
+      "rows": 1,
+      "matched": {
+       "id": "Код парка",
+       "name": "Наименование",
+       "release_weekday": "Выпуск будни",
+       "release_weekend": "Выпуск выходные",
+       "state": "Состояние"
+      },
+      "defaulted": [
+       "address",
+       "lat",
+       "lon",
+       "list_count",
+       "tech_readiness",
+       "reserve_weekday",
+       "reserve_weekend"
+      ],
+      "derived": [],
+      "unknown_columns": [],
+      "missing": []
+     },
+     {
+      "entity": "routes",
+      "source": "Маршруты",
+      "rows": 1,
+      "matched": {
+       "allowed_classes": "Допустимые классы",
+       "id": "Код",
+       "number": "Номер маршрута",
+       "park_id": "Парк",
+       "priority": "Важность",
+       "turnaround_min": "Время оборота"
+      },
+      "defaulted": [
+       "length_km",
+       "length_source",
+       "duties_weekday",
+       "duties_weekend"
+      ],
+      "derived": [],
+      "unknown_columns": [],
+      "missing": []
+     },
+     {
+      "entity": "duties",
+      "source": "Наряды",
+      "rows": 1,
+      "matched": {
+       "day_type": "Тип дня",
+       "end": "Заезд",
+       "id": "Наряд",
+       "park_id": "Парк",
+       "route_id": "Маршрут",
+       "shift_count": "Смен",
+       "start": "Выход",
+       "type": "Тип",
+       "vehicle_class": "Класс автобуса"
+      },
+      "defaulted": [],
+      "derived": [],
+      "unknown_columns": [],
+      "missing": []
+     },
+     {
+      "entity": "shifts",
+      "source": "Смены",
+      "rows": 1,
+      "matched": {
+       "duty_id": "Номер наряда",
+       "end": "Окончание",
+       "id": "Код смены",
+       "order": "Смена",
+       "start": "Начало"
+      },
+      "defaulted": [
+       "start_place"
+      ],
+      "derived": [],
+      "unknown_columns": [],
+      "missing": []
+     },
+     {
+      "entity": "vehicles",
+      "source": "Автобусы",
+      "rows": 1,
+      "matched": {
+       "board_number": "Гаражный номер",
+       "class": "Класс",
+       "condition": "Тех. состояние",
+       "fuel": "Топливо",
+       "park_id": "Парк"
+      },
+      "defaulted": [
+       "plate",
+       "model",
+       "repair_days_left",
+       "home_route_id"
+      ],
+      "derived": [
+       "id"
+      ],
+      "unknown_columns": [],
+      "missing": []
+     },
+     {
+      "entity": "drivers",
+      "source": "Водители",
+      "rows": 1,
+      "matched": {
+       "classes": "Допуск",
+       "full_name": "ФИО",
+       "medical": "Медосмотр",
+       "park_id": "Парк",
+       "schedule": "График",
+       "tab_number": "Табельный номер"
+      },
+      "defaulted": [
+       "home_vehicle_id"
+      ],
+      "derived": [
+       "id"
+      ],
+      "unknown_columns": [],
+      "missing": []
+     }
+    ],
+    "errors": [],
+    "warnings": [
+     "Автобусы: нет столбца с кодом, код собран из столбца «Гаражный номер». Если у перевозчика свой код - назовите столбец id",
+     "Автобусы: закрепление автобусов за маршрутами не передано: движок не сможет ставить свой автобус на свой маршрут",
+     "Водители: нет столбца с кодом, код собран из столбца «Табельный номер». Если у перевозчика свой код - назовите столбец id",
+     "Водители: закрепление водителей за автобусами не передано: движок не сможет ставить своего водителя на свой автобус"
+    ],
+    "unknown_values": [],
+    "unknown_tables": []
+   }
+  }
+ },
  "ошибки": {
   "400": {
    "error": "Автобус P07-V0038 в 09:00 не на линии"
@@ -36994,6 +37168,159 @@
   },
   "409": {
    "error": "Сначала постройте план: POST /api/days/day-3/plan"
+  },
+  "400 реестр с непонятым значением": {
+   "error": "реестр прочитан с ошибками, день не принят",
+   "report": {
+    "entities": [
+     {
+      "entity": "parks",
+      "source": "Парки",
+      "rows": 1,
+      "matched": {
+       "id": "Код парка",
+       "name": "Наименование",
+       "release_weekday": "Выпуск будни",
+       "release_weekend": "Выпуск выходные",
+       "state": "Состояние"
+      },
+      "defaulted": [
+       "address",
+       "lat",
+       "lon",
+       "list_count",
+       "tech_readiness",
+       "reserve_weekday",
+       "reserve_weekend"
+      ],
+      "derived": [],
+      "unknown_columns": [],
+      "missing": []
+     },
+     {
+      "entity": "routes",
+      "source": "Маршруты",
+      "rows": 1,
+      "matched": {
+       "allowed_classes": "Допустимые классы",
+       "id": "Код",
+       "number": "Номер маршрута",
+       "park_id": "Парк",
+       "priority": "Важность",
+       "turnaround_min": "Время оборота"
+      },
+      "defaulted": [
+       "length_km",
+       "length_source",
+       "duties_weekday",
+       "duties_weekend"
+      ],
+      "derived": [],
+      "unknown_columns": [],
+      "missing": []
+     },
+     {
+      "entity": "duties",
+      "source": "Наряды",
+      "rows": 1,
+      "matched": {
+       "day_type": "Тип дня",
+       "end": "Заезд",
+       "id": "Наряд",
+       "park_id": "Парк",
+       "route_id": "Маршрут",
+       "shift_count": "Смен",
+       "start": "Выход",
+       "type": "Тип",
+       "vehicle_class": "Класс автобуса"
+      },
+      "defaulted": [],
+      "derived": [],
+      "unknown_columns": [],
+      "missing": []
+     },
+     {
+      "entity": "shifts",
+      "source": "Смены",
+      "rows": 1,
+      "matched": {
+       "duty_id": "Номер наряда",
+       "end": "Окончание",
+       "id": "Код смены",
+       "order": "Смена",
+       "start": "Начало"
+      },
+      "defaulted": [
+       "start_place"
+      ],
+      "derived": [],
+      "unknown_columns": [],
+      "missing": []
+     },
+     {
+      "entity": "vehicles",
+      "source": "Автобусы",
+      "rows": 1,
+      "matched": {
+       "board_number": "Гаражный номер",
+       "class": "Класс",
+       "condition": "Тех. состояние",
+       "fuel": "Топливо",
+       "park_id": "Парк"
+      },
+      "defaulted": [
+       "plate",
+       "model",
+       "repair_days_left",
+       "home_route_id"
+      ],
+      "derived": [
+       "id"
+      ],
+      "unknown_columns": [],
+      "missing": []
+     },
+     {
+      "entity": "drivers",
+      "source": "Водители",
+      "rows": 1,
+      "matched": {
+       "classes": "Допуск",
+       "full_name": "ФИО",
+       "medical": "Медосмотр",
+       "park_id": "Парк",
+       "schedule": "График",
+       "tab_number": "Табельный номер"
+      },
+      "defaulted": [
+       "home_vehicle_id"
+      ],
+      "derived": [
+       "id"
+      ],
+      "unknown_columns": [],
+      "missing": []
+     }
+    ],
+    "errors": [
+     "vehicles, столбец «condition»: значение «на ходу?» не понято (строк: 1). Допустимо: ok (исправен), repair (ремонт), maintenance (то), accident (дтп)"
+    ],
+    "warnings": [
+     "Автобусы: нет столбца с кодом, код собран из столбца «Гаражный номер». Если у перевозчика свой код - назовите столбец id",
+     "Автобусы: закрепление автобусов за маршрутами не передано: движок не сможет ставить свой автобус на свой маршрут",
+     "Водители: нет столбца с кодом, код собран из столбца «Табельный номер». Если у перевозчика свой код - назовите столбец id",
+     "Водители: закрепление водителей за автобусами не передано: движок не сможет ставить своего водителя на свой автобус"
+    ],
+    "unknown_values": [
+     {
+      "entity": "vehicles",
+      "field": "condition",
+      "value": "на ходу?",
+      "rows": 1
+     }
+    ],
+    "unknown_tables": []
+   }
   },
   "409 правка нарушает нормы": {
    "error": "Правка нарушает нормы и не применена",
