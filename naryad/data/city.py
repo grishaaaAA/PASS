@@ -138,36 +138,76 @@ def _models_like_park7(cls: str, count: int) -> list:
     return [(sample[i][0], cls, sample[i][1], k) for i, k in split.items() if k]
 
 
-def _synthetic_specs(config: dict, rng: random.Random) -> list:
+def default_setup(config: dict) -> list:
+    """Настройки каждого парка по общим вводным: выпуск по классам, маршруты, готовность."""
     count = config["park_count"]
     if not 1 <= count <= len(CITY_PARKS):
         raise ValueError(f"Парков можно от 1 до {len(CITY_PARKS)}")
     release = config["release_per_park"]
     mix = {cls: config["class_mix"].get(cls, 0) for cls in CLASSES}
     routes_by_park = split_total(config["routes_total"], {i: 1 for i in range(count)})
-    reserve_total = round(release * config["reserve_share"])
+    setup = []
+    previous = {cls: 0 for cls in CLASSES}
+    for i, (park_id, _, _) in enumerate(CITY_PARKS[:count]):
+        # Нарастающий итог: в каждом парке ровно release, по городу - ровно доли.
+        total = split_total((i + 1) * release, mix)
+        setup.append({
+            "id": park_id,
+            "classes": {cls: total[cls] - previous[cls] for cls in CLASSES},
+            "routes": routes_by_park[i],
+            "readiness": config["tech_readiness"],
+            "sheet": False,
+        })
+        previous = total
+    return setup
+
+
+def sheet_park() -> dict:
+    """Парк №7 по справке: подробное описание с классами маршрутов."""
+    spec = copy.deepcopy(PARK7)
+    spec["routes"] = _route_classes(spec)
+    return spec
+
+
+def _synthetic_specs(config: dict, rng: random.Random) -> list:
+    setup = config.get("parks_setup") or default_setup(config)
+    known = {park_id: (name, address) for park_id, name, address in CITY_PARKS}
+    seen: set = set()
     factor = config["weekend_factor"]
 
     specs = []
-    previous = {cls: 0 for cls in CLASSES}
-    for i, (park_id, name, address) in enumerate(CITY_PARKS[:count]):
-        # Нарастающий итог: в каждом парке ровно release, по городу - ровно доли.
-        total = split_total((i + 1) * release, mix)
-        by_class = {cls: total[cls] - previous[cls] for cls in CLASSES}
-        previous = total
+    for entry in setup:
+        park_id = entry["id"]
+        if park_id not in known or park_id in seen:
+            raise ValueError(f"Парк {park_id}: такого нет или он указан дважды")
+        seen.add(park_id)
+        name, address = known[park_id]
+        if entry.get("sheet"):
+            if park_id != PARK7["id"]:
+                raise ValueError(f"{name}: справки по этому парку нет")
+            specs.append(sheet_park())
+            continue
+
+        by_class = {cls: int(entry["classes"].get(cls, 0)) for cls in CLASSES}
+        release = sum(by_class.values())
+        if release <= 0:
+            raise ValueError(f"{name}: выпуск должен быть больше нуля")
+        reserve_total = round(release * config["reserve_share"])
         reserve = split_total(reserve_total, by_class)
         line = {cls: by_class[cls] - reserve[cls] for cls in CLASSES}
         present = [cls for cls in CLASSES if line[cls] > 0]
-        n_routes = routes_by_park[i]
+        n_routes = int(entry["routes"])
         if n_routes < len(present):
-            raise ValueError(f"{name}: маршрутов {n_routes}, а классов {len(present)}")
+            raise ValueError(f"{name}: маршрутов {n_routes}, а классов автобусов {len(present)} - "
+                             f"на каждый класс нужен хотя бы один маршрут")
         per_class = split_total(n_routes - len(present), {c: line[c] for c in present})
 
         rows = []
         for cls in present:
             k = per_class[cls] + 1
             if line[cls] < k:
-                raise ValueError(f"{name}: нарядов класса {cls} меньше, чем маршрутов")
+                raise ValueError(f"{name}: класс {cls} - нарядов на маршрутах {line[cls]}, "
+                                 f"а маршрутов {k}; уменьшите число маршрутов")
             weights = {j: rng.lognormvariate(0, 0.6) for j in range(k)}
             sizes = split_total(line[cls] - k, weights)
             for j in range(k):
@@ -191,7 +231,7 @@ def _synthetic_specs(config: dict, rng: random.Random) -> list:
             "name": name,
             "address": address,
             "list_count": sum(row[3] for row in fleet),
-            "tech_readiness": config["tech_readiness"],
+            "tech_readiness": float(entry["readiness"]),
             "release": release_by_day,
             "reserve": {"weekday": reserve_total, "weekend": reserve_weekend},
             "shift_mix": {day: split_total(release_by_day[day], config["shift_mix"])
@@ -199,6 +239,8 @@ def _synthetic_specs(config: dict, rng: random.Random) -> list:
             "fleet": fleet,
             "routes": [tuple(row) for row in rows],
         })
+    if not specs:
+        raise ValueError("Выберите хотя бы один парк")
     return specs
 
 
