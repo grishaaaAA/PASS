@@ -90,6 +90,21 @@ class TestDays(unittest.TestCase):
                               for dv, dp in described)}
         self.assertEqual(missing, set(), "этих ручек нет в таблице docs/CONTRACT.md")
 
+    def test_every_error_code_is_in_the_contract(self):
+        """Код ответа, который умеет отдавать сервер, должен быть назван в контракте."""
+        from http import HTTPStatus as _Status
+        from pathlib import Path as _Path
+        import re as _re
+        root = _Path(__file__).resolve().parent.parent
+        source = (root / "naryad" / "web" / "api.py").read_text(encoding="utf-8")
+        contract = (root / "docs" / "CONTRACT.md").read_text(encoding="utf-8")
+        section = contract[contract.index("## API движка"):]
+        used = {int(getattr(_Status, name)) for name in _re.findall(r"HTTPStatus\.([A-Z_]+)", source)}
+        used.discard(200)
+        used.discard(204)   # пустой ответ на предварительный запрос, не ошибка
+        for code in sorted(used):
+            self.assertIn(str(code), section, f"код {code} сервер отдаёт, а контракт о нём молчит")
+
     def test_routing(self):
         self.assertEqual(self.engine.handle("GET", "/api/nothing")[0], 404)
         self.assertEqual(self.engine.handle("GET", "/api/days/day-9")[0], 404)
@@ -511,6 +526,9 @@ class TestManualEdits(unittest.TestCase):
             ({"type": "clear_driver", "shift_id": "нет такой"}, 404, "Нет смены"),
             ({"type": "set_vehicle", "duty_id": DUTY, "vehicle_id": "нет"}, 404, "Нет автобуса"),
             ({"type": "set_driver", "shift_id": SHIFT, "driver_id": "нет"}, 404, "Нет водителя"),
+            ({"type": "set_vehicle", "duty_id": DUTY}, 400, "нужно поле vehicle_id"),
+            ({"type": "set_driver", "shift_id": SHIFT}, 400, "нужно поле driver_id"),
+            ({"type": "set_driver", "shift_id": SHIFT, "driver_id": 7}, 400, "нужно поле driver_id"),
             ({"type": "clear_vehicle", "duty_id": DUTY, "from": "03:00"}, 400, "выходит за время"),
             ({"type": "clear_vehicle", "duty_id": DUTY, "from": "12:00", "to": "10:00"}, 400, "пустое"),
             ({"type": "clear_vehicle", "duty_id": DUTY, "from": "утром"}, 400, "ЧЧ:ММ"),
@@ -522,7 +540,151 @@ class TestManualEdits(unittest.TestCase):
             status, payload = self.edit(body)
             self.assertEqual(status, code, body)
             self.assertIn(text, payload["error"], body)
+        status, payload = self.engine.handle("GET", "/api/days/day-1/edits/options", {"duty_id": ""}, None)
+        self.assertEqual((status, payload["error"]), (400, "нужно поле duty_id: номер наряда"))
         self.assertEqual(self.engine.days["day-1"].log, [], "ошибки не должны ничего записывать")
+
+    # --- список выбора обязан быть честным: всё из него ставится без нарушений ----
+
+    def test_options_do_not_touch_driver_memory(self):
+        """GET ничего не меняет: память водителей не растёт от просмотра списка."""
+        state = self.record.state
+        before = len(state.history.drivers)
+        self.options(shift_id=SHIFT)
+        self.options(duty_id=DUTY)
+        self.assertEqual(len(state.history.drivers), before,
+                         "просмотр кандидатов дописал пустые записи в память водителей")
+
+    def test_own_vehicle_is_false_when_the_duty_has_no_bus(self):
+        """None == None не делает водителя без закреплённого автобуса «своим»."""
+        ok(self.edit({"type": "clear_driver", "shift_id": SHIFT}))
+        ok(self.edit({"type": "clear_vehicle", "duty_id": DUTY}))
+        answer = self.options(shift_id=SHIFT)
+        self.assertIsNone(answer["for_vehicle"])
+        self.assertEqual(answer["for_vehicles"], [])
+        self.assertTrue(answer["drivers"])
+        self.assertFalse(any(d["own_vehicle"] for d in answer["drivers"]))
+
+    def test_broken_bus_needs_force_on_every_duty(self):
+        """Неисправный автобус, уже поставленный с force на один наряд, на другой без force не идёт."""
+        day = self.record.day
+        broken = next(v.id for v in sorted(day.vehicles.values(), key=lambda v: v.id)
+                      if v.condition != "ok" and v.cls in day.routes[day.duties[DUTY].route_id].allowed_classes)
+        first, second = "P07-R01-WD02", "P07-R01-WD03"
+        self.assertEqual(self.edit({"type": "set_vehicle", "duty_id": first, "vehicle_id": broken,
+                                    "from": "10:00", "to": "11:00"})[0], 409)
+        ok(self.edit({"type": "set_vehicle", "duty_id": first, "vehicle_id": broken,
+                      "from": "10:00", "to": "11:00", "force": True}))
+        status, payload = self.edit({"type": "set_vehicle", "duty_id": second, "vehicle_id": broken,
+                                     "from": "12:00", "to": "13:00"})
+        self.assertEqual(status, 409, "вторая постановка неисправного автобуса прошла без force")
+        self.assertIn("vehicle_broken", [v["code"] for v in payload["violations"]])
+        forced = ok(self.edit({"type": "set_vehicle", "duty_id": second, "vehicle_id": broken,
+                               "from": "12:00", "to": "13:00", "force": True}))
+        self.assertTrue(forced["log"][-1]["forced"])
+        self.assertEqual([v["code"] for v in forced["new_violations"]], ["vehicle_broken"])
+
+    def test_bus_in_repair_after_a_short_breakdown_is_not_offered(self):
+        """Сошедший на два часа автобус в окне ремонта не предлагается и не ставится."""
+        bus = self.record.state.vehicle_at(DUTY, 8 * 60 + 40)
+        event = {"type": "breakdown", "vehicle_id": bus, "at": "08:40", "duration_min": 120}
+        after = ok(self.engine.handle("POST", "/api/days/day-1/events/apply", None,
+                                      {"event": event, "option": 0}))
+        self.assertEqual(after["repairs"], [{"vehicle_id": bus, "from": "08:40", "to": "10:40"}])
+        self.assertEqual(after["down_vehicles"], [], "сход на время - не выбытие")
+        other = "P07-R01-WD02"
+        offered = [v["vehicle_id"] for v in self.options(duty_id=other, **{"from": "09:00", "to": "10:00"})["vehicles"]]
+        self.assertNotIn(bus, offered)
+        status, payload = self.edit({"type": "set_vehicle", "duty_id": other, "vehicle_id": bus,
+                                     "from": "09:00", "to": "10:00"})
+        self.assertEqual(status, 409)
+        self.assertEqual([v["code"] for v in payload["violations"]], ["in_repair"])
+        self.assertIn("10:40", payload["violations"][0]["text"])
+
+    def test_offered_vehicle_fits_the_permits_of_the_drivers_on_the_duty(self):
+        """На маршруте с двумя классами предлагать можно только то, что поведут водители смен."""
+        raw = generate(preset="park7", day="2026-10-05", seed=1, moment="morning")
+        next(r for r in raw["routes"] if r["id"] == ROUTE)["allowed_classes"] = ["big", "extra_big"]
+        engine = Engine()
+        ok(engine.handle("POST", "/api/days", None, raw))
+        ok(engine.handle("POST", "/api/days/day-1/plan", None, {}))
+        day, state = engine.days["day-1"].day, engine.days["day-1"].state
+        duty = next(d for d in sorted(day.duties.values(), key=lambda d: d.id)
+                    if d.route_id == ROUTE and any(
+                        "extra_big" not in day.drivers[s.who].classes
+                        for sh in day.shifts_by_duty[d.id] for s in state.drivers.get(sh.id, [])))
+        answer = ok(engine.handle("GET", "/api/days/day-1/edits/options", {"duty_id": duty.id}, None))
+        self.assertTrue(answer["vehicles"])
+        self.assertEqual([v for v in answer["vehicles"] if v["class"] == "extra_big"], [],
+                         "предложен автобус, к классу которого у водителя смены нет допуска")
+        for item in answer["vehicles"][:3]:
+            status, payload = engine.handle("POST", "/api/days/day-1/edits", None,
+                                            {"type": "set_vehicle", "duty_id": duty.id,
+                                             "vehicle_id": item["vehicle_id"]})
+            self.assertEqual((status, payload["new_violations"]), (200, []), item)
+            ok(engine.handle("POST", "/api/days/day-1/plan", None, {}))
+
+    def test_offered_driver_fits_every_bus_in_the_window(self):
+        """Если в окне смены на наряде два автобуса разных классов, нужен допуск к обоим."""
+        raw = generate(preset="park7", day="2026-10-05", seed=1, moment="morning")
+        next(r for r in raw["routes"] if r["id"] == ROUTE)["allowed_classes"] = ["big", "extra_big"]
+        engine = Engine()
+        ok(engine.handle("POST", "/api/days", None, raw))
+        ok(engine.handle("POST", "/api/days/day-1/plan", None, {}))
+        day, state = engine.days["day-1"].day, engine.days["day-1"].state
+        duty, shift = "P07-R01-WD02", "P07-R01-WD02-S1"
+        big = state.vehicle_at(duty, 9 * 60)
+        extra = next(v.id for v in sorted(day.vehicles.values(), key=lambda v: v.id)
+                     if v.cls == "extra_big" and v.condition == "ok" and not state.vehicle_busy_after(v.id, 0))
+        ok(engine.handle("POST", "/api/days/day-1/edits", None, {"type": "clear_driver", "shift_id": shift}))
+        ok(engine.handle("POST", "/api/days/day-1/edits", None,
+                         {"type": "set_vehicle", "duty_id": duty, "vehicle_id": extra, "from": "09:00",
+                          "to": hm(day.shifts[shift].end)}))
+        answer = ok(engine.handle("GET", "/api/days/day-1/edits/options", {"shift_id": shift}, None))
+        self.assertEqual(answer["for_vehicles"], [big, extra])
+        self.assertEqual(answer["for_vehicle"], big)
+        self.assertTrue(answer["drivers"])
+        for item in answer["drivers"]:
+            self.assertTrue({"big", "extra_big"} <= set(day.drivers[item["driver_id"]].classes), item)
+        status, payload = engine.handle("POST", "/api/days/day-1/edits", None,
+                                        {"type": "set_driver", "shift_id": shift,
+                                         "driver_id": answer["drivers"][0]["driver_id"]})
+        self.assertEqual((status, payload["new_violations"]), (200, []))
+
+    def test_transferred_bus_cannot_be_set_in_its_home_park(self):
+        """Автобус, утром отданный соседнему парку, на наряд родного парка не ставится."""
+        engine = Engine()
+        ok(engine.handle("POST", "/api/days", None, city_day()))
+        ok(engine.handle("POST", "/api/days/day-1/plan", None, {}))
+        day, state = engine.days["day-1"].day, engine.days["day-1"].state
+        moved, to_park = next(iter(sorted(state.transfers.items())))
+        home = day.vehicles[moved].park_id
+        self.assertNotEqual(home, to_park)
+        busy = next(d for d, segs in state.vehicles.items() if any(s.who == moved for s in segs))
+        ok(engine.handle("POST", "/api/days/day-1/edits", None, {"type": "clear_vehicle", "duty_id": busy}))
+        target = next(d.id for d in sorted(day.duties.values(), key=lambda d: d.id)
+                      if d.park_id == home and d.type == "line"
+                      and day.vehicles[moved].cls in day.routes[d.route_id].allowed_classes)
+        offered = ok(engine.handle("GET", "/api/days/day-1/edits/options", {"duty_id": target}, None))
+        self.assertNotIn(moved, [v["vehicle_id"] for v in offered["vehicles"]])
+        status, payload = engine.handle("POST", "/api/days/day-1/edits", None,
+                                        {"type": "set_vehicle", "duty_id": target, "vehicle_id": moved})
+        self.assertEqual(status, 409)
+        self.assertEqual([v["code"] for v in payload["violations"]], ["vehicle_park"])
+        self.assertIn(to_park, payload["violations"][0]["text"])
+
+    def test_plan_note_counts_events_and_edits_apart(self):
+        """Заметка плана не называет ручные правки событиями."""
+        bus = self.record.state.vehicle_at(DUTY, 8 * 60 + 40)
+        ok(self.engine.handle("POST", "/api/days/day-1/events/apply", None,
+                              {"event": {"type": "breakdown", "vehicle_id": bus, "at": "08:40"}, "option": 0}))
+        other = "P07-R02-WD01"
+        ok(self.edit({"type": "clear_vehicle", "duty_id": other}))
+        ok(self.edit({"type": "set_vehicle", "duty_id": other,
+                      "vehicle_id": self.options(duty_id=other)["vehicles"][0]["vehicle_id"]}))
+        second = ok(self.engine.handle("POST", "/api/days", None, dict(PARK7, date="2026-10-06")))["day_id"]
+        notes = ok(self.engine.handle("POST", f"/api/days/{second}/plan", None, {"history_from": "day-1"}))["notes"]
+        self.assertTrue(any("событий 1 и ручных правок 2" in note for note in notes), notes)
 
 
 class TestRegistryImport(unittest.TestCase):
@@ -575,6 +737,63 @@ class TestRegistryImport(unittest.TestCase):
         self.assertIsNone(payload["day_id"])
         self.assertEqual(payload["counts"]["vehicles"], 420)
         self.assertEqual(ok(self.engine.handle("GET", "/api/days"))["days"], [])
+
+    def test_dry_run_answer_has_the_same_shape_as_the_real_one(self):
+        """Интерфейс показывает «вот что я понял» по warnings и при предварительном просмотре."""
+        from tests.test_registry import RUSSIAN
+        dry = ok(self.post({"files": RUSSIAN, "meta": self.META, "dry_run": True}))
+        real = ok(self.post({"files": RUSSIAN, "meta": self.META}))
+        self.assertEqual(set(dry), set(real))
+        self.assertEqual((dry["moment"], dry["preset"]), ("morning", None))
+        self.assertTrue(dry["warnings"])
+        self.assertEqual(dry["warnings"], real["warnings"])
+
+    def test_warnings_are_not_doubled(self):
+        """Общая проверка считается один раз: предупреждение в ответе одно, а не два."""
+        from tests.test_registry import RUSSIAN
+        payload = ok(self.post({"files": RUSSIAN, "meta": self.META}))
+        self.assertEqual(len(payload["warnings"]), len(set(payload["warnings"])), payload["warnings"])
+        self.assertEqual(payload["warnings"], payload["report"]["warnings"])
+
+    def test_broken_workbook_is_refused_not_crashed(self):
+        import io as _io
+        import zipfile as _zipfile
+        from naryad.data.registry import encode
+        buffer = _io.BytesIO()
+        with _zipfile.ZipFile(buffer, "w") as book:
+            book.writestr("xl/workbook.xml", "<<< это не xml")
+        status, payload = self.post({"workbook": encode(buffer.getvalue()), "meta": self.META})
+        self.assertEqual(status, 400)
+        self.assertIn("повреждена", payload["error"])
+        self.assertIn("xl/workbook.xml", payload["error"])
+
+    def test_base64_with_line_breaks_is_read(self):
+        import base64 as _base64
+        from tests.test_registry import TestExcel, workbook
+        wrapped = _base64.encodebytes(workbook(TestExcel.SHEETS)).decode()
+        self.assertIn("\n", wrapped)
+        payload = ok(self.post({"workbook": wrapped, "meta": self.META}))
+        self.assertEqual(payload["counts"]["duties"], 2)
+
+    def test_unclosed_quote_in_a_big_csv_is_a_400(self):
+        from tests.test_registry import RUSSIAN
+        files = dict(RUSSIAN)
+        files["Автобусы"] = ("Гаражный номер;Класс;Топливо;Парк;Тех. состояние\n"
+                            "\"7002;большой;газ;П7;исправен\n" + "7003;большой;газ;П7;исправен\n" * 6000)
+        status, payload = self.post({"files": files, "meta": self.META})
+        self.assertEqual(status, 400)
+        self.assertIn("Автобусы", payload["error"])
+        self.assertIn("кавычка", payload["error"])
+
+    def test_numeric_overflow_is_an_unknown_value(self):
+        from tests.test_registry import RUSSIAN
+        files = dict(RUSSIAN)
+        files["Маршруты"] = files["Маршруты"].replace(";160", ";1e999")
+        status, payload = self.post({"files": files, "meta": self.META})
+        self.assertEqual(status, 400)
+        self.assertNotIn("kind", payload, "переполнение числа дошло до 500")
+        self.assertTrue(any("1e999" in e and "Время оборота" in e for e in payload["report"]["errors"]),
+                        payload["report"]["errors"])
 
     def test_registry_with_errors_is_refused_with_the_report(self):
         files = self.park7_csv()

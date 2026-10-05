@@ -25,7 +25,10 @@ force - это сознательное решение человека, и пе
 
 Файл, который не читается или написан другой версией формата, при
 загрузке пропускается с сообщением: один испорченный день не должен
-мешать открыть остальные.
+мешать открыть остальные. Номер пропущенного дня новому дню не выдаётся,
+и файл дня никогда не перезаписывается: иначе день, написанный более
+новой версией сервиса или другим сервером на той же папке, был бы
+уничтожен молча. Папку делить между двумя серверами нельзя.
 """
 
 from __future__ import annotations
@@ -44,6 +47,7 @@ from naryad.solve.drivers import DriverState, History
 FORMAT = 1
 DAY_ID = re.compile(r"^day-\d+$")
 DAY_FILE, LIVE_FILE = "{}.day.json", "{}.live.json"
+ANY_FILE = re.compile(r"^day-(\d+)\.(day|live)\.json$")
 
 
 # --- перевод объектов движка в JSON и обратно ---------------------------------
@@ -88,6 +92,7 @@ def state_to_dict(state: OpsState) -> dict:
     return {"vehicles": _segments_to_list(state.vehicles),
             "drivers": _segments_to_list(state.drivers),
             "down_vehicles": state.down_vehicles, "down_drivers": state.down_drivers,
+            "repairs": {vehicle: [[a, b] for a, b in windows] for vehicle, windows in state.repairs.items()},
             "transfers": state.transfers, "history": history_to_dict(state.history),
             "log": list(state.log)}
 
@@ -97,6 +102,9 @@ def state_from_dict(data: dict, day: Day) -> OpsState:
                     drivers=_segments_from_list(data.get("drivers")),
                     down_vehicles=dict(data.get("down_vehicles") or {}),
                     down_drivers=dict(data.get("down_drivers") or {}),
+                    # дни, записанные до появления поля, читаются как без ремонтов
+                    repairs={vehicle: [(int(a), int(b)) for a, b in windows]
+                             for vehicle, windows in (data.get("repairs") or {}).items()},
                     history=history_from_dict(data.get("history")),
                     transfers=dict(data.get("transfers") or {}),
                     log=list(data.get("log") or []))
@@ -110,7 +118,12 @@ class Store:
     def __init__(self, folder=None):
         self.folder = Path(folder).expanduser() if folder else None
         if self.folder:
-            self.folder.mkdir(parents=True, exist_ok=True)
+            try:
+                self.folder.mkdir(parents=True, exist_ok=True)
+            except OSError as error:
+                raise ValueError(f"Папка дней не создана: {self.folder} - "
+                                 f"{'это файл, а не папка' if self.folder.exists() else 'нет прав или нет пути'}"
+                                 f" ({error.strerror or error})") from None
 
     def __bool__(self) -> bool:
         return self.folder is not None
@@ -130,12 +143,32 @@ class Store:
             raise
 
     def save_day(self, day_id: str, raw: dict) -> None:
+        """Файл дня пишется один раз. Существующий не перезаписывается: это чужой день."""
         if self.folder:
-            self._write(DAY_FILE.format(day_id), {"format": FORMAT, "day_id": day_id, "raw": raw})
+            target = self.folder / DAY_FILE.format(day_id)
+            if target.exists():
+                raise FileExistsError(
+                    f"{target.name} уже есть в папке {self.folder}: день {day_id} уже записан. "
+                    f"Два сервера на одной папке? Папку делить нельзя")
+            self._write(target.name, {"format": FORMAT, "day_id": day_id, "raw": raw})
 
     def save_live(self, day_id: str, live: dict) -> None:
         if self.folder:
             self._write(LIVE_FILE.format(day_id), {"format": FORMAT, "day_id": day_id, **live})
+
+    def highest_number(self) -> int:
+        """Наибольший номер дня среди всех файлов папки, включая непрочитанные.
+
+        Новому дню нельзя выдать номер пропущенного дня: его файлы легли бы
+        поверх файлов пропущенного, а тот мог быть написан более новой
+        версией сервиса.
+        """
+        numbers = [0]
+        for path in self.folder.iterdir() if self.folder else ():
+            found = ANY_FILE.match(path.name)
+            if found:
+                numbers.append(int(found.group(1)))
+        return max(numbers)
 
     def read_all(self) -> list:
         """[(day_id, день, живая часть или None)] по порядку номеров."""
@@ -151,22 +184,28 @@ class Store:
             if day is None:
                 continue
             live_path = self.folder / LIVE_FILE.format(day_id)
-            live = self._read(live_path) if live_path.exists() else None
+            live = (self._read(live_path, f"день {day_id} открыт без плана и журнала")
+                    if live_path.exists() else None)
             out.append((day_id, day, live))
         return sorted(out, key=lambda item: int(item[0].rsplit("-", 1)[-1]))
 
-    def _read(self, path: Path):
+    def _read(self, path: Path, outcome: str = "день пропущен"):
+        """Файл как объект JSON нашего формата, иначе None и сообщение в журнал сервера.
+
+        outcome - что это значит для дня: файл дня не читается - день пропущен,
+        живая часть не читается - день открыт, но без плана и журнала.
+        """
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as error:
-            return self._skip(path, f"файл не читается: {error}")
+            return self._skip(path, f"файл не читается: {error}", outcome)
         if not isinstance(data, dict):
-            return self._skip(path, "внутри не объект JSON")
+            return self._skip(path, "внутри не объект JSON", outcome)
         if data.get("format") != FORMAT:
-            return self._skip(path, f"формат {data.get('format')}, этот сервис читает {FORMAT}")
+            return self._skip(path, f"формат {data.get('format')}, этот сервис читает {FORMAT}", outcome)
         return data
 
     @staticmethod
-    def _skip(path: Path, why: str) -> None:
-        print(f"День пропущен, {path.name}: {why}", file=sys.stderr)
+    def _skip(path: Path, why: str, outcome: str = "день пропущен") -> None:
+        print(f"{outcome[0].upper()}{outcome[1:]}, {path.name}: {why}", file=sys.stderr)
         return None

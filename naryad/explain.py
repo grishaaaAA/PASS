@@ -110,7 +110,7 @@ def route_interval(day: Day, state, route_id: str, duties: list | None = None) -
     ordered = sorted(moments)
 
     worst, worst_at, worst_running, worst_active = 1.0, None, 0, 0
-    stopped_min, stopped_at, peak = 0, None, 0
+    stopped_min, stopped_at, stopped_active, peak = 0, None, 0, 0
     for position, moment in enumerate(ordered):
         active = [d for d in duties if d.start <= moment < d.end]
         if not active:
@@ -121,18 +121,24 @@ def route_interval(day: Day, state, route_id: str, duties: list | None = None) -
             following = ordered[position + 1] if position + 1 < len(ordered) else moment
             stopped_min += following - moment
             if stopped_at is None:
-                stopped_at = moment
+                stopped_at, stopped_active = moment, len(active)
             continue
         growth = len(active) / running
         if growth > worst:
             worst, worst_at, worst_running, worst_active = growth, moment, running, len(active)
 
     turn = route.turnaround_min
-    planned = worst_active or peak      # в худший момент, а без роста - при полном выпуске
-    running_then = worst_running or peak
+    if worst_at is None and stopped_at is not None:
+        # роста с конечным числом не было, зато маршрут стоял: строка про останов,
+        # как в срезе на момент - работает 0, интервала нет, рост не число
+        planned, running_then, growth, at = stopped_active, 0, None, stopped_at
+    else:
+        planned = worst_active or peak      # в худший момент, а без роста - при полном выпуске
+        running_then = worst_running or peak
+        growth, at = round(worst, 2), worst_at
     return {"route_id": route_id, "number": route.number, "priority": route.priority,
             "duties": len(duties),
-            "growth": round(worst, 2), "at": _at(worst_at) if worst_at is not None else None,
+            "growth": growth, "at": _at(at) if at is not None else None,
             "planned_min": round(turn / planned) if planned else None,
             "actual_min": round(turn / running_then) if running_then else None,
             "planned_buses": planned, "running_buses": running_then,
@@ -170,14 +176,18 @@ def intervals(day: Day, state, t: int | None = None) -> dict:
             for route_id, duties in sorted(by_route.items())]
     working = [r for r in rows if r["duties"]]
     grew = [r for r in working if r["growth"] is not None]
-    stopped = [r for r in working if r["stopped_min"] > 0 or r["growth"] is None]
+    # остановлен - где были наряды по расписанию и ни один не работал (stopped_at);
+    # маршрут вне своих часов работы в срезе на момент не остановлен и не вырос
+    stopped = [r for r in working if r["stopped_at"] is not None]
     over = [r for r in grew if r["growth"] > 1.25]
     highest = round(max((r["growth"] for r in grew), default=1.0), 2)
     worst = max(grew, key=lambda r: (r["growth"], r["route_id"]), default=None)
     if worst is not None and worst["growth"] <= 1:
         worst = None        # роста нет, называть «худший» маршрут не за что
 
-    if worst is None:
+    if worst is None and stopped:
+        answer = "Без единого автобуса на маршрутах: " + ", ".join(r["number"] for r in stopped[:5])
+    elif worst is None:
         answer = "Интервалы как по плану"
     else:
         answer = (f"Хуже всего на маршруте {worst['number']}: интервал вырос "
@@ -268,7 +278,7 @@ def why_driver(day: Day, plan: Plan, shift_id: str, history: History | None = No
         return why_unfilled(day, plan, shift_id, history, labor)
     driver = day.drivers[driver_id]
     vehicle_id = plan.vehicles[duty.id]
-    state = history.get(driver_id)
+    state = history.peek(driver_id)  # объяснение ничего не меняет, память не дописываем
     work, limit = work_minutes(shift.length, labor), shift_limit(labor)
     reasons = [f"Работает по графику, медосмотр {'пройден' if driver.medical == 'passed' else 'ещё не пройден'}, "
                f"допуск к классу «{CLASS_NAMES[day.vehicles[vehicle_id].cls]}»"]
@@ -303,7 +313,7 @@ def _driver_blocker(day: Day, plan: Plan, driver, shift, history: History, labor
     other = next((s for s, d in plan.drivers.items() if d == driver.id), None)
     if other is not None:
         return f"работает на смене {other}"
-    state = history.get(driver.id)
+    state = history.peek(driver.id)
     if rest_status(state, day_base(day) + shift.start, labor) is None:
         return _rest_missing(state, rest_minutes(state.last_end, day_base(day) + shift.start, labor), labor)
     return "свободен; не поставлен, чтобы закрыть другие смены"

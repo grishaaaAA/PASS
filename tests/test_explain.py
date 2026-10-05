@@ -339,6 +339,16 @@ class TestIntervals(unittest.TestCase):
         self.assertEqual(answer["routes"][0]["at"], f"{late // 60:02d}:{late % 60:02d}")
         self.assertIn(f"{late // 60:02d}:", answer["question"])
 
+    def test_moment_outside_route_hours_is_not_a_stop(self):
+        """В 03:00 нарядов нет ни у кого: это не остановка маршрутов, а ночь."""
+        for t in (3 * 60, 4 * 60 + 50, 26 * 60):
+            answer = intervals(self.day, self.state, t)
+            self.assertEqual(answer["numbers"]["stopped_routes"], 0, t)
+            self.assertEqual(answer["numbers"]["worst_growth"], 1.0, t)
+            self.assertEqual(answer["reasons"],
+                             [f"на всех {answer['numbers']['routes_total']} маршрутах интервал в пределах плана"], t)
+            self.assertEqual(answer["answer"], "Интервалы как по плану", t)
+
     def test_route_that_stops_completely_is_counted_apart(self):
         day = Day.load(SAMPLES / "park7_weekday.json")
         plan = solve_drivers(day, solve_vehicles(day))
@@ -356,3 +366,15 @@ class TestIntervals(unittest.TestCase):
         self.assertIsNotNone(row["stopped_at"])
         self.assertGreaterEqual(answer["numbers"]["stopped_routes"], 1)
         self.assertIn("не осталось ни одного автобуса", " ".join(answer["reasons"]))
+        # строка маршрута говорит про останов, а не «работают все»
+        self.assertEqual(row["running_buses"], 0)
+        self.assertIsNone(row["actual_min"])
+        self.assertIsNone(row["growth"])
+        self.assertEqual(row["at"], row["stopped_at"])
+        self.assertGreater(row["planned_buses"], 0)
+        # и заголовок не противоречит причинам
+        self.assertNotEqual(answer["answer"], "Интервалы как по плану")
+        self.assertIn(day.routes[route].number, answer["answer"])
+        moment = intervals(day, state, (day.duties[next(iter(
+            d.id for d in day.duties.values() if d.route_id == route))].start + 30))
+        self.assertNotEqual(moment["answer"], "Интервалы как по плану")

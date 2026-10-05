@@ -231,10 +231,87 @@ class TestCsv(unittest.TestCase):
         found, _ = match_headers("duties", ["Выход", "Заезд"])
         self.assertEqual(sorted(found), ["end", "start"])
         for raw, want in (("4:50", "04:50"), ("04:50", "04:50"), ("25:20", "25:20"),
-                          ("0", "00:00"), ("0.2013888888", "04:50")):
+                          ("0", "00:00"), ("0.2013888888", "04:50"), ("1.4", "33:36")):
             self.assertEqual(registry._time(raw), want, raw)
-        for raw in ("4.50", "утром", "4:70", "9"):
+        for raw in ("4.50", "утром", "4:70", "9", "2", "3.0", "99:59", "36:00", "1.5"):
             self.assertIsNone(registry._time(raw), raw)
+
+    def test_a_number_of_days_is_not_a_time(self):
+        """«2» в столбце заезда - ошибка реестра, а не наряд до 48:00."""
+        files = dict(RUSSIAN)
+        files["Наряды"] = files["Наряды"].replace("6:00;14:00;1", "6:00;2;1")
+        files["Смены"] = files["Смены"].replace("С2;Н2;1;6:00;14:00", "С2;Н2;1;6:00;2")
+        data, report = load(files=files, meta=META)
+        self.assertIsNone(data["duties"][1]["end"])
+        self.assertTrue(any("Заезд" in e and "«2»" in e and "35:59" in e for e in report["errors"]), report["errors"])
+
+    def test_header_is_the_first_non_empty_row(self):
+        """Пустая строка перед заголовком не делает заголовком пустоту, номера строк - как в файле."""
+        files = dict(RUSSIAN)
+        files["Автобусы"] = "\n" + files["Автобусы"]
+        data, report = load(files=files, meta=META)
+        self.assertEqual(report["errors"], [])
+        self.assertEqual([v["id"] for v in data["vehicles"]], ["7001", "7002"])
+        files["Автобусы"] = files["Автобусы"].replace("7002;большой", "7002;")
+        report = load(files=files, meta=META)[1]
+        self.assertTrue(any("строка 4" in e and "Класс" in e for e in report["errors"]), report["errors"])
+
+    def test_unknown_value_names_the_column_and_the_rows(self):
+        files = dict(RUSSIAN)
+        files["Автобусы"] = files["Автобусы"].replace("в ремонте", "на ходу?")
+        data, report = load(files=files, meta=META)
+        self.assertEqual(len(report["errors"]), 1)
+        self.assertIn("Автобусы, столбец «Тех. состояние», строка 3: значение «на ходу?» не понято",
+                      report["errors"][0])
+        self.assertEqual(report["unknown_values"][0],
+                         {"entity": "vehicles", "field": "condition", "value": "на ходу?", "rows": 1,
+                          "title": "Тех. состояние", "first_rows": [3]})
+        self.assertEqual(registry._rows_text([3, 7, 12, 20, 21]), "строки 3, 7, 12 и ещё 2")
+
+    def test_blank_repair_days_for_a_broken_bus_is_filled_not_refused(self):
+        files = dict(RUSSIAN)
+        files["Автобусы"] = ("Гаражный номер;Класс;Топливо;Парк;Тех. состояние;Срок ремонта\n"
+                            "7001;большой;газ;П7;исправен;\n7002;большой;газ;П7;в ремонте;\n")
+        data, report = load(files=files, meta=META)
+        self.assertEqual(report["errors"], [])
+        self.assertEqual([v["repair_days_left"] for v in data["vehicles"]], [None, 1])
+        self.assertTrue(any("не заполнен" in w and "1 день" in w for w in report["warnings"]), report["warnings"])
+
+    def test_list_of_separators_only_is_an_empty_cell(self):
+        files = dict(RUSSIAN)
+        files["Водители"] = files["Водители"].replace("большой|средний", "|")
+        data, report = load(files=files, meta=META)
+        self.assertIsNone(data["drivers"][1]["classes"])
+        self.assertTrue(any("строка 3" in e and "Допуск" in e and "пусто" in e for e in report["errors"]),
+                        report["errors"])
+
+    def test_duplicate_table_and_same_file_name_are_reported(self):
+        data, report = load(files=dict(RUSSIAN, vehicles="id;board_number\nX;1\n"), meta=META)
+        self.assertEqual(report["unknown_tables"], [])
+        self.assertTrue(any("повторяет уже прочитанную «Автобусы»" in w for w in report["warnings"]),
+                        report["warnings"])
+        self.assertEqual(report["errors"], [])
+        files = {**RUSSIAN, "Автобусы.csv": "Гаражный номер;Класс;Топливо;Парк;Тех. состояние\n"
+                                            "9999;большой;газ;П7;исправен\n"}
+        data, report = load(files=files, meta=META)
+        self.assertEqual([v["id"] for v in data["vehicles"]], ["9999"])
+        self.assertTrue(any("перекрыл" in w and "Автобусы.csv" in w for w in report["warnings"]),
+                        report["warnings"])
+
+    def test_overflow_and_nan_are_unknown_values(self):
+        for bad in ("1e999", "inf", "nan"):
+            files = dict(RUSSIAN)
+            files["Маршруты"] = files["Маршруты"].replace(";160", f";{bad}")
+            data, report = load(files=files, meta=META)
+            self.assertTrue(any(bad in e and "Время оборота" in e and "строка 2" in e
+                                for e in report["errors"]), (bad, report["errors"]))
+
+    def test_unclosed_quote_in_a_big_file_is_a_value_error(self):
+        text = ("Гаражный номер;Класс\n\"7002;большой\n" + "7003;большой\n" * 20000)
+        with self.assertRaises(ValueError) as caught:
+            read_csv_text(text, "Автобусы")
+        self.assertIn("Автобусы", str(caught.exception))
+        self.assertIn("кавычка", str(caught.exception))
 
 
 class TestExcel(unittest.TestCase):
@@ -290,6 +367,93 @@ class TestExcel(unittest.TestCase):
         with self.assertRaises(ValueError) as old:
             load(workbook=empty.getvalue())
         self.assertIn(".xlsx", str(old.exception))
+        garbage = io.BytesIO()
+        with zipfile.ZipFile(garbage, "w") as archive:
+            archive.writestr("xl/workbook.xml", "<<< не xml")
+        with self.assertRaises(ValueError) as spoiled:
+            load(workbook=garbage.getvalue())
+        self.assertIn("повреждена", str(spoiled.exception))
+        self.assertIn("xl/workbook.xml", str(spoiled.exception))
+        sheets = dict(self.SHEETS)   # бесконечность в числовой ячейке - непонятое значение, а не падение
+        sheets["Маршруты"] = [self.SHEETS["Маршруты"][0], self.SHEETS["Маршруты"][1][:5] + [float("inf")]]
+        report = load(workbook=workbook(sheets), meta=META)[1]
+        self.assertTrue(any("inf" in e and "строка 2" in e and "Время оборота" in e for e in report["errors"]),
+                        report["errors"])
+
+    def test_row_numbers_follow_the_sheet(self):
+        """Excel не пишет пустые строки в XML: ошибка называет строку листа, а не порядковый номер."""
+        main = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+
+        def cell(column, row, value):
+            return f'<c r="{column}{row}" t="inlineStr"><is><t>{value}</t></is></c>'
+
+        header = ["Гаражный номер", "Класс", "Топливо", "Парк", "Тех. состояние"]
+        rows = ('<row r="1">' + "".join(cell(c, 1, v) for c, v in zip("ABCDE", header)) + "</row>"
+                '<row r="2">' + "".join(cell(c, 2, v) for c, v in zip("ABCDE", ["7001", "большой", "газ", "П7", "исправен"])) + "</row>"
+                '<row r="4">' + "".join(cell(c, 4, v) for c, v in zip("ABDE", ["7002", "большой", "П7", "исправен"])) + "</row>")
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as book:
+            book.writestr("xl/workbook.xml", f'<workbook xmlns="{main}"><sheets><sheet name="Автобусы" sheetId="1"/></sheets></workbook>')
+            book.writestr("xl/worksheets/sheet1.xml", f'<worksheet xmlns="{main}"><sheetData>{rows}</sheetData></worksheet>')
+        report = load(workbook=buffer.getvalue(), meta=META)[1]
+        self.assertTrue(any("строка 4" in e and "Топливо" in e for e in report["errors"]), report["errors"])
+        self.assertFalse(any("строка 3" in e for e in report["errors"]), report["errors"])
+
+    def test_formatted_empty_first_row_is_not_the_header(self):
+        """Оформленная пустая первая строка листа (ячейки без значений) - не заголовок."""
+        main = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+
+        def cell(column, row, value):
+            return f'<c r="{column}{row}" t="inlineStr"><is><t>{value}</t></is></c>'
+
+        header = ["Гаражный номер", "Класс", "Топливо", "Парк", "Тех. состояние"]
+        rows = ('<row r="1"><c r="A1" s="1"/><c r="B1" s="1"/></row>'
+                '<row r="2">' + "".join(cell(c, 2, v) for c, v in zip("ABCDE", header)) + "</row>"
+                '<row r="3">' + "".join(cell(c, 3, v) for c, v in zip("ABCDE", ["7001", "большой", "газ", "П7", "исправен"])) + "</row>"
+                '<row r="4">' + "".join(cell(c, 4, v) for c, v in zip("ABDE", ["7002", "большой", "П7", "исправен"])) + "</row>")
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as book:
+            book.writestr("xl/workbook.xml", f'<workbook xmlns="{main}"><sheets><sheet name="Автобусы" sheetId="1"/></sheets></workbook>')
+            book.writestr("xl/worksheets/sheet1.xml", f'<worksheet xmlns="{main}"><sheetData>{rows}</sheetData></worksheet>')
+        report = load(workbook=buffer.getvalue(), meta=META)[1]
+        line = next(x for x in report["entities"] if x["entity"] == "vehicles")
+        self.assertEqual((len(line["matched"]), line["rows"], line["missing"]), (5, 2, []))
+        self.assertFalse(any("нет столбцов" in e for e in report["errors"]), report["errors"])
+        self.assertTrue(any("строка 4" in e and "Топливо" in e for e in report["errors"]), report["errors"])
+
+    def test_real_world_excel_traits(self):
+        """Куски настоящих книг: форматированный текст, листы не по порядку, столбцы дальше Z."""
+        main = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+        rel = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as book:
+            book.writestr("xl/workbook.xml",
+                          f'<workbook xmlns="{main}" xmlns:r="{rel}"><sheets>'
+                          f'<sheet name="Первый" sheetId="1" r:id="rId2"/>'
+                          f'<sheet name="Второй" sheetId="2" r:id="rId1"/></sheets></workbook>')
+            book.writestr("xl/_rels/workbook.xml.rels",
+                          '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                          f'<Relationship Id="rId1" Type="{rel}/worksheet" Target="/xl/worksheets/sheet1.xml"/>'
+                          f'<Relationship Id="rId2" Type="{rel}/worksheet" Target="worksheets/sheet2.xml"/>'
+                          '</Relationships>')
+            book.writestr("xl/sharedStrings.xml",
+                          f'<sst xmlns="{main}"><si><r><rPr><b/></rPr><t>Гаражный</t></r>'
+                          '<r><t xml:space="preserve"> номер</t></r></si><si><t>Класс</t></si></sst>')
+            book.writestr("xl/worksheets/sheet1.xml",
+                          f'<worksheet xmlns="{main}"><sheetData><row r="1">'
+                          '<c r="A1" t="inlineStr"><is><t>x</t></is></c></row></sheetData></worksheet>')
+            book.writestr("xl/worksheets/sheet2.xml",
+                          f'<worksheet xmlns="{main}"><sheetData>'
+                          '<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c>'
+                          '<c r="AA1"><v>7001.0</v></c><c r="AB1" t="b"><v>1</v></c>'
+                          '<c r="AC1" t="str"><v>формула</v></c></row></sheetData></worksheet>')
+        sheets = registry.read_xlsx(buffer.getvalue())
+        self.assertEqual(list(sheets), ["Первый", "Второй"], "порядок листов - как в книге, а не по rId")
+        self.assertEqual(sheets["Второй"], [["x"]])
+        first = sheets["Первый"][0]
+        self.assertEqual(first[:2], ["Гаражный номер", "Класс"], "куски форматированного текста склеены")
+        self.assertEqual(len(first), 29)
+        self.assertEqual(first[26:], ["7001", "1", "формула"])
 
     def test_gaps_between_cells_do_not_shift_columns(self):
         sheets = dict(self.SHEETS)
@@ -299,6 +463,33 @@ class TestExcel(unittest.TestCase):
         data, report = load(workbook=workbook(sheets), meta=META)
         self.assertTrue(any("строка 2" in e and "Топливо" in e for e in report["errors"]),
                         report["errors"])
+
+
+class TestSheetLimits(unittest.TestCase):
+    """Крошечный файл не должен раздуваться в памяти из-за номера строки или столбца."""
+
+    MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+
+    def rows(self, body: str) -> list:
+        from xml.etree import ElementTree
+        root = ElementTree.fromstring(f'<worksheet xmlns="{self.MAIN}"><sheetData>{body}</sheetData></worksheet>')
+        return registry._sheet_rows(root, [])
+
+    def test_far_row_number_is_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            self.rows('<row r="3000000"><c r="A3000000" t="inlineStr"><is><t>x</t></is></c></row>')
+        self.assertIn("3000000", str(caught.exception))
+        self.assertIn(str(registry.MAX_SHEET_ROWS), str(caught.exception))
+
+    def test_far_column_is_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            self.rows('<row r="1"><c r="ZZZZZ1" t="inlineStr"><is><t>x</t></is></c></row>')
+        self.assertIn("ZZZZZ1", str(caught.exception))
+
+    def test_ordinary_gaps_still_read(self):
+        rows = self.rows('<row r="1"><c r="A1" t="inlineStr"><is><t>a</t></is></c></row>'
+                         '<row r="4"><c r="C4" t="inlineStr"><is><t>b</t></is></c></row>')
+        self.assertEqual(rows, [["a"], [], [], ["", "", "b"]])
 
 
 class TestCommandLine(unittest.TestCase):

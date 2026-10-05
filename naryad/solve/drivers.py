@@ -63,7 +63,16 @@ class History:
     drivers: dict = field(default_factory=dict)
 
     def get(self, driver_id: str) -> DriverState:
+        """Запись водителя; если её нет - создаётся. Для remember."""
         return self.drivers.setdefault(driver_id, DriverState())
+
+    def peek(self, driver_id: str) -> DriverState:
+        """Запись водителя без создания: для проверок и объяснений.
+
+        get дописывал бы пустую запись по каждому проверенному водителю,
+        и память росла бы от запросов, которые ничего не меняют.
+        """
+        return self.drivers.get(driver_id, DriverState())
 
 
 def rest_status(state: DriverState, start: int, labor: dict) -> str | None:

@@ -34,9 +34,11 @@ import base64
 import csv
 import io
 import json
+import math
 import re
 import sys
 import zipfile
+import zlib
 from pathlib import Path
 from xml.etree import ElementTree
 
@@ -44,6 +46,9 @@ from .check import ENUMS, SCHEMA, check
 from .presets import CLASS_LABELS
 
 MAX_MESSAGES = 50          # длиннее список ошибок человеку не нужен
+MAX_SHEET_ROWS = 200_000   # строк на листе; у реестра города их тысячи, не сотни тысяч
+MAX_SHEET_COLUMNS = 1_024  # столбцов на листе; у реестра их десятки
+MAX_HOURS = 36             # время наряда: после полуночи часы идут дальше 24, но не через сутки с лишним
 TIME_FIELDS = {("duties", "start"), ("duties", "end"), ("shifts", "start"), ("shifts", "end")}
 LIST_SEPARATORS = re.compile(r"[|,;/]")
 
@@ -258,12 +263,21 @@ def _sniff(line: str) -> str:
     return best if counts[best] else ";"
 
 
-def read_csv_text(text: str) -> list:
-    """Текст CSV -> строки таблицы. Пустые строки в конце отбрасываются."""
+def read_csv_text(text: str, name: str = "CSV") -> list:
+    """Текст CSV -> строки таблицы. Пустые строки в конце отбрасываются.
+
+    name - как назвать файл в ошибке. Незакрытая кавычка в большом файле
+    делает весь остаток одним полем, и csv отказывается его читать: это
+    ошибка реестра, а не сервиса, поэтому ValueError с понятным текстом.
+    """
     text = text.lstrip("﻿")
     first = next((line for line in text.splitlines() if line.strip()), "")
-    rows = [[cell.strip() for cell in row]
-            for row in csv.reader(io.StringIO(text), delimiter=_sniff(first))]
+    try:
+        rows = [[cell.strip() for cell in row]
+                for row in csv.reader(io.StringIO(text), delimiter=_sniff(first))]
+    except csv.Error as error:
+        raise ValueError(f"файл «{name}» не разбирается как CSV: незакрытая кавычка или "
+                         f"слишком длинное поле ({error})") from None
     return _trim(rows)
 
 
@@ -298,7 +312,21 @@ def _number_text(raw: str) -> str:
         value = float(raw)
     except (TypeError, ValueError):
         return raw
+    if not math.isfinite(value):   # INF и NaN - не числа, пусть их не поймёт разбор значения
+        return raw
     return str(int(value)) if value == int(value) else raw
+
+
+def _part(archive: zipfile.ZipFile, name: str):
+    """Часть книги как XML. Повреждённая или защищённая книга - ValueError с местом."""
+    try:
+        return ElementTree.fromstring(archive.read(name))
+    except RuntimeError as error:   # zipfile так сообщает о шифровании
+        if "encrypt" in str(error).lower() or "password" in str(error).lower():
+            raise ValueError("книга Excel защищена паролем, снимите защиту и загрузите снова") from None
+        raise ValueError(f"книга Excel повреждена: {name} не читается ({error})") from None
+    except (KeyError, OSError, zipfile.BadZipFile, zlib.error, ElementTree.ParseError) as error:
+        raise ValueError(f"книга Excel повреждена: {name} не читается как XML ({error})") from None
 
 
 def read_xlsx(blob: bytes) -> dict:
@@ -314,17 +342,17 @@ def read_xlsx(blob: bytes) -> dict:
                              "Старый формат .xls не поддерживается, пересохраните как .xlsx")
         shared = []
         if "xl/sharedStrings.xml" in names:
-            root = ElementTree.fromstring(archive.read("xl/sharedStrings.xml"))
+            root = _part(archive, "xl/sharedStrings.xml")
             shared = [_text(node) for node in root if _local(node.tag) == "si"]
         targets = {}
         if "xl/_rels/workbook.xml.rels" in names:
-            root = ElementTree.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
+            root = _part(archive, "xl/_rels/workbook.xml.rels")
             for node in root:
                 target = node.get("Target", "")
                 path = target[1:] if target.startswith("/") else "xl/" + target
                 targets[node.get("Id")] = path.replace("xl/xl/", "xl/")
         sheets, order = {}, 0
-        book = ElementTree.fromstring(archive.read("xl/workbook.xml"))
+        book = _part(archive, "xl/workbook.xml")
         for node in book.iter():
             if _local(node.tag) != "sheet":
                 continue
@@ -332,18 +360,28 @@ def read_xlsx(blob: bytes) -> dict:
             rid = next((v for k, v in node.attrib.items() if _local(k) == "id"), None)
             path = targets.get(rid) or f"xl/worksheets/sheet{order}.xml"
             if path in names:
-                sheets[node.get("name") or f"Лист{order}"] = _sheet_rows(archive.read(path), shared)
+                sheets[node.get("name") or f"Лист{order}"] = _sheet_rows(_part(archive, path), shared)
         return sheets
 
 
-def _sheet_rows(data: bytes, shared: list) -> list:
+def _sheet_rows(root, shared: list) -> list:
+    """Строки листа. Номер строки - как в Excel: пустые строки, которых в XML нет, остаются пустыми."""
     rows = []
-    for row in ElementTree.fromstring(data).iter():
+    for row in root.iter():
         if _local(row.tag) != "row":
             continue
+        number = row.get("r") or ""
+        if number.isdigit() and int(number) > MAX_SHEET_ROWS:
+            raise ValueError(f"лист содержит строку с номером {number}, а предел {MAX_SHEET_ROWS}: "
+                             f"это не похоже на реестр")
+        if number.isdigit() and int(number) > len(rows) + 1:
+            rows.extend([] for _ in range(int(number) - 1 - len(rows)))
         cells: list = []
         for position, cell in enumerate(c for c in row if _local(c.tag) == "c"):
             where = _column(cell.get("r") or "", position)
+            if where >= MAX_SHEET_COLUMNS:
+                raise ValueError(f"лист содержит ячейку {cell.get('r')} дальше столбца номер "
+                                 f"{MAX_SHEET_COLUMNS}: это не похоже на реестр")
             cells.extend([""] * (where + 1 - len(cells)))
             kind = cell.get("t")
             if kind == "s":
@@ -360,16 +398,22 @@ def _sheet_rows(data: bytes, shared: list) -> list:
 
 # --- перевод таблиц в набор данных --------------------------------------------
 
-def match_tables(raw: dict) -> tuple[dict, list]:
-    """{название листа или файла: строки} -> {сущность: (название, строки)}."""
-    tables, unknown = {}, []
+def match_tables(raw: dict) -> tuple[dict, list, list]:
+    """{название листа или файла: строки} -> ({сущность: (название, строки)}, непонятые, повторы).
+
+    Повтор - вторая таблица той же сущности: она понята, но пропущена,
+    и это отдельное предупреждение, а не «не понято, что это».
+    """
+    tables, unknown, duplicates = {}, [], []
     for name, rows in raw.items():
         entity = SHEET_INDEX.get(normal(name))
-        if entity is None or entity in tables:
+        if entity is None:
             unknown.append(name)
+        elif entity in tables:
+            duplicates.append((name, tables[entity][0]))
         else:
             tables[entity] = (name, rows)
-    return tables, unknown
+    return tables, unknown, duplicates
 
 
 def match_headers(entity: str, header: list) -> tuple[dict, list]:
@@ -387,18 +431,24 @@ def match_headers(entity: str, header: list) -> tuple[dict, list]:
 
 
 def _time(raw: str):
-    """«4:50» -> «04:50»; доля суток из Excel -> то же. Иначе None."""
+    """«4:50» -> «04:50»; доля суток из Excel -> то же. Иначе None.
+
+    Потолок один для обоих видов - MAX_HOURS: наряд кончается после
+    полуночи (25:20), но не через сутки с лишним. Ячейка «2», «3.0» или
+    «99:59» - не время наряда, а ошибка в реестре, и её надо показать, а
+    не молча принять как 48:00.
+    """
     found = re.fullmatch(r"(\d{1,2}):(\d{1,2})(?::\d{1,2})?", raw.strip())
     if found:
         hours, minutes = int(found.group(1)), int(found.group(2))
-        return f"{hours:02d}:{minutes:02d}" if minutes < 60 else None
+        return f"{hours:02d}:{minutes:02d}" if minutes < 60 and hours < MAX_HOURS else None
     try:
         share = float(raw.replace(",", "."))
     except ValueError:
         return None
-    if not 0 <= share <= 3:      # Excel держит время как долю суток, 25:20 это 1.06
+    total = round(share * 24 * 60)   # Excel держит время как долю суток, 25:20 это 1.06
+    if not 0 <= total < MAX_HOURS * 60:
         return None
-    total = round(share * 24 * 60)
     return f"{total // 60:02d}:{total % 60:02d}"
 
 
@@ -436,18 +486,30 @@ def _single(entity: str, field: str, kind: str, raw: str):
     return value
 
 
-def _cell(entity: str, field: str, kind: str, raw: str, unmapped: dict):
-    """Значение ячейки в наш вид. Непонятое копится в unmapped, тут None."""
+def _cell(entity: str, field: str, kind: str, raw: str, unmapped: dict, where: tuple):
+    """Значение ячейки в наш вид. Непонятое копится в unmapped, тут None.
+
+    where - (таблица, столбец, номер строки): по ним ошибка называет место.
+    OverflowError - «1e999» в целом поле, это такое же непонятое значение.
+    """
     parts = [p.strip() for p in LIST_SEPARATORS.split(raw) if p.strip()] if kind == "list" else [raw]
     out = []
     for part in parts:
         try:
             out.append(_single(entity, field, kind, part))
-        except (ValueError, TypeError):
-            unmapped.setdefault((entity, field, part), 0)
-            unmapped[(entity, field, part)] += 1
+        except (ValueError, TypeError, OverflowError):
+            seen = unmapped.setdefault((entity, field, part), {"source": where[0], "title": where[1], "rows": []})
+            seen["rows"].append(where[2])
             return None
     return out if kind == "list" else out[0]
+
+
+def _rows_text(numbers: list) -> str:
+    """«строка 3», «строки 3, 7», «строки 3, 7, 12 и ещё 4»."""
+    if len(numbers) == 1:
+        return f"строка {numbers[0]}"
+    shown = ", ".join(str(n) for n in numbers[:3])
+    return f"строки {shown}" + (f" и ещё {len(numbers) - 3}" if len(numbers) > 3 else "")
 
 
 def _allowed(entity: str, field: str) -> str:
@@ -456,7 +518,7 @@ def _allowed(entity: str, field: str) -> str:
     if words:
         return ", ".join(f"{code}" + (f" ({w[0]})" if w else "") for code, w in words.items())
     if (entity, field) in TIME_FIELDS:
-        return "время в виде ЧЧ:ММ, часы после полуночи идут дальше 24"
+        return f"время в виде ЧЧ:ММ, часы после полуночи идут дальше 24, но не больше {MAX_HOURS - 1}:59"
     kinds = {"int": "целое число", "float": "число", "list": "список через | или запятую"}
     return kinds.get(dict((f, k) for f, k, _ in SCHEMA[entity])[field], "текст")
 
@@ -478,10 +540,12 @@ def build(tables: dict, meta: dict | None = None) -> tuple[dict, dict]:
         line = {"entity": entity, "source": source, "rows": 0, "matched": {},
                 "defaulted": [], "derived": [], "unknown_columns": [], "missing": []}
         report["entities"].append(line)
-        if not rows:
+        # заголовок - первая непустая строка: перед ним бывает пустая или оформленная строка
+        head = next((i for i, row in enumerate(rows) if any(str(cell).strip() for cell in row)), None)
+        if head is None:
             report["errors"].append(f"{source}: таблица пустая, нет даже заголовка")
             continue
-        found, unknown = match_headers(entity, rows[0])
+        found, unknown = match_headers(entity, rows[head])
         line["unknown_columns"] = unknown
         line["matched"] = {name: title for name, (_, title) in sorted(found.items())}
         key = NATURAL_KEY.get(entity)
@@ -516,7 +580,7 @@ def build(tables: dict, meta: dict | None = None) -> tuple[dict, dict]:
                 f"{', '.join(line['matched'].values()) or 'ни одного'}")
             continue
 
-        for number, row in enumerate(rows[1:], start=2):
+        for number, row in enumerate(rows[head + 1:], start=head + 2):  # number - строка файла
             if not any(str(cell).strip() for cell in row):
                 continue
             item = {}
@@ -530,6 +594,8 @@ def build(tables: dict, meta: dict | None = None) -> tuple[dict, dict]:
                     continue
                 position, title = found[field]
                 raw = str(row[position]).strip() if position < len(row) else ""
+                if kind == "list" and not LIST_SEPARATORS.sub("", raw).strip():
+                    raw = ""   # «|» или «,» без единого слова - пустая ячейка, а не пустой список
                 if not raw:
                     item[field] = None
                     if not nullable:
@@ -537,18 +603,19 @@ def build(tables: dict, meta: dict | None = None) -> tuple[dict, dict]:
                             f"{source}, строка {number}, столбец «{title}»: пусто, "
                             f"а без этого значения нельзя")
                     continue
-                item[field] = _cell(entity, field, kind, raw, unmapped)
+                item[field] = _cell(entity, field, kind, raw, unmapped, (source, title, number))
             data[entity].append(item)
             line["rows"] += 1
 
     _fill_counts(data, report)
 
-    for (entity, field, value), count in sorted(unmapped.items(), key=lambda kv: -kv[1]):
-        report["unknown_values"].append({"entity": entity, "field": field,
-                                         "value": value, "rows": count})
+    for (entity, field, value), seen in sorted(unmapped.items(), key=lambda kv: -len(kv[1]["rows"])):
+        report["unknown_values"].append({"entity": entity, "field": field, "value": value,
+                                         "rows": len(seen["rows"]), "title": seen["title"],
+                                         "first_rows": seen["rows"][:3]})
         report["errors"].append(
-            f"{entity}, столбец «{field}»: значение «{value}» не понято "
-            f"(строк: {count}). Допустимо: {_allowed(entity, field)}")
+            f"{seen['source']}, столбец «{seen['title']}», {_rows_text(seen['rows'])}: "
+            f"значение «{value}» не понято. Допустимо: {_allowed(entity, field)}")
     return data, report
 
 
@@ -582,15 +649,16 @@ def _fill_counts(data: dict, report: dict) -> None:
                 continue
             route[field] = (sum(d.get("route_id") == route["id"] for d in data["duties"])
                             if suffix == day_type else 0)
-    if ("vehicles", "repair_days_left") in missing:
-        broken = [v for v in data["vehicles"] if v.get("condition") not in (None, "ok")]
-        for vehicle in broken:
-            vehicle["repair_days_left"] = 1
-        if broken:
-            report["warnings"].append(
-                f"срока ремонта в реестре нет, неисправным автобусам поставлен 1 день "
-                f"(таких {len(broken)}). Движок это поле не использует, оно нужно только "
-                f"прогнозу на несколько дней")
+    broken = [v for v in data["vehicles"]
+              if v.get("condition") not in (None, "ok") and v.get("repair_days_left") is None]
+    for vehicle in broken:
+        vehicle["repair_days_left"] = 1
+    if broken:
+        report["warnings"].append(
+            (f"срока ремонта в реестре нет, неисправным автобусам поставлен 1 день (таких {len(broken)})"
+             if ("vehicles", "repair_days_left") in missing else
+             f"срок ремонта не заполнен у неисправных автобусов (таких {len(broken)}), им поставлен 1 день")
+            + ". Движок это поле не использует, оно нужно только прогнозу на несколько дней")
 
 
 # --- точки входа ---------------------------------------------------------------
@@ -606,21 +674,29 @@ def load(files: dict | None = None, workbook: bytes | None = None,
     первым.
     """
     raw: dict = {}
+    notes: list = []
     if workbook is not None:
         raw.update(read_xlsx(workbook))
     for name, text in (files or {}).items():
-        raw[Path(str(name)).stem] = read_csv_text(text)
+        stem = Path(str(name)).stem
+        if stem in raw:
+            notes.append(f"файл «{name}» перекрыл таблицу «{stem}», загруженную раньше: "
+                         f"одинаковое название без расширения")
+        raw[stem] = read_csv_text(text, str(name))
     if not raw:
         return {"meta": dict(meta or {})}, {
             "entities": [], "errors": ["не передано ни одного файла реестра"],
             "warnings": [], "unknown_values": [], "unknown_tables": []}
 
-    tables, unknown_tables = match_tables(raw)
+    tables, unknown_tables, duplicates = match_tables(raw)
     data, report = build(tables, meta)
     report["unknown_tables"] = unknown_tables
+    report["warnings"].extend(notes)
     if unknown_tables:
         report["warnings"].append(
             f"не понято, что это за таблицы, они пропущены: {', '.join(unknown_tables)}")
+    for name, first in duplicates:
+        report["warnings"].append(f"таблица «{name}» повторяет уже прочитанную «{first}», пропущена")
     if not report["errors"]:
         result = check(data)
         report["errors"].extend(result["errors"])

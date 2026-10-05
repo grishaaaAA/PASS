@@ -75,6 +75,7 @@ class OpsState:
     drivers: dict = field(default_factory=dict)    # смена -> [Segment]
     down_vehicles: dict = field(default_factory=dict)  # автобус -> с какого времени
     down_drivers: dict = field(default_factory=dict)   # водитель -> с какого времени
+    repairs: dict = field(default_factory=dict)        # автобус -> [(с, до)]: в ремонте после схода на время
     history: History = field(default_factory=History)  # прошлые дни водителей
     transfers: dict = field(default_factory=dict)      # автобус -> в какой парк переброшен на день
     log: list = field(default_factory=list)
@@ -105,6 +106,11 @@ class OpsState:
 
     def vehicle_busy_after(self, vehicle_id: str, t: int) -> bool:
         return any(s.who == vehicle_id and s.end > t for segs in self.vehicles.values() for s in segs)
+
+    def in_repair(self, vehicle_id: str, start: int, end: int) -> tuple | None:
+        """Окно ремонта автобуса, которое пересекает [start, end), или None."""
+        return next(((a, b) for a, b in self.repairs.get(vehicle_id, [])
+                     if a < end and start < b), None)
 
     def driver_worked(self, driver_id: str) -> list:
         return [s for segs in self.drivers.values() for s in segs if s.who == driver_id]
@@ -252,7 +258,7 @@ def _busy_until(state: OpsState, kind: str, who: str, start: int, end: int,
 
 
 def free_drivers(state: OpsState, duty, start: int, end: int, labor: dict,
-                 cls: str | None = None) -> list:
+                 cls: str | None = None, classes=None) -> list:
     """Водители, которые законно могут работать на наряде с start до end.
 
     Не работали сегодня, работают по графику, медосмотр не провален, не
@@ -261,19 +267,22 @@ def free_drivers(state: OpsState, duty, start: int, end: int, labor: dict,
 
     cls - класс автобуса, который водитель реально поведёт. Он может
     отличаться от класса наряда: на маршрут допущено несколько классов.
+    classes - несколько классов сразу, когда в окне на наряде стоят разные
+    автобусы: нужен допуск к каждому. Если не передано ни то, ни другое -
+    класс наряда.
     """
     if work_minutes(end - start, labor) > shift_limit(labor):
         return []
     worked = {s.who for segs in state.drivers.values() for s in segs}
     base = day_base(state.day)
-    cls = cls or state.day.duties[duty.id].vehicle_class
+    need = tuple(classes) if classes else (cls or state.day.duties[duty.id].vehicle_class,)
     out = []
     for d in state.day.drivers.values():
         if (d.id in worked or d.id in state.down_drivers
                 or not may_depart(d, state.day.meta.get("moment"))
-                or d.park_id != duty.park_id or cls not in d.classes):
+                or d.park_id != duty.park_id or any(c not in d.classes for c in need)):
             continue
-        status = rest_status(state.history.get(d.id), base + start, labor)
+        status = rest_status(state.history.peek(d.id), base + start, labor)
         if status is not None:
             out.append((status == "reduced", d.tab_number, d.id))
     return [d for *_, d in sorted(out)]
@@ -517,6 +526,8 @@ def _cut(state: OpsState, event) -> OpsState:
         back = event.at + event.duration if isinstance(event, Breakdown) and event.duration is not None else None
         if back is not None and back < duty.end:
             # автобус стоит с event.at до back: снимаем его занятость в этом окне везде
+            # и запоминаем окно, чтобы ни движок, ни диспетчер не поставили его туда
+            out.repairs.setdefault(event.vehicle_id, []).append((event.at, back))
             _hold(out.vehicles, event.vehicle_id, event.at, back)
             end = min(duty.end, _busy_until(out, "vehicle", event.vehicle_id, back, duty.end, (duty_id,)))
             end = _free_until(out.vehicles, duty_id, back - 1, end)
@@ -619,16 +630,24 @@ def manual_edit(state: OpsState, edit: Edit) -> OpsState:
 def free_vehicles(state: OpsState, duty, start: int, end: int) -> list:
     """Автобусы, которые законно можно поставить на наряд с start до end.
 
-    Исправны, не выбыли, подходящего класса, из парка наряда (или
-    переброшены в него утром), свободны на всём окне. Пара к free_drivers.
+    Исправны, не выбыли, не в ремонте после схода на время, подходящего
+    класса, из парка наряда (или переброшены в него утром), свободны на
+    всём окне, и к их классу допущены водители, которые уже стоят на
+    сменах наряда в этом окне (зеркало правила driver_permit в
+    check_state). Пара к free_drivers.
     """
     allowed = _classes(state, duty)
+    permits = [set(state.day.drivers[s.who].classes)
+               for shift in state.day.shifts_by_duty.get(duty.id, [])
+               for s in state.drivers.get(shift.id, []) if s.start < end and start < s.end]
     out = []
     for vehicle in state.day.vehicles.values():
         if (vehicle.condition != "ok" or vehicle.id in state.down_vehicles
-                or vehicle.cls not in allowed):
+                or vehicle.cls not in allowed or any(vehicle.cls not in p for p in permits)):
             continue
         if state.transfers.get(vehicle.id, vehicle.park_id) != duty.park_id:
+            continue
+        if state.in_repair(vehicle.id, start, end) is not None:
             continue
         if _busy_until(state, "vehicle", vehicle.id, start, end) < end:
             continue
@@ -701,6 +720,8 @@ def check_state(state: OpsState, labor: dict | None = None) -> list:
     Возвращает такие же объекты Violation (код, текст, id), как утренняя
     проверка naryad.core.invariants.check_plan, и там, где правило то же,
     использует тот же код: интерфейс и API разбирают оба списка одинаково.
+    Своё правило: автобус не стоит на наряде в окне ремонта после схода на
+    время (in_repair) - до возвращения он в парке, а не на линии.
 
     Четырёх правил утренней проверки здесь нет, и это осознанно:
     - лимит выпуска парка и состояние парка внутри дня проверять нечему:
@@ -739,9 +760,15 @@ def check_state(state: OpsState, labor: dict | None = None) -> list:
             if vehicle.cls not in _classes(state, duty):
                 bad("vehicle_class", f"наряд {duty_id}: автобус {seg.who} класса {vehicle.cls} "
                                      f"не подходит", duty_id, seg.who)
-            if vehicle.park_id != duty.park_id and state.transfers.get(vehicle.id) != duty.park_id:
-                bad("vehicle_park", f"наряд {duty_id}: автобус {seg.who} из парка "
-                                    f"{vehicle.park_id} без переброски", duty_id, seg.who)
+            today = state.transfers.get(vehicle.id, vehicle.park_id)  # где автобус сегодня
+            if today != duty.park_id:
+                where = (f"из парка {vehicle.park_id} без переброски" if today == vehicle.park_id
+                         else f"сегодня переброшен в парк {today}")
+                bad("vehicle_park", f"наряд {duty_id}: автобус {seg.who} {where}", duty_id, seg.who)
+            window = state.in_repair(seg.who, seg.start, seg.end)
+            if window is not None:
+                bad("in_repair", f"наряд {duty_id}: автобус {seg.who} в ремонте с {_hm(window[0])} "
+                                 f"до {_hm(window[1])}, но стоит на наряде в это время", duty_id, seg.who)
 
     for shift_id, segments in state.drivers.items():
         duty = day.duties[day.shifts[shift_id].duty_id]
@@ -782,6 +809,6 @@ def check_state(state: OpsState, labor: dict | None = None) -> list:
             if work_minutes(end - start, labor) > shift_limit(labor):
                 bad("driver_overtime", f"водитель {who}: рабочий день {end - start} мин "
                                        f"больше нормы", who)
-            if rest_status(state.history.get(who), day_base(day) + start, labor) is None:
+            if rest_status(state.history.peek(who), day_base(day) + start, labor) is None:
                 bad("daily_rest", f"водитель {who}: не отдохнул после прошлой смены", who)
     return out

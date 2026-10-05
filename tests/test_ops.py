@@ -296,11 +296,18 @@ class TestCheckState(unittest.TestCase):
             st.history.get(driver).last_end = day_base(day) + shift.start - 60
             st.history.get(driver).last_length = 8 * 60
 
+        def in_repair(st):
+            st.repairs[bus] = [(t, t + 60)]
+
+        def moved_away(st):
+            st.transfers[bus] = "P99"   # утром отдан другому парку, а стоит дома
+
         for spoil, text in ((two_buses, "сразу"), (two_drivers, "сразу"), (bus_twice, "одновременно"),
                             (outside, "вне времени"), (empty, "пустой"), (down, "выбыл"),
                             (long_day, "больше нормы"), (tired, "не отдохнул"),
                             (wrong_class, "не подходит"), (foreign_driver, "из парка"),
-                            (sick_driver, "не работает сегодня"), (no_permit, "нет допуска")):
+                            (sick_driver, "не работает сегодня"), (no_permit, "нет допуска"),
+                            (in_repair, "в ремонте"), (moved_away, "переброшен в парк P99")):
             with self.subTest(spoil.__name__):
                 self.assertIn(text, self.broken(spoil))
 
@@ -317,6 +324,16 @@ class TestFreeDrivers(unittest.TestCase):
         state.day.drivers[moved] = dataclasses.replace(state.day.drivers[moved], park_id="P99")
         self.assertNotIn(moved, free_drivers(state, duty, MORNING, MORNING + 60, load_labor()))
         self.assertEqual(free_drivers(state, duty, MORNING, MORNING + 11 * 60, load_labor()), [])
+
+    def test_several_classes_need_a_permit_to_each(self):
+        state = morning_state()
+        duty = important_running(state)
+        both = free_drivers(state, duty, MORNING, MORNING + 60, load_labor(), classes=("big", "extra_big"))
+        self.assertTrue(both)
+        self.assertTrue(all({"big", "extra_big"} <= set(state.day.drivers[d].classes) for d in both))
+        only_big = free_drivers(state, duty, MORNING, MORNING + 60, load_labor(), "big")
+        self.assertTrue(set(both) < set(only_big), "допуск к двум классам строже, чем к одному")
+        self.assertEqual(len(state.history.drivers), 0, "подбор кандидатов не пишет в память водителей")
 
 
 class TestEveryOption(unittest.TestCase):
