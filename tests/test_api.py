@@ -76,6 +76,20 @@ class TestDays(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertTrue(payload["errors"])
 
+    def test_every_route_is_in_the_contract(self):
+        """Ручка, которой нет в таблице контракта, для интерфейса не существует."""
+        from pathlib import Path as _Path
+        import re as _re
+        from naryad.web.api import ROUTES
+        contract = (_Path(__file__).resolve().parent.parent / "docs" / "CONTRACT.md").read_text(encoding="utf-8")
+        table = _re.findall(r"^\| `(GET|POST) ([^`?]+)[^`]*` \|", contract, _re.M)
+        described = {(verb, path.strip()) for verb, path in table}
+        in_code = {(verb, _re.sub(r"\(\[\^/\]\+\)", "{id}", pattern)) for verb, pattern, _ in ROUTES}
+        missing = {(v, p) for v, p in in_code
+                   if not any(v == dv and _re.sub(r"\{[a-z_]+\}", "{id}", dp) == p
+                              for dv, dp in described)}
+        self.assertEqual(missing, set(), "этих ручек нет в таблице docs/CONTRACT.md")
+
     def test_routing(self):
         self.assertEqual(self.engine.handle("GET", "/api/nothing")[0], 404)
         self.assertEqual(self.engine.handle("GET", "/api/days/day-9")[0], 404)
