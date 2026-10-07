@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date
@@ -22,12 +23,64 @@ from pathlib import Path
 from .model import REASONS, Day, Plan
 
 LABOR_FILE = Path(__file__).with_name("labor.json")
+PRESETS_FILE = Path(__file__).with_name("labor_presets.json")
+LABOR_ENV = "NARYAD_LABOR"
+_preset_for_process: str | None = None  # выбран через use_labor_preset()
 
 
-def load_labor(path: Path = LABOR_FILE) -> dict:
-    """Нормы труда: имя -> число. Источники и статус лежат в самом файле."""
+def labor_presets() -> dict:
+    """Наборы норм: имя -> {норма: значение} поверх labor.json. Пояснения (ключи с _) отброшены."""
+    raw = json.loads(PRESETS_FILE.read_text(encoding="utf-8"))
+    return {name: {k: v for k, v in item.items() if not k.startswith("_")}
+            for name, item in raw.items() if not name.startswith("_")}
+
+
+def use_labor_preset(name: str | None) -> None:
+    """Набор норм для всего процесса: его подхватит каждый load_labor() без аргументов.
+
+    None - вернуться к labor.json и переменной окружения NARYAD_LABOR.
+    """
+    global _preset_for_process
+    if name is not None and name not in labor_presets():
+        raise ValueError(f"неизвестный набор норм {name!r}, есть: {', '.join(labor_presets())}")
+    _preset_for_process = name
+
+
+def labor_preset_name() -> str:
+    """Имя действующего набора норм: use_labor_preset(), иначе NARYAD_LABOR, иначе current."""
+    return _preset_for_process or os.environ.get(LABOR_ENV) or "current"
+
+
+def load_labor(path: Path = LABOR_FILE, preset: str | None = None) -> dict:
+    """Нормы труда: имя -> число. Источники и статус лежат в самом файле.
+
+    Набор поверх файла: аргумент preset, иначе use_labor_preset(), иначе
+    переменная окружения NARYAD_LABOR, иначе файл как есть.
+    """
     raw = json.loads(Path(path).read_text(encoding="utf-8"))
-    return {name: item["value"] for name, item in raw.items() if not name.startswith("_")}
+    labor = {name: item["value"] for name, item in raw.items() if not name.startswith("_")}
+    name = preset or _preset_for_process or os.environ.get(LABOR_ENV)
+    if name:
+        presets = labor_presets()
+        if name not in presets:
+            raise ValueError(f"неизвестный набор норм {name!r}, есть: {', '.join(presets)}")
+        labor.update(presets[name])
+    return labor
+
+
+def may_depart(driver, moment: str | None) -> bool:
+    """Можно ли выпустить водителя на смену.
+
+    Утром дня (moment = morning) медосмотр должен быть пройден: водителя с
+    отметкой failed или pending и без отметки вовсе на линию не выпускают,
+    это делает автоматизированная система предрейсового осмотра. В плане на
+    завтра (moment = plan) медосмотра ещё не было, и pending - норма.
+    """
+    if driver.schedule != "work":
+        return False
+    if moment == "morning":
+        return driver.medical == "passed"
+    return driver.medical != "failed"
 
 
 def work_minutes(length: int, labor: dict) -> int:
@@ -160,9 +213,10 @@ def _driver_fits(day: Day, plan: Plan) -> list:
             out.append(Violation("driver_not_working",
                                  f"{name}: по графику не работает ({driver.schedule})",
                                  (shift_id, driver_id)))
-        if driver.medical == "failed":
-            out.append(Violation("driver_medical",
-                                 f"{name}: не прошёл медосмотр", (shift_id, driver_id)))
+        if not may_depart(driver, day.meta.get("moment")) and driver.schedule == "work":
+            mark = {"failed": "не прошёл медосмотр", "pending": "медосмотр ещё не проходил",
+                    None: "нет отметки о медосмотре"}.get(driver.medical, f"медосмотр {driver.medical}")
+            out.append(Violation("driver_medical", f"{name}: {mark}", (shift_id, driver_id)))
     return out
 
 

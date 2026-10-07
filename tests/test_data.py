@@ -1,6 +1,7 @@
 """Проверки генератора, проверки данных и CSV. Запуск: python -m unittest"""
 
 import copy
+import json
 import tempfile
 import unittest
 from collections import Counter
@@ -255,6 +256,108 @@ class TestCsv(unittest.TestCase):
             path.write_text(text, encoding="utf-8-sig")
             with self.assertRaisesRegex(ValueError, "не число"):
                 read_csv(folder)
+
+
+class TestMetaAndSelfContradiction(unittest.TestCase):
+    """Данные, на которые движок прямо опирается: meta, важность, парки.
+
+    Эти правила добавлены после проверки агентами: день без meta проходил
+    как чистый, а потом движок падал, а одна заглавная буква в day_type
+    давала пустой план с надписью «Все наряды и смены закрыты».
+    """
+
+    def setUp(self):
+        self.good = generate("park7", WEEKDAY, seed=1)
+        self.assertEqual(check(self.good)["errors"], [])
+
+    def spoiled(self, change):
+        data = copy.deepcopy(self.good)
+        change(data)
+        return check(data)
+
+    def test_meta_is_required(self):
+        cases = (
+            ("нет блока", lambda d: d.pop("meta"), "meta"),
+            ("пустой блок", lambda d: d.update(meta={}), "date"),
+            ("нет даты", lambda d: d["meta"].pop("date"), "date"),
+            ("дата не та", lambda d: d["meta"].update(date="05.10.2026"), "ГГГГ-ММ-ДД"),
+            ("дата числом", lambda d: d["meta"].update(date=20261005), "date"),
+            ("нет типа дня", lambda d: d["meta"].pop("day_type"), "day_type"),
+            ("опечатка в типе дня", lambda d: d["meta"].update(day_type="Weekday"), "day_type"),
+            ("не тот момент", lambda d: d["meta"].update(moment="вечер"), "moment"),
+        )
+        for name, change, word in cases:
+            with self.subTest(name):
+                errors = self.spoiled(change)["errors"]
+                self.assertTrue(errors, name)
+                self.assertTrue(any(word in e for e in errors), (name, errors))
+
+    def test_route_priority_must_be_known_to_engine(self):
+        from naryad.solve.vehicles import PRIORITY_WEIGHT
+        for bad in (0, 4, 9, -1):
+            with self.subTest(bad):
+                errors = self.spoiled(lambda d: d["routes"][0].update(priority=bad))["errors"]
+                self.assertTrue(any("priority" in e for e in errors), bad)
+        for good in sorted(PRIORITY_WEIGHT):  # движок знает ровно эти веса
+            with self.subTest(good):
+                self.assertEqual(self.spoiled(lambda d: d["routes"][0].update(priority=good))["errors"], [])
+
+    def test_record_that_is_not_an_object(self):
+        errors = self.spoiled(lambda d: d["vehicles"].insert(0, "мусор"))["errors"]
+        self.assertTrue(any("не объект" in e for e in errors), errors)
+
+    def test_day_type_without_duties(self):
+        def to_weekend(data):
+            for duty in data["duties"]:
+                duty["day_type"] = "weekend"
+        errors = self.spoiled(to_weekend)["errors"]
+        self.assertTrue(any("нет ни одного наряда" in e for e in errors), errors)
+
+    def test_park_mismatches(self):
+        errors = self.spoiled(lambda d: d["drivers"][0].update(park_id="P99"))["errors"]
+        self.assertTrue(errors)
+        data = copy.deepcopy(self.good)
+        other = {**data["parks"][0], "id": "P08", "name": "Парк №8", "list_count": 0}
+        data["parks"].append(other)
+        data["routes"][0]["park_id"] = "P08"
+        errors = check(data)["errors"]
+        self.assertTrue(any("а маршрут" in e for e in errors), errors)
+
+    def test_rules_promised_by_the_contract(self):
+        """Правила, которые docs/CONTRACT.md называет прямо, и базовые правила полей."""
+        cases = (
+            ("повтор номера", lambda d: d["vehicles"].append(dict(d["vehicles"][0])), "повторяется"),
+            ("ссылка в никуда", lambda d: d["vehicles"][0].update(park_id="P99"), "такого нет"),
+            ("ссылка маршрута в никуда", lambda d: d["duties"][0].update(route_id="нет"), "такого нет"),
+            ("нет списка", lambda d: d.pop("shifts"), "нет списка shifts"),
+            ("список не список", lambda d: d.update(vehicles={}), "нет списка vehicles"),
+            ("нет поля", lambda d: d["vehicles"][0].pop("board_number"), "нет поля board_number"),
+            ("поле пустое", lambda d: d["vehicles"][0].update(board_number=None), "пустое"),
+            ("не тот тип", lambda d: d["vehicles"][0].update(board_number=7001), "должно быть str"),
+            ("число строкой", lambda d: d["parks"][0].update(list_count="420"), "должно быть int"),
+            ("правда вместо числа", lambda d: d["parks"][0].update(list_count=True), "должно быть int"),
+        )
+        for name, change, word in cases:
+            with self.subTest(name):
+                errors = self.spoiled(change)["errors"]
+                self.assertTrue(errors, name)
+                self.assertTrue(any(word in e for e in errors), (name, errors[:3]))
+
+    def test_good_day_passes_every_rule(self):
+        """Образцы в репозитории обязаны проходить проверку без ошибок и предупреждений."""
+        from pathlib import Path as _Path
+        samples = _Path(__file__).resolve().parent.parent / "data" / "samples"
+        for name in ("park7_weekday.json", "park7_weekend.json", "case_day1.json"):
+            with self.subTest(name):
+                data = json.loads((samples / name).read_text(encoding="utf-8"))
+                result = check(data)
+                self.assertEqual(result["errors"], [], name)
+                self.assertEqual(result["warnings"], [], name)
+
+    def test_park_not_working_with_duties_is_a_warning(self):
+        result = self.spoiled(lambda d: d["parks"][0].update(state="down"))
+        self.assertEqual(result["errors"], [])
+        self.assertTrue(any("не закроет" in w for w in result["warnings"]), result["warnings"])
 
 
 if __name__ == "__main__":

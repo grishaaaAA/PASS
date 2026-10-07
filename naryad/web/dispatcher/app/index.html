@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AUTODISP</title>
+<link rel="icon" href="ds/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="ds/tokens.css">
+<link rel="stylesheet" href="ds/bundle.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="common/core.css">
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="prep.css">
+</head>
+<body>
+<!-- Заставка на время первой загрузки -->
+<div class="splash" id="splash" aria-hidden="true">
+  <img class="splash__logo" src="ds/logo.svg" alt="">
+  <div class="splash__bar"><i></i></div>
+</div>
+
+<header class="bar">
+  <img class="bar__logo" src="ds/logo.svg" alt="AUTODISP">
+  <nav class="crumbs" id="crumbs" aria-label="Где вы"></nav>
+  <span class="bar__grow"></span>
+</header>
+
+<!-- 0. Приветствие -->
+<main class="scr welcome" id="scrWelcome" hidden>
+  <div class="welcome__in">
+    <div class="welcome__text">
+      <img class="welcome__logo" src="ds/logo.svg" alt="AUTODISP">
+      <h1 class="welcome__h" id="welcomeHello">Здравствуйте</h1>
+      <p class="welcome__sub">Рабочее место диспетчера</p>
+      <ol class="welcome__steps">
+        <li><span class="welcome__ic"><i class="ad-icon ad-icon--map-trifold ad-icon--sm"></i></span><span><b>Выберите парки</b>один или несколько</span></li>
+        <li><span class="welcome__ic"><i class="ad-icon ad-icon--check-circle ad-icon--sm"></i></span><span><b>Отметьте рабочие процессы</b>маршруты, автобусы, водители</span></li>
+        <li><span class="welcome__ic"><i class="ad-icon ad-icon--lightning ad-icon--sm"></i></span><span><b>Рассчитайте</b>расстановка автобусов и водителей с объяснением каждого решения</span></li>
+      </ol>
+      <span class="welcome__cta"><button class="ad-btn ad-btn--primary ad-btn--lg welcome__go" id="btnStart" type="button">Начать<i class="arr"></i></button></span>
+    </div>
+    <div class="welcome__art" aria-hidden="true"><div class="welcome__map" id="welcomeMap"></div></div>
+  </div>
+</main>
+
+<!-- 1. Выбор парков -->
+<main class="scr" id="scrParks">
+  <div class="scr__in">
+    <h1 class="scr__h">Выбор парков</h1>
+    <div class="parks" id="parks"></div>
+  </div>
+  <div class="go">
+    <div class="go__in">
+      <div class="go__text" id="pickText"></div>
+      <button class="ad-btn ad-btn--ghost ad-btn--sm" id="btnPickAll" hidden>Выбрать все доступные</button>
+      <button class="ad-btn ad-btn--primary ad-btn--lg" id="btnWork" disabled>В работу<i class="arr"></i></button>
+    </div>
+  </div>
+</main>
+
+<!-- 2. Подготовка дня -->
+<main class="scr" id="scrPrep" hidden>
+  <div class="scr__in">
+    <div class="scr__head">
+      <div>
+        <button class="ad-btn ad-btn--ghost ad-btn--sm back" data-go="parks"><i class="arr arr--left"></i>Все парки</button>
+        <h1 class="scr__h" id="prepTitle"></h1>
+      </div>
+      <a class="ad-btn ad-btn--sm btn-plain" id="btnGeo" href="/routes" target="_blank" rel="noopener"><i class="ad-icon ad-icon--map-pin ad-icon--sm"></i>Маршруты и остановки</a>
+    </div>
+    <div class="ready" id="ready" role="tablist" aria-label="Маршруты, автобусы, водители"></div>
+    <div class="list-panel" id="sections"></div>
+  </div>
+  <div class="go">
+    <div class="go__in">
+      <div class="go__text" id="goText"></div>
+      <button class="ad-btn ad-btn--lg btn-plain btn-save" id="btnSave" type="button" disabled><i class="ad-icon ad-icon--check ad-icon--sm"></i><span>Сохранено</span></button>
+      <button class="ad-btn ad-btn--primary ad-btn--lg" id="btnCalc"><i class="ad-icon ad-icon--lightning"></i>Рассчитать</button>
+    </div>
+  </div>
+  <div class="busy busy--page" id="prepBusy" hidden><span class="spinner"></span><span id="prepBusyText"></span></div>
+</main>
+
+<!-- 3. Расчёт -->
+<div class="layout scr" id="scrResult" hidden>
+  <aside class="side" id="side">
+    <section class="pane pane--top">
+      <button class="ad-btn ad-btn--ghost ad-btn--sm back" data-go="prep"><i class="arr arr--left"></i>К подготовке дня</button>
+    </section>
+    <!-- 3. Результат -->
+    <section class="pane pane--result" id="paneResult" hidden>
+      <div class="res-head">
+        <div class="res-title"><h2 class="res-h" id="resTitle">Расчёт</h2>
+          <button type="button" class="res-alert" id="resAlert" hidden><i class="ad-icon ad-icon--warning-circle ad-icon--sm"></i><span id="resAlertN"></span></button></div>
+        <div class="res-parks" id="resParks"></div>
+      </div>
+      <div class="kpis" id="kpis" role="tablist" aria-label="Показатели"></div>
+      <nav class="tabs" role="tablist">
+        <button role="tab" class="tab is-on" data-tab="routes">Маршруты</button>
+        <button role="tab" class="tab" data-tab="shifts">Смены</button>
+        <button role="tab" class="tab" data-tab="reserve">Резерв</button>
+        <button role="tab" class="tab" data-tab="log">Журнал <span class="tab__n" id="nLog"></span></button>
+      </nav>
+      <div class="list" id="list"></div>
+    </section>
+
+    <!-- Объяснение выбранного -->
+    <section class="pane" id="paneDetail" hidden>
+      <button class="ad-btn ad-btn--ghost ad-btn--sm back" id="btnBack"><i class="arr arr--left"></i>Назад к списку</button>
+      <div id="detail"></div>
+    </section>
+  </aside>
+
+  <main class="stage">
+    <div class="map" id="map"></div>
+    <!-- Проблемы дня: окошко поверх карты, появляется, только когда они есть -->
+    <section class="probs is-collapsed" id="probs" hidden aria-label="Проблемы">
+      <button type="button" class="probs__head" id="probsHead" aria-expanded="false"><i class="ad-icon ad-icon--warning-circle ad-icon--sm"></i><span>Проблемы</span><span class="probs__kinds" id="probsKinds"></span><b id="probsN"></b><i class="ad-icon ad-icon--caret-down ad-icon--sm probs__car"></i></button>
+      <div class="probs__body" id="probsBody"></div>
+    </section>
+    <div class="busy" id="busy" hidden><span class="spinner"></span><span id="busyText">Считаю…</span></div>
+    <section class="drawer" id="drawer" hidden>
+      <header class="drawer__head">
+        <div>
+          <div class="drawer__title" id="drTitle"></div>
+          <div class="caption muted" id="drSub"></div>
+        </div>
+        <span class="bar__grow"></span>
+        <button type="button" class="btn-close" id="drClose" aria-label="Закрыть"></button>
+      </header>
+      <div class="drawer__body">
+        <div class="drawer__main">
+          <div class="cvbox"><div class="caption muted">Автобусов на линии по часам: бирюзовым - вышли, красным - не хватает до плана</div><div id="drCov"></div></div>
+          <div id="drGantt"></div>
+        </div>
+        <div class="drawer__side" id="drSide"><p class="caption muted">Нажмите на наряд, чтобы узнать, почему на нём этот автобус и водитель, или отметить сход.</p></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="ds/bundle.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="common/motion.js"></script>
+<script src="common/core.js"></script>
+<script src="common/events.js"></script>
+<script src="app.js"></script>
+<script src="prep.js"></script>
+</body>
+</html>

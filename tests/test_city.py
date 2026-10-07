@@ -27,6 +27,23 @@ def line_lost(day, plan, park_id=None):
 
 
 class TestCity(unittest.TestCase):
+    """Общий CITY один на модуль, поэтому каждый тест обязан его не портить.
+
+    Сценарный день делает with_park_shortage, и он копирует все словари дня.
+    Сторож ниже ловит, если кто-то снова начнёт менять общий объект.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.guard = (len(CITY.parks), sorted((p.id, p.state, p.release_weekday)
+                                             for p in CITY.parks.values()),
+                     sum(v.condition == "ok" for v in CITY.vehicles.values()))
+
+    def tearDown(self):
+        now = (len(CITY.parks), sorted((p.id, p.state, p.release_weekday)
+                                       for p in CITY.parks.values()),
+               sum(v.condition == "ok" for v in CITY.vehicles.values()))
+        self.assertEqual(now, self.guard, "тест изменил общий CITY: сценарии станут зависеть друг от друга")
 
     def test_normal_day_no_transfers(self):
         plan = solve_city(CITY)
@@ -44,7 +61,12 @@ class TestCity(unittest.TestCase):
         self.assertTrue(line_lost(day, without, "P03"))
         self.assertEqual(line_lost(day, plan), [])
         self.assertTrue(all(p == "P03" for p in plan.transfers.values()))
-        self.assertNotIn("no_driver", plan.unfilled.values())
+        # водителей без пройденного медосмотра утром не выпускают, поэтому смены
+        # без водителя возможны - но только на резерве, линия закрыта целиком
+        driverless = [sid for sid, reason in plan.unfilled.items() if reason == "no_driver"]
+        self.assertTrue(all(day.duties[day.shifts[sid].duty_id].type == "reserve"
+                            for sid in driverless),
+                        f"смены линии без водителя: {driverless}")
         donors = Counter(day.vehicles[v].park_id for v in plan.transfers)
         self.assertGreater(len(donors), 1)  # нагрузка распределена между парками
 
@@ -72,7 +94,6 @@ class TestCity(unittest.TestCase):
         day = with_park_shortage(CITY, "P03", 0.25)
         park = day.parks["P03"]
         released = Counter(day.duties[d].park_id for d in solve_vehicles(day).vehicles)["P03"]
-        import dataclasses
         day.parks["P03"] = dataclasses.replace(park, release_weekday=released + 5,
                                                release_weekend=released + 5)
         plan = add_transfers(day, solve_vehicles(day))

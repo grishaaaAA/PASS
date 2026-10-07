@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AUTODISP - нарядка (вариант Б)</title>
+<link rel="icon" href="ds/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="ds/tokens.css">
+<link rel="stylesheet" href="ds/bundle.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="common/core.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="top">
+  <img class="top__logo" src="ds/logo.svg" alt="AUTODISP">
+  <ol class="steps" id="steps">
+    <li data-step="1" class="is-on"><span>1</span>Загрузка</li>
+    <li data-step="2"><span>2</span>Проверка</li>
+    <li data-step="3"><span>3</span>Нарядка</li>
+  </ol>
+  <span class="grow"></span>
+  <span class="top__day" id="dayChip" hidden></span>
+  <span class="caption muted top__variant">Вариант Б · пульт</span>
+  <a class="ad-btn ad-btn--ghost ad-btn--sm" href="/routes" target="_blank" rel="noopener"><i class="ad-icon ad-icon--map-pin ad-icon--sm"></i>Маршруты и остановки</a>
+  <button class="ad-btn ad-btn--ghost ad-btn--sm" id="btnNew" hidden><i class="ad-icon ad-icon--upload-simple ad-icon--sm"></i>Другой файл</button>
+</header>
+
+<!-- Шаг 1 и 2 -->
+<main class="start" id="start">
+  <section class="hero">
+    <h1 class="hero__h">Нарядка на день за минуту</h1>
+    <p class="hero__p muted">Загрузите данные дня - движок расставит автобусы и водителей, покажет, где не хватает, и объяснит каждое решение.</p>
+    <label class="drop drop--big" id="drop">
+      <i class="ad-icon ad-icon--upload-simple ad-icon--lg"></i>
+      <span class="label">Перетащите JSON, ZIP или CSV-файлы дня</span>
+      <span class="caption muted">или нажмите, чтобы выбрать</span>
+      <input type="file" id="file" multiple accept=".json,.csv,.zip">
+    </label>
+    <div class="demo">
+      <span class="caption muted">Пример для показа:</span>
+      <button class="ad-btn ad-btn--outline ad-btn--sm" data-demo="park7">Парк №7</button>
+      <button class="ad-btn ad-btn--outline ad-btn--sm" data-demo="city">Город, 7 парков</button>
+    </div>
+    <p class="err" id="loadErr" hidden></p>
+  </section>
+
+  <section class="check" id="check" hidden>
+    <div class="check__head">
+      <div><div class="caption muted">Данные дня</div><h2 class="check__h" id="checkTitle"></h2></div>
+      <button class="ad-btn ad-btn--primary ad-btn--lg" id="btnCalc"><i class="ad-icon ad-icon--lightning"></i>Рассчитать нарядку</button>
+    </div>
+    <div class="counts" id="counts"></div>
+    <div class="ad-table-wrap">
+      <table class="ad-table">
+        <thead><tr><th>Парк</th><th class="ad-num">Маршрутов</th><th class="ad-num">Нарядов на линии</th><th class="ad-num">Резерв</th><th class="ad-num">Исправных автобусов</th><th class="ad-num">Водителей в работе</th><th>Хватает ли</th></tr></thead>
+        <tbody id="checkRows"></tbody>
+      </table>
+    </div>
+    <div id="warns"></div>
+  </section>
+  <div class="busy" id="busy" hidden><span class="spinner"></span><span id="busyText"></span></div>
+</main>
+
+<!-- Шаг 3 -->
+<main class="desk" id="desk" hidden>
+  <section class="kpis" id="kpis"></section>
+  <div class="desk__grid">
+    <section class="work">
+      <nav class="seg" role="tablist">
+        <button class="seg__b is-on" data-tab="summary"><i class="ad-icon ad-icon--clipboard-text ad-icon--sm"></i>Сводка</button>
+        <button class="seg__b" data-tab="routes"><i class="ad-icon ad-icon--path ad-icon--sm"></i>Маршруты</button>
+        <button class="seg__b" data-tab="duties"><i class="ad-icon ad-icon--calendar-dots ad-icon--sm"></i>Наряды</button>
+        <button class="seg__b" data-tab="log"><i class="ad-icon ad-icon--bell ad-icon--sm"></i>События <span class="seg__n" id="nLog"></span></button>
+      </nav>
+      <div class="tabbody" id="tabSummary"></div>
+      <div class="tabbody" id="tabRoutes" hidden>
+        <div class="filters">
+          <input class="ad-input" id="q" placeholder="Маршрут или парк">
+          <select class="ad-input" id="fPark"><option value="">Все парки</option></select>
+          <label class="tog"><input type="checkbox" id="fBad" checked> Только с проблемами</label>
+          <span class="grow"></span><span class="caption muted" id="rCount"></span>
+        </div>
+        <div class="ad-table-wrap"><table class="ad-table rt">
+          <thead><tr><th>Маршрут</th><th>Парк</th><th>Важность</th><th class="ad-num">Наряды</th><th class="ad-num">Без водителя</th><th>Интервал, худший</th><th>Состояние</th></tr></thead>
+          <tbody id="rRows"></tbody></table></div>
+      </div>
+      <div class="tabbody" id="tabDuties" hidden>
+        <div class="filters">
+          <select class="ad-input" id="dRoute"></select>
+          <span class="caption muted" id="dSub"></span>
+        </div>
+        <div class="card"><div class="caption muted">Автобусов на линии по часам: бирюзовым - вышли, красным - не хватает до плана</div><div id="dCov"></div></div>
+        <div class="card"><div id="dGantt"></div></div>
+      </div>
+      <div class="tabbody" id="tabLog" hidden></div>
+    </section>
+
+    <aside class="aside">
+      <div class="card card--map"><div class="map" id="map"></div></div>
+      <div class="card why" id="why">
+        <div class="why__h"><i class="ad-icon ad-icon--chat-circle-dots ad-icon--sm"></i>Почему так</div>
+        <p class="caption muted">Выберите маршрут, наряд или проблему - здесь появится объяснение движка простыми словами.</p>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<script src="ds/bundle.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="common/core.js"></script>
+<script src="common/events.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

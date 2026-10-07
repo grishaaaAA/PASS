@@ -178,12 +178,28 @@ class TestExplain(unittest.TestCase):
             self.assertEqual(touched, expected[option.kind], option.kind)
 
     def test_interval(self):
+        """Фактический интервал считает только наряды, где есть и автобус, и водитель."""
         day = Day.load(SAMPLES / "park7_weekday.json")
-        plan = solve_vehicles(day)
+        plan = solve_drivers(day, solve_vehicles(day))
         route = next(iter(day.routes.values()))
-        iv = interval(day, plan, route.id, 12 * 60)
+        at = 12 * 60
+        iv = interval(day, plan, route.id, at)
         self.assertEqual(iv["planned_min"], iv["actual_min"])
         self.assertEqual(iv["planned_min"], round(route.turnaround_min / iv["planned_buses"]))
+        self.assertEqual(iv["planned_buses"], iv["running_buses"])
+
+        # снимем водителей с одного наряда: автобус стоит в парке, интервал растёт
+        duty = next(d for d in day.duties.values() if d.route_id == route.id
+                    and d.day_type == day.day_type and d.start <= at < d.end
+                    and d.id in plan.vehicles)
+        thin = Plan(vehicles=dict(plan.vehicles), drivers=dict(plan.drivers))
+        for shift in day.shifts_by_duty.get(duty.id, []):
+            thin.drivers.pop(shift.id, None)
+        after = interval(day, thin, route.id, at)
+        self.assertEqual(after["planned_buses"], iv["planned_buses"])
+        self.assertEqual(after["running_buses"], iv["running_buses"] - 1)
+        self.assertEqual(after["actual_min"], round(route.turnaround_min / after["running_buses"]))
+        self.assertGreaterEqual(after["actual_min"], after["planned_min"])
 
     def test_summaries(self):
         day = Day.load(SAMPLES / "park7_weekday.json")
@@ -192,6 +208,46 @@ class TestExplain(unittest.TestCase):
         item = day_summary(self.day, self.plan)
         self.check_shape(item)
         self.assertEqual(item["numbers"]["line_total"], 326)
+
+    def test_summary_counts_match_independent_count(self):
+        """Цифры сводки сверяются с независимым подсчётом по плану.
+
+        Без этого порча счётчика «водители на X из Y смен» проходит молча:
+        именно эту цифру диспетчер и читает первой.
+        """
+        for name, day, plan in (("полный день", Day.load(SAMPLES / "park7_weekday.json"), None),
+                                ("нехватка", self.day, self.plan)):
+            with self.subTest(name):
+                if plan is None:
+                    plan = solve_drivers(day, solve_vehicles(day))
+                numbers = day_summary(day, plan)["numbers"]
+                lines = [d for d in day.duties.values()
+                         if d.day_type == day.day_type and d.type == "line"]
+                # смены считаются по всем выпущенным нарядам, включая резервные:
+                # резервному наряду водитель тоже нужен
+                shifts = [s for duty_id in plan.vehicles
+                          for s in day.shifts_by_duty.get(duty_id, [])]
+                self.assertEqual(numbers["line_total"], len(lines))
+                self.assertEqual(numbers["line_filled"],
+                                 sum(d.id in plan.vehicles for d in lines))
+                self.assertEqual(numbers["shifts_total"], len(shifts))
+                self.assertEqual(numbers["shifts_filled"],
+                                 sum(s.id in plan.drivers for s in shifts))
+                self.assertIn(f"{numbers['line_filled']} из {numbers['line_total']}",
+                              day_summary(day, plan)["answer"])
+                self.assertIn(f"{numbers['shifts_filled']} из {numbers['shifts_total']}",
+                              day_summary(day, plan)["answer"])
+
+    def test_broken_summary_counter_is_caught(self):
+        """Сторож самого сторожа: порченый счётчик смен тест обязан ловить."""
+        day = Day.load(SAMPLES / "park7_weekday.json")
+        plan = solve_drivers(day, solve_vehicles(day))
+        lost = next(iter(plan.drivers))
+        thin = Plan(vehicles=dict(plan.vehicles), drivers=dict(plan.drivers))
+        thin.drivers.pop(lost)
+        numbers = day_summary(day, thin)["numbers"]
+        self.assertEqual(numbers["shifts_filled"],
+                         day_summary(day, plan)["numbers"]["shifts_filled"] - 1)
 
 
 if __name__ == "__main__":

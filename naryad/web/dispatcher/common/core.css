@@ -1,0 +1,245 @@
+/* AUTODISP, диспетчер - общие элементы двух вариантов. Только токены дизайн-системы. */
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--ink); font: var(--text-body); }
+*, *::before, *::after { box-sizing: border-box; }
+.muted { color: var(--ink-muted); }
+.caption { font: var(--text-caption); }
+.label { font: var(--text-label); }
+[hidden] { display: none !important; }
+
+/* Карточка объяснения «почему» */
+.xp { display: grid; gap: var(--space-2); }
+.xp__q { font: var(--text-caption); color: var(--ink-muted); }
+.xp__a { font: var(--text-body-strong); }
+.xp__r { margin: 0; padding-left: 18px; display: grid; gap: 4px; font: var(--text-caption); color: var(--ink); }
+
+/* Диаграмма нарядов */
+.gantt { display: grid; gap: 4px; font: var(--text-caption); }
+.gantt__axis, .gantt__row { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: var(--space-2); }
+.gantt__axis .gantt__track { height: 18px; }
+.gantt__h { position: absolute; transform: translateX(-50%); font-size: 11px; color: var(--ink-muted); }
+.gantt__track { position: relative; height: 30px; }
+.gantt__row { cursor: pointer; border-radius: 8px; padding: 1px 0; }
+.gantt__row:hover { background: var(--surface-sunken); }
+.gantt__row.is-selected { background: var(--bg); box-shadow: inset 3px 0 0 var(--accent-deep); }
+.gantt__label { font: var(--text-label); font-size: 12px; display: flex; flex-direction: column; line-height: 1.1; padding-left: 6px; }
+.gantt__label small { color: var(--ink-muted); font-weight: 400; }
+.gantt__duty { position: absolute; top: 3px; height: 18px; border: 1px dashed var(--border-strong); border-radius: 6px; }
+.gantt__seg { position: absolute; top: 3px; height: 18px; border-radius: 6px; background: var(--accent); color: var(--on-accent);
+  overflow: hidden; white-space: nowrap; padding: 0 6px; font-size: 11px; line-height: 18px; }
+.gantt__seg--swap { background: var(--pass-emerald); }
+.gantt__seg--empty { background: var(--danger-fill); color: var(--on-fill); border: 0; }
+.gantt__shift { position: absolute; top: 24px; height: 4px; border-radius: 2px; background: var(--accent-deep); border-left: 2px solid var(--surface); }
+.gantt__shift--empty { background: var(--danger-fill); }
+.gantt__shift--off { background: var(--border); }
+.gantt__empty { padding: var(--space-4); }
+
+/* График покрытия */
+.cv { width: 100%; height: auto; display: block; }
+.cv__plan { fill: var(--surface-sunken); }
+.cv__run { fill: var(--accent); }
+.cv__run--gap { fill: var(--warning-fill); }
+.cv__tick { font: 10px var(--font-sans); fill: var(--ink-muted); }
+
+/* Метки парков на карте */
+.pm-wrap { background: none; border: 0; }
+.pm { width: 56px; height: 56px; border-radius: 50%; display: grid; place-content: center; text-align: center; line-height: 1.05;
+  background: var(--surface); box-shadow: var(--shadow-md); border: 4px solid var(--success-fill); transition: transform 220ms var(--easing-standard); }
+.pm b { font: var(--text-label); font-size: 15px; }
+.pm span { font-size: 11px; color: var(--ink-muted); }
+.pm--warn { border-color: var(--warning-fill); }
+.pm--bad { border-color: var(--danger-fill); }
+.pm--down { border-color: var(--neutral-fill); opacity: .6; }
+.pm.is-selected { transform: scale(1.18); box-shadow: var(--shadow-glow-deep); }
+.pm-wrap:hover .pm { transform: scale(1.1); }
+.map-arrow { background: none; border: 0; color: var(--accent-deep); font-size: 14px; display: grid; place-content: center; }
+.map-arrow span { display: inline-block; }
+.map__off { padding: var(--space-5); }
+.leaflet-container { font: var(--text-caption); background: var(--bg); }
+.leaflet-tooltip { font: var(--text-caption); border-radius: 10px; }
+
+/* Загрузка файла */
+.drop { border: 2px dashed var(--border-strong); border-radius: var(--radius-md); padding: var(--space-5); text-align: center; display: grid; gap: var(--space-2);
+  justify-items: center; background: var(--surface); cursor: pointer; transition: border-color var(--duration-fast), background var(--duration-fast); }
+
+.drop input { display: none; }
+
+/* Индикатор работы */
+.spinner { width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--surface-sunken); border-top-color: var(--accent-deep);
+  animation: spin 0.8s linear infinite; display: inline-block; vertical-align: middle; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Окно выбора варианта замены */
+.modal { position: fixed; inset: 0; background: rgba(46, 40, 42, .35); display: grid; place-items: center; z-index: 2000; padding: var(--space-4); }
+.modal__box { background: var(--surface); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); width: min(720px, 100%); max-height: 90vh; overflow: auto; padding: var(--space-5); display: grid; gap: var(--space-4); }
+.modal__head { display: flex; justify-content: space-between; align-items: start; gap: var(--space-3); }
+.opt { border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4); display: grid; gap: var(--space-2); }
+.opt.is-best { border-color: var(--accent-deep); box-shadow: 0 0 0 1px var(--accent-deep); }
+.opt__head { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.opt__title { font: var(--text-body-strong); flex: 1; min-width: 200px; }
+.opt__nums { display: flex; gap: var(--space-4); font: var(--text-caption); color: var(--ink-muted); }
+.toast { position: fixed; bottom: 20px; left: 0; right: 0; margin: 0 auto; width: fit-content; max-width: calc(100% - 32px); background: var(--ink); color: var(--ink-inverse); padding: 10px 18px; border-radius: var(--radius-pill);
+  z-index: 3000; font: var(--text-label); box-shadow: var(--shadow-lg); }
+.toast--bad { background: var(--danger-fill); color: var(--on-fill); }
+
+.pm--idle { border-color: var(--border-strong); }
+.cvw { display: grid; gap: 2px; }
+.cv__ticks { position: relative; height: 14px; font-size: 11px; color: var(--ink-muted); }
+.cv__ticks span { position: absolute; transform: translateX(-50%); }
+.cv__gap { fill: var(--danger-fill); }
+.hr { border: 0; border-top: 1px solid var(--border); margin: var(--space-3) 0; }
+
+/* Пока карта движется - без теней и переходов (см. smoothWheel в core.js) */
+.map--moving .pm, .map--moving .leaflet-popup-content-wrapper, .map--moving .leaflet-tooltip { box-shadow: none !important; transition: none !important; }
+
+/* Свои элементы карты (mapControls в core.js): масштаб, слои, подпись источников */
+.mc { position: absolute; top: 14px; left: 14px; z-index: 700; display: grid; gap: 10px; justify-items: start; }
+.mc__zoom { display: grid; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-pill); box-shadow: var(--shadow-md); overflow: hidden; }
+.mc__z { width: 40px; height: 40px; display: grid; place-items: center; border: 0; background: none; color: var(--ink); cursor: pointer; transition: color var(--duration-fast), background-color var(--duration-fast); }
+.mc__z svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; fill: none; }
+.mc__z:hover { color: var(--accent-text); background-color: var(--bg); }
+.mc__z:active { background-color: rgba(53, 189, 200, .18); }
+.mc__z:focus-visible, .mc__lbtn:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: -3px; }
+.mc__sep { height: 1px; margin: 0 9px; background: var(--border); }
+.mc__layers { position: relative; }
+.mc__lbtn { display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 14px 0 11px; border: 1px solid var(--border); border-radius: var(--radius-pill);
+  background: var(--surface); box-shadow: var(--shadow-md); font: var(--text-label); font-size: 13px; color: var(--ink); cursor: pointer; }
+.mc__lbtn:hover, .mc__lbtn[aria-expanded="true"] { color: var(--accent-text); }
+.mc__panel { position: absolute; top: 0; left: calc(100% + 8px); width: 248px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg); padding: 12px 14px; display: grid; gap: 8px; }
+.mc__h { font: var(--text-caption); font-size: 12px; color: var(--ink-muted); margin-top: 2px; }
+.mc__seg { display: flex; gap: 3px; background: var(--surface-sunken); border-radius: var(--radius-pill); padding: 3px; }
+.mc__seg button { flex: 1; border: 0; background: none; border-radius: var(--radius-pill); padding: 6px 8px; font: var(--text-label); font-size: 13px; color: var(--ink-muted); cursor: pointer; }
+.mc__seg button.is-on { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
+.mc__chk { display: flex; gap: 8px; align-items: center; font: var(--text-caption); font-size: 13px; cursor: pointer; }
+.mc__chk input { accent-color: var(--accent-deep); width: 16px; height: 16px; margin: 0; }
+.mc__credit { position: absolute; right: 8px; bottom: 5px; z-index: 600; font: 400 10px/1 var(--font-sans); color: var(--ink); opacity: .32; pointer-events: none; letter-spacing: .02em; }
+
+/* Метка парка: карточка - слева квадрат с автобусом на цветной подложке во всю высоту, справа название и цифры.
+   Центр квадрата - ровно в точке парка. Цвет подложки - состояние: зелёный всё на линии, красный - есть нехватка. */
+.pk-wrap { background: none; border: 0; }
+.pk { position: absolute; left: 0; top: 0; transform: translate(-19px, -50%); display: flex; align-items: stretch; height: 38px; box-sizing: border-box; cursor: pointer; white-space: nowrap;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-md); overflow: hidden;
+  transform-origin: 19px 50%;
+  transition: transform 320ms var(--easing-standard), box-shadow 320ms var(--easing-standard), border-color 220ms var(--easing-standard); }
+.pk:hover { transform: translate(-19px, -50%) scale(1.08); box-shadow: var(--shadow-lg); border-color: var(--border-strong); }
+.pk.is-selected { border-color: var(--accent-deep); box-shadow: 0 0 0 1px var(--accent-deep), var(--shadow-md); }
+.pk__ic { flex: none; width: 36px; height: 36px; display: grid; place-items: center; background-image: var(--gradient-chrome-deep); color: var(--on-fill); }
+.pk__ic .ad-icon { width: 18px; height: 18px; }
+.pk--ok .pk__ic { background-image: none; background-color: var(--success-fill); }
+.pk--bad .pk__ic { background-image: none; background-color: var(--danger-fill); }
+.pk--down .pk__ic { background-image: none; background-color: var(--neutral-fill); }
+.pk__tx { display: grid; align-content: center; gap: 1px; padding: 0 10px 0 8px; line-height: 1.15; }
+.pk__tx > b { font: 500 12px/1.2 var(--font-sans); color: var(--ink); }
+.pk__tx small { font: 400 11px/1.2 var(--font-sans); color: var(--ink-muted); }
+.pk__tx small b { font-weight: 700; color: var(--ink); }
+.pk__tx small .pk__n--ok { color: var(--success-text); }
+.pk__tx small .pk__n--bad { color: var(--danger-text); }
+
+/* Значок парка без текста: квадрат с автобусом, мягко «дышит» - свечение расходится и гаснет, без мигания */
+.bus-mark { position: relative; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background-image: var(--gradient-chrome-deep);
+  color: var(--on-fill); box-shadow: var(--shadow-md); animation: bus-breathe 2.8s var(--easing-standard) infinite; }
+.bus-mark .ad-icon { width: 24px; height: 24px; }
+.bus-mark--sm { width: 30px; height: 30px; border-radius: 9px; }
+.bus-mark--sm .ad-icon { width: 17px; height: 17px; }
+.bus-mark--lg { width: 64px; height: 64px; border-radius: 18px; }
+.bus-mark--lg .ad-icon { width: 34px; height: 34px; }
+@keyframes bus-breathe {
+  0%   { box-shadow: 0 0 0 0 rgba(53, 189, 200, .45), var(--shadow-md); transform: scale(1); }
+  50%  { transform: scale(1.04); }
+  70%  { box-shadow: 0 0 0 16px rgba(53, 189, 200, 0), var(--shadow-md); }
+  100% { box-shadow: 0 0 0 0 rgba(53, 189, 200, 0), var(--shadow-md); transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) { .bus-mark { animation: none; } }
+
+/* Стрелка: тонкая, в одну линию - вместо залитой ad-icon--arrow-right */
+.arr { display: inline-block; width: 16px; height: 16px; flex: none; vertical-align: middle; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 8h10M9 4l4 4-4 4'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 8h10M9 4l4 4-4 4'/%3E%3C/svg%3E") center / contain no-repeat;
+  transition: transform 220ms var(--easing-standard); }
+.arr--left { transform: scaleX(-1); }
+.ad-btn:hover .arr--left { transform: scaleX(-1) translateX(2px); }
+
+/* ---------- Общая полировка (правила - в CLAUDE.md, раздел «Дизайн интерфейса») ---------- */
+/* Фокус с клавиатуры виден всегда; мышью - не мешает */
+:where(button, summary, a, [tabindex], input, select, textarea):focus { outline: none; }
+:where(button, summary, a, [tabindex], select):focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
+/* Поля ввода: фокус - собственная рамка дизайн-системы; скругление и положение поля не меняются */
+.ad-input:focus-visible { outline: none; }
+/* Простая кнопка: фон страницы, тонкая рамка, без градиента */
+.btn-plain { background-image: none !important; background-color: var(--surface); border-color: var(--border); color: var(--ink); box-shadow: none; }
+.btn-plain:hover { border-color: var(--accent-deep); color: var(--accent-text); box-shadow: var(--shadow-sm); }
+/* Смена состояний - плавно, только нужные свойства */
+.tab, .seg button, .seg__b, .mc__seg button, .item, .ri, .chip, .grp summary, .kind__head, .sec__head, .crumb button, .grp__all, .st__b button, .mc__lbtn, .gantt__row {
+  transition: background-color 220ms var(--easing-standard), color 220ms var(--easing-standard),
+    box-shadow 320ms var(--easing-standard), border-color 220ms var(--easing-standard), transform 220ms var(--easing-standard); }
+/* Отклик на нажатие: всё, что нажимается, чуть сжимается */
+.tab:active, .seg button:active, .mc__seg button:active, .item:active, .ri:active, .chip:active, .grp__all:active, .st__b button:active,
+.mc__z:active, .mc__lbtn:active, .crumb button:active { transform: scale(0.97); }
+.pc:active, .rc-card:active { transform: scale(0.985); }
+/* На сенсорных экранах наведения нет - карточки не «подпрыгивают» после касания */
+@media (hover: none) {
+  .pc:hover, .rc-card:hover, button.pc:hover { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 1ms !important; animation-duration: 1ms !important; animation-iteration-count: 1 !important; }
+}
+
+/* Окно подтверждения */
+.modal__box--sm { width: min(440px, 100%); gap: var(--space-3); }
+.cf__text { margin: 0; color: var(--ink-muted); }
+.cf__actions { display: flex; gap: var(--space-2); justify-content: flex-end; margin-top: var(--space-2); }
+
+/* Кнопка «закрыть»: простой тёмный крестик на белом. Не металлическая, не вращается, не крупная (правило дизайн-системы) */
+.btn-close { flex: none; width: 32px; height: 32px; border: 0; border-radius: 8px; background: var(--surface); color: var(--ink); cursor: pointer; display: grid; place-items: center;
+  transition: background-color 220ms var(--easing-standard); }
+.btn-close::before { content: ""; width: 14px; height: 14px; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M2 2l10 10M12 2L2 12'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M2 2l10 10M12 2L2 12'/%3E%3C/svg%3E") center / contain no-repeat; }
+.btn-close:hover { background: var(--surface-sunken); }
+.btn-close:active { background: var(--border); }
+/* Крестик Leaflet в окнах на карте - так же */
+.leaflet-container a.leaflet-popup-close-button { width: 28px; height: 28px; top: 8px; right: 8px; border-radius: 8px; color: var(--ink); font: 400 20px/26px var(--font-sans); background: var(--surface);
+  transition: background-color 220ms var(--easing-standard); }
+.leaflet-container a.leaflet-popup-close-button:hover { background: var(--surface-sunken); color: var(--ink); }
+
+/* Стрелка направления движения на линии выбранного маршрута: маленький шеврон цвета направления с белой окантовкой */
+.dir-arrow { background: none; border: 0; }
+.dir-arrow b { position: absolute; display: block; filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff); }
+.dir-arrow i { display: block; width: 11px; height: 11px; background: var(--c);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 1.5L10 6 2 10.5 4.2 6z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 1.5L10 6 2 10.5 4.2 6z'/%3E%3C/svg%3E") center / contain no-repeat; }
+
+/* Кнопка «На весь экран» / «Свернуть» и режим карты на весь экран */
+.mc__fic { width: 16px; height: 16px; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4'/%3E%3C/svg%3E") center / contain no-repeat; }
+.mc__full[aria-pressed="true"] .mc__fic {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4'/%3E%3C/svg%3E"); }
+.layout { transition: grid-template-columns 380ms var(--easing-standard); }
+.layout.map-full { grid-template-columns: 0 1fr !important; }
+.layout > .side { transition: opacity 260ms var(--easing-standard); }
+.layout.map-full > .side { opacity: 0; pointer-events: none; overflow: hidden; border-right: 0; }
+body:has(.layout.map-full:not([hidden])) .bar { display: none; }
+body:has(.layout.map-full:not([hidden])) { grid-template-rows: 1fr; }
+
+/* Легенда - во всплывающей панели */
+.mc__panel--legend { width: 300px; gap: 6px; }
+.lg-it { display: grid; grid-template-columns: 52px 1fr; gap: 10px; align-items: center; font: var(--text-caption); font-size: 13px; }
+.lg-ic { display: flex; gap: 4px; align-items: center; justify-content: center; position: relative; height: 22px; }
+.lg-line { display: block; width: 40px; height: 4px; border-radius: 3px; background: var(--ink-muted); }
+.lg-line--multi { background: linear-gradient(90deg, #be0032 0 25%, #0067a5 25% 50%, #f38400 50% 75%, #008856 75%); }
+.lg-line--bad { background: #0067a5; box-shadow: 0 0 0 3px var(--danger-fill); }
+.lg-line--a { width: 20px; background: #c51b7d; }
+.lg-line--b { width: 20px; background: #dd7bb4; }
+.lg-line--transfer { background: var(--accent-deep); height: 3px; }
+.lg-arrow { width: 12px; height: 12px; background: #c51b7d;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 1.5L10 6 2 10.5 4.2 6z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 1.5L10 6 2 10.5 4.2 6z'/%3E%3C/svg%3E") center / contain no-repeat; }
+.lg-stop { width: 9px; height: 9px; border-radius: 50%; border: 2px solid #c51b7d; background: var(--surface); }
+.lg-stop--end { width: 14px; height: 14px; border-width: 3px; }
+.lg-rl { position: static; transform: none; }
+.lg-pk { width: 16px; height: 16px; border-radius: 4px; background-image: var(--gradient-chrome-deep); }
+.lg-pk--ok { background: var(--success-fill); }
+.lg-pk--bad { background: var(--danger-fill); }

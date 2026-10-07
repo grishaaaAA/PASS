@@ -18,7 +18,8 @@ from __future__ import annotations
 
 from collections import Counter
 
-from naryad.core.invariants import load_labor, rest_minutes, work_minutes
+from naryad.core.invariants import (load_labor, may_depart, rest_minutes, shift_limit,
+                                    work_minutes)
 from naryad.core.model import REASONS, Day, Plan
 from naryad.solve.drivers import History, day_base, rest_status
 from naryad.solve.vehicles import allowed_classes, drop_costs, _groups
@@ -48,11 +49,17 @@ def _duty_name(day: Day, duty) -> str:
 # --- интервал ------------------------------------------------------------------
 
 def interval(day: Day, plan: Plan, route_id: str, t: int) -> dict:
-    """Интервал на маршруте в момент t: по плану нарядов и по тому, что вышло."""
+    """Интервал на маршруте в момент t: по плану нарядов и по тому, что вышло.
+
+    Работающим считается наряд, у которого в этот момент есть и автобус, и
+    водитель: автобус без водителя стоит в парке и пассажиров не везёт.
+    """
     route = day.routes[route_id]
     active = [d for d in day.duties.values() if d.route_id == route_id
               and d.day_type == day.day_type and d.start <= t < d.end]
-    running = [d for d in active if d.id in plan.vehicles]
+    running = [d for d in active if d.id in plan.vehicles
+               and any(s.id in plan.drivers and s.start <= t < s.end
+                       for s in day.shifts_by_duty.get(d.id, []))]
     planned = round(route.turnaround_min / len(active)) if active else None
     actual = round(route.turnaround_min / len(running)) if running else None
     return {"planned_min": planned, "actual_min": actual, "planned_buses": len(active),
@@ -125,9 +132,16 @@ def why_driver(day: Day, plan: Plan, shift_id: str, history: History | None = No
     driver = day.drivers[driver_id]
     vehicle_id = plan.vehicles[duty.id]
     state = history.get(driver_id)
+    work, limit = work_minutes(shift.length, labor), shift_limit(labor)
     reasons = [f"Работает по графику, медосмотр {'пройден' if driver.medical == 'passed' else 'ещё не пройден'}, "
-               f"допуск к классу «{CLASS_NAMES[day.vehicles[vehicle_id].cls]}»",
-               f"Смена {_hm(shift.length)} - в пределах дневной нормы"]
+               f"допуск к классу «{CLASS_NAMES[day.vehicles[vehicle_id].cls]}»"]
+    if work > limit:
+        reasons.append(f"ВНИМАНИЕ: смена с подготовкой {_hm(work)} больше дневной нормы {_hm(limit)} "
+                       f"- проверка плана считает это нарушением (п. 4 Приказа № 160)")
+    else:
+        reasons.append(f"Смена {_hm(shift.length)}"
+                       + (f" (с подготовкой {_hm(work)})" if work != shift.length else "")
+                       + f" - в пределах дневной нормы {_hm(limit)}")
     if state.last_end is not None:
         reasons.append(_rest_given(state, day_base(day) + shift.start, labor))
     if state.month_minutes:
@@ -147,7 +161,7 @@ def _driver_blocker(day: Day, plan: Plan, driver, shift, history: History, labor
     """Почему конкретный водитель не стоит на этой смене."""
     if driver.schedule != "work":
         return SCHEDULE_NAMES.get(driver.schedule, driver.schedule)
-    if driver.medical == "failed":
+    if driver.schedule == "work" and not may_depart(driver, day.meta.get("moment")):
         return "не прошёл медосмотр"
     other = next((s for s, d in plan.drivers.items() if d == driver.id), None)
     if other is not None:
@@ -244,7 +258,27 @@ def _why_shift_unfilled(day: Day, plan: Plan, shift_id: str, history: History, l
     duty = day.duties[shift.duty_id]
     question = f"Почему смена {shift_id} ({_clock(shift.start)}-{_clock(shift.end)}) без водителя?"
     vehicle = day.vehicles.get(plan.vehicles.get(duty.id, ""))
-    cls = vehicle.cls if vehicle else duty.vehicle_class
+
+    # Сначала причины, которые не про водителей: иначе объяснение винит людей,
+    # когда дело в автобусе или в длине смены.
+    if vehicle is None:
+        about_duty = why_unfilled(day, plan, duty.id, history, labor)
+        return _answer(question,
+                       f"Дело не в водителе: на {_duty_name(day, duty)} нет автобуса",
+                       [about_duty["answer"]] + about_duty["reasons"], about_duty["numbers"])
+    work, limit = work_minutes(shift.length, labor), shift_limit(labor)
+    if work > limit:
+        extra = labor.get("prep_before_min", 0) + labor.get("prep_after_min", 0)
+        return _answer(question,
+                       f"На эту смену нельзя поставить никого: с подготовкой и медосмотром "
+                       f"{_hm(work)}, дневная норма {_hm(limit)}",
+                       [f"Смена {_hm(shift.length)}, подготовка и медосмотры до и после {_hm(extra)}",
+                        "Норма смены - п. 4 Приказа Минтранса № 160; длину смены задают данные наряда, "
+                        "а не расчёт",
+                        "Это вопрос к перевозчику: либо смена короче, либо установленный режим до 12 ч"],
+                       {"shift_min": shift.length, "work_min": work, "limit_min": limit,
+                        "prep_min": extra})
+    cls = vehicle.cls
     drivers = [d for d in day.drivers.values() if d.park_id == duty.park_id]
     blockers = Counter()
     for d in drivers:

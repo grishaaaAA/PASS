@@ -49,6 +49,7 @@ from naryad.core.model import Day, Duty, Plan
 
 PRIORITY_WEIGHT = {1: 2.0, 2: 1.5, 3: 1.0}
 GROWTH_POWER = 3
+STOP_SHARE = 0.25     # маршрут встал совсем: считаем, что осталась четверть автобуса
 RESERVE_VALUE = 1e-3  # резерв дешевле любого наряда на линии
 
 
@@ -59,8 +60,16 @@ def allowed_classes(day: Day, duty: Duty) -> tuple:
 
 
 def _cost(weight: float, minutes_: int, n: int, k: int) -> float:
-    """Цена k-го пропуска на маршруте из n нарядов."""
-    return weight * minutes_ / 60 * (n / (n - k + 1)) ** GROWTH_POWER
+    """Цена k-го пропуска на маршруте из n нарядов.
+
+    Рост интервала - это нарядов по плану, делённое на то, сколько
+    работает после пропуска: n / (n - k). Та же формула, что у пересчёта
+    внутри дня (naryad/ops/replan.py, класс Losses), чтобы утренняя цена и
+    дневная считались одинаково. Если маршрут встал совсем, считаем, что
+    осталась четверть автобуса: полная остановка дороже любой частичной
+    потери, но не бесконечна.
+    """
+    return weight * minutes_ / 60 * (n / max(n - k, STOP_SHARE)) ** GROWTH_POWER
 
 
 def drop_costs(day: Day, duties: list, weights: dict = PRIORITY_WEIGHT) -> list:

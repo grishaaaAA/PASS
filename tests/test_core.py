@@ -6,7 +6,7 @@ import time
 import unittest
 from pathlib import Path
 
-from naryad.core.invariants import check_plan, load_labor, metrics
+from naryad.core.invariants import may_depart, check_plan, load_labor, metrics
 from naryad.core.model import Day, Plan
 from naryad.data.generate import generate
 
@@ -49,7 +49,7 @@ def greedy_plan(day: Day) -> Plan:
         for shift in day.shifts_by_duty.get(duty.id, []):
             driver = next((d for d in day.drivers.values()
                            if d.id not in used_drivers and d.park_id == duty.park_id
-                           and d.schedule == "work" and d.medical != "failed"
+                           and may_depart(d, day.meta.get("moment"))
                            and vehicle.cls in d.classes), None)
             if driver is None:
                 plan.unfilled[shift.id] = "no_driver"
@@ -212,6 +212,23 @@ class TestBrokenPlans(unittest.TestCase):
         driver_id = self.plan.drivers[self.shift_ids[0]]
         self.day.drivers[driver_id] = dataclasses.replace(self.day.drivers[driver_id], schedule="sick")
         self.broken("driver_not_working")
+
+    def test_pending_medical_in_the_morning(self):
+        """Утром на линию выпускают только с пройденным медосмотром (п. предрейсового осмотра)."""
+        shift_id = next(iter(self.plan.drivers))
+        driver_id = self.plan.drivers[shift_id]
+        for mark in ("pending", None):
+            with self.subTest(mark):
+                day = copy.copy(self.day)
+                day.meta = dict(self.day.meta, moment="morning")
+                day.drivers = dict(self.day.drivers)
+                day.drivers[driver_id] = dataclasses.replace(day.drivers[driver_id], medical=mark)
+                found = check_plan(day, self.plan)
+                self.assertIn("driver_medical", codes(found))
+                # тот же день как план на завтра: медосмотра ещё не было, это норма
+                tomorrow = copy.copy(day)
+                tomorrow.meta = dict(day.meta, moment="plan")
+                self.assertNotIn("driver_medical", codes(check_plan(tomorrow, self.plan)))
 
     def test_driver_medical(self):
         driver_id = self.plan.drivers[self.shift_ids[0]]

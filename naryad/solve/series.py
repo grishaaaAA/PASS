@@ -1,7 +1,7 @@
 """
 Серия дней: автобусы и водители день за днём, и сравнение с ручным способом.
 
-Запуск: python -m naryad.solve.series [--preset park7] [--days 14] [--seed 1]
+Запуск: python -m naryad.solve.series [--preset park7] [--days 14] [--seed 1] [--labor likely]
 
 Каждый день: сначала автобусы по нарядам (А3), потом водители по сменам
 (А4). Ручной способ - две модели (naryad/solve/baseline.py): без проверки
@@ -15,7 +15,7 @@ import argparse
 import statistics
 from collections import defaultdict
 
-from naryad.core.invariants import check_plan, check_rest
+from naryad.core.invariants import check_plan, check_rest, use_labor_preset
 from naryad.core.model import Day
 from naryad.data.generate import generate_series
 
@@ -73,7 +73,10 @@ def main(argv=None) -> int:
     parser.add_argument("--days", type=int, default=14)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--start", default="2026-10-05")
+    parser.add_argument("--labor", default=None,
+                        help="набор норм из naryad/core/labor_presets.json: current, likely, strict")
     args = parser.parse_args(argv)
+    use_labor_preset(args.labor)
     days = [Day.from_dict(d) for d in
             generate_series(args.preset, args.start, args.days, args.seed, "morning")]
     columns = {"вручную, отдых не смотрит": series_report(manual_series(days, False)),
@@ -81,7 +84,7 @@ def main(argv=None) -> int:
                "наш план": series_report(solve_series(days))}
     keys = list(columns["наш план"])
     width = max(map(len, keys))
-    print(f"{args.days} дней подряд, {args.preset}\n")
+    print(f"{args.days} дней подряд, {args.preset}, нормы: {args.labor or 'current'}\n")
     print(f"{'':{width}}  " + "  ".join(f"{name:>26}" for name in columns))
     for key in keys:
         print(f"{key:{width}}  " + "  ".join(f"{table[key]!s:>26}" for table in columns.values()))

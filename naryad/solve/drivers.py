@@ -35,7 +35,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date
 
-from naryad.core.invariants import load_labor, rest_minutes, shift_limit, work_minutes
+from naryad.core.invariants import load_labor, may_depart, rest_minutes, shift_limit, work_minutes
 from naryad.core.model import Day, Plan
 
 from .vehicles import PRIORITY_WEIGHT, RESERVE_VALUE
@@ -127,7 +127,7 @@ def solve_drivers(day: Day, vehicle_plan: Plan, history: History | None = None,
     shifts.sort(key=lambda t: (-_shift_value(day, t[1], t[0].length), t[0].id))
 
     available = [d for d in day.drivers.values()
-                 if d.schedule == "work" and d.medical != "failed"]
+                 if may_depart(d, day.meta.get("moment"))]
     working_vehicles = set(vehicle_plan.vehicles.values())
     candidates = {}
     for shift, duty, vehicle in shifts:
