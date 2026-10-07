@@ -24,9 +24,9 @@
     }).then(function (r) {
       S.plan = r.plan;
       onShown && onShown();  // экран расчёта видим - теперь карта узнает свой размер
-      $("#drawer").hidden = true; M.show($("#legend"), "fade");
+      $("#drawer").hidden = true;
+      S.run = r.plan.run || null;
       S.m = D.build(S.day, S.plan, r.state);
-      $("#lgTransfer").hidden = S.m.parkList.length < 2;  // переброски бывают только между парками
       var handlers = { onPark: openPark, onRoute: routeCard, parkTip: parkTip };
       if (!S.map) S.map = D.parkMap($("#map"), S.m, handlers);
       else { S.map.resize(); S.map.refit(); S.map.redraw(S.m, handlers); }
@@ -36,7 +36,7 @@
       renderSummary(); renderProbs(); show("paneResult");
     });
   }
-  window.App = { run: run, resize: function () { S.map && S.map.resize(); } };
+  window.App = { run: run, resize: function () { S.map && S.map.resize(); }, runNo: function () { return S.run ? S.run.id : null; } };
 
   function apply(state) {
     S.m = D.build(S.day, S.plan, state);
@@ -56,18 +56,20 @@
       viol: (S.plan.violations || []).concat(S.plan.rest_violations || [], m.state.violations || [])
     };
   }
+  var MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
   function renderSummary() {
     var m = S.m, t = m.totals, n = S.plan.summary.numbers, pr = problems();
-    $("#resPark").textContent = m.parkList.length === 1 ? m.parkList[0].name : "Автобусные парки: " + m.parkList.map(function (p) { return p.name.replace(/^.*№\s*/, "№"); }).join(", ");
-    var bad = pr.line.length + pr.shifts.length + pr.viol.length;
-    var st = $("#resStatus");
-    st.className = "res-status res-status--" + (bad ? "bad" : "ok");
-    st.innerHTML = bad
-      ? '<i class="ad-icon ad-icon--warning-circle ad-icon--sm"></i><span>' + [pr.line.length ? pr.line.length + " " + D.plural(pr.line.length, "наряд", "наряда", "нарядов") + " без автобуса" : "",
-          pr.shifts.length ? pr.shifts.length + " " + D.plural(pr.shifts.length, "смена", "смены", "смен") + " без водителя" : "",
-          pr.viol.length ? "нарушений норм: " + pr.viol.length : ""].filter(Boolean).join(" · ") + "</span>"
-      : '<i class="ad-icon ad-icon--check-circle ad-icon--sm"></i><span>Все наряды и смены закрыты</span>';
-    st.disabled = !bad;
+    // Заголовок - номер расчёта из журнала расчётов; ниже - парки расчёта с адресами
+    var d = (S.run && S.run.day || m.meta.date).split("-");
+    $("#resTitle").innerHTML = "Расчёт" + (S.run ? " № " + S.run.id : "") + ' <small>' + (+d[2]) + " " + MONTHS[+d[1] - 1] + "</small>";
+    $("#resParks").innerHTML = m.parkList.map(function (p) {
+      return '<button type="button" class="res-park" data-park="' + p.id + '"><b>' + esc(p.name) + "</b><span>" + esc(p.address || "") + "</span></button>";
+    }).join("");
+    $("#resParks").querySelectorAll("[data-park]").forEach(function (b) { b.addEventListener("click", function () { openPark(b.getAttribute("data-park")); }); });
+    // Всё хорошо - никакого уведомления; есть проблемы - маленький красный значок с числом
+    var bad = pr.line.length + pr.shifts.length + pr.viol.length, al = $("#resAlert");
+    al.hidden = !bad;
+    if (bad) { $("#resAlertN").textContent = bad; al.title = "Проблемы: " + bad + " - открыть список"; al.setAttribute("aria-label", al.title); }
     // показатели - они же переключают список ниже
     var k = [
       ["routes", "Наряды на линии", t.lineFilled, t.lineTotal, pr.line.length ? "bad" : ""],
@@ -81,8 +83,9 @@
     }).join("");
     $("#kpis").querySelectorAll("[data-view]").forEach(function (b) { b.addEventListener("click", function () { setTab(b.getAttribute("data-view")); }); });
     $("#nLog").textContent = m.state.log.length || "";
+    window.dispatchEvent(new Event("autodisp:run"));  // крошки в шапке узнают номер расчёта
   }
-  $("#resStatus").addEventListener("click", function () { S.probsOpen = true; renderProbs(true); });
+  $("#resAlert").addEventListener("click", function () { S.probsOpen = true; renderProbs(true); });
 
   function setTab(t) {
     S.tab = t;
@@ -97,21 +100,22 @@
     var routes = m.routeList.slice();
     if (S.tab === "routes") {
       routes.sort(function (a, b) { return b.unfilled - a.unfilled || a.priority - b.priority || collate(a.number, b.number); });
-      html = routes.map(function (r) { return routeItem(r, r.filled + " из " + r.total + " нарядов", r.unfilled ? "bad" : "ok", r.worst ? "интервал до " + D.intervalText(r.worst) : "интервал как по плану"); }).join("");
+      html = '<div class="rows-head"><span>Маршрут</span><span>Наряды</span><span>Интервал, худший</span><span></span></div>' +
+        routes.map(function (r) { return routeItem(r, "<b>" + r.filled + "</b> / " + r.total, r.unfilled ? "bad" : "ok", r.worst ? D.intervalText(r.worst).replace(" мин вместо ", " вместо ") + " мин" : "по плану"); }).join("");
     } else if (S.tab === "shifts") {
       routes.sort(function (a, b) { return b.noDriver - a.noDriver || collate(a.number, b.number); });
-      html = routes.map(function (r) {
+      html = '<div class="rows-head"><span>Маршрут</span><span>Смены</span><span>Водители</span><span></span></div>' + routes.map(function (r) {
         var total = 0, filled = 0;
         r.duties.forEach(function (d) { d.shifts.forEach(function (s) { total++; if (s.segs.length) filled++; }); });
-        return routeItem(r, filled + " из " + total + " смен с водителем", r.noDriver ? "warn" : "ok", r.noDriver ? "без водителя " + r.noDriver : "");
+        return routeItem(r, "<b>" + filled + "</b> / " + total, r.noDriver ? "warn" : "ok", r.noDriver ? "без водителя " + r.noDriver : "все с водителем");
       }).join("");
     } else if (S.tab === "reserve") {
       var res = Object.keys(m.duties).map(function (k) { return m.duties[k]; }).filter(function (d) { return d.type !== "line"; }).sort(function (a, b) { return a.start - b.start; });
-      html = res.map(function (d) {
+      html = res.length ? '<div class="rows-head"><span></span><span>Автобус</span><span>Время, класс</span><span></span></div>' + res.map(function (d) {
         var on = d.segs.length > 0;
-        return '<div class="item item--static"><span class="chip ' + (on ? "chip--ok" : "") + '">Р</span><span><div class="item__t">' + (on ? "Автобус " + esc(D.vehicleName(m, d.segs[0].id)) : "Не выпущен") +
-          '</div><div class="item__s">' + D.hm(d.start) + "-" + D.hm(d.end) + " · " + (D.CLASSES[d.cls] || d.cls) + "</div></span><span></span></div>";
-      }).join("") || '<div class="empty">Резервных нарядов нет</div>';
+        return '<div class="row row--static"><span class="chip chip--res">Р</span><span class="row__main">' + (on ? "<b>" + esc(D.vehicleName(m, d.segs[0].id)) + "</b>" : '<span class="muted">не выпущен</span>') +
+          '</span><span class="row__sub">' + D.hm(d.start) + "–" + D.hm(d.end) + " · " + (D.CLASSES[d.cls] || d.cls) + '</span><span class="item__dot item__dot--' + (on ? "ok" : "off") + '"></span></div>';
+      }).join("") : '<div class="empty">Резервных нарядов нет</div>';
     } else {
       var log = m.state.log;
       html = log.length ? log.map(function (l) {
@@ -124,10 +128,11 @@
   }
   var collator = new Intl.Collator("ru", { numeric: true });
   function collate(a, b) { return collator.compare(a, b); }
+  // Компактная строка списка: номер в цвете маршрута, главное число, пояснение мелко, состояние точкой
   function routeItem(r, main, tone, sub) {
     var c = r.geo ? r.geo.color : "var(--accent-deep)";
-    return '<button class="item' + (S.route === r.id ? " is-on" : "") + '" data-route="' + r.id + '"><span class="chip chip--route" style="--c:' + c + '">' + esc(r.number) + "</span>" +
-      '<span><div class="item__t">' + main + '</div><div class="item__s">' + esc(sub) + "</div></span>" +
+    return '<button class="row' + (S.route === r.id ? " is-on" : "") + '" data-route="' + r.id + '"><span class="chip chip--route" style="--c:' + c + '">' + esc(r.number) + "</span>" +
+      '<span class="row__main">' + main + '</span><span class="row__sub">' + esc(sub) + "</span>" +
       '<span class="item__dot item__dot--' + tone + '" aria-hidden="true"></span></button>';
   }
 

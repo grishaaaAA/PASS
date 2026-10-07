@@ -1,5 +1,7 @@
 """
-Отметки диспетчера на день: что работает, какие автобусы исправны, какие водители выходят.
+Отметки диспетчера на день и журнал расчётов.
+
+Отметки: что работает, какие автобусы исправны, какие водители выходят.
 
 Хранятся в SQLite (data/marks.sqlite, модуль sqlite3 из стандартной библиотеки) по парку и дню:
 на следующий день отметок нет и всё начинается с нового реестра. Каждое изменение пишется
@@ -7,6 +9,7 @@
 
     marks   (park_id, day, kind, item_id) -> value     kind: route | veh | drv; value: 1 работает / исправен / выходит, 0 - нет
     journal (at, park_id, day, kind, item_id, value, prev, who)
+    runs    (id, at, day, parks, итоги) - каждый расчёт получает порядковый номер («Расчёт № 12»)
 """
 
 from __future__ import annotations
@@ -52,6 +55,10 @@ class MarksStore:
                     id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, park_id TEXT NOT NULL, day TEXT NOT NULL,
                     kind TEXT NOT NULL, item_id TEXT NOT NULL, value INTEGER NOT NULL, prev INTEGER, who TEXT);
                 CREATE INDEX IF NOT EXISTS journal_day ON journal (park_id, day);
+                CREATE TABLE IF NOT EXISTS runs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, day TEXT NOT NULL, parks TEXT NOT NULL,
+                    line_filled INTEGER, line_total INTEGER, shifts_filled INTEGER, shifts_total INTEGER,
+                    problems INTEGER, seconds REAL, who TEXT);
             """)
 
     def _db(self) -> sqlite3.Connection:
@@ -112,3 +119,20 @@ class MarksStore:
         with self.lock, self._db() as db:
             return [{"at": a, "park_id": p, "kind": k, "id": i, "value": bool(v), "prev": None if pv is None else bool(pv), "who": w}
                     for a, p, k, i, v, pv, w in db.execute(q, [day] + list(parks) + [int(limit)])]
+
+    # --- расчёты ---------------------------------------------------------------------
+    def add_run(self, day, parks: list, numbers: dict, problems: int, seconds: float, who: str = "") -> dict:
+        """Записать расчёт и выдать его порядковый номер."""
+        day, now = _day(day), _now()
+        with self.lock, self._db() as db:
+            cur = db.execute("INSERT INTO runs (at, day, parks, line_filled, line_total, shifts_filled, shifts_total, problems, seconds, who) "
+                             "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                             (now, day, ",".join(parks), numbers.get("line_filled"), numbers.get("line_total"), numbers.get("shifts_filled"),
+                              numbers.get("shifts_total"), int(problems), float(seconds or 0), who[:80]))
+            return {"id": cur.lastrowid, "at": now, "day": day, "parks": list(parks)}
+
+    def runs(self, limit: int = 50) -> list:
+        with self.lock, self._db() as db:
+            return [{"id": i, "at": a, "day": d, "parks": p.split(","), "line_filled": lf, "line_total": lt, "problems": pr}
+                    for i, a, d, p, lf, lt, pr in db.execute(
+                        "SELECT id, at, day, parks, line_filled, line_total, problems FROM runs ORDER BY id DESC LIMIT ?", (int(limit),))]

@@ -52,5 +52,16 @@ class MarksTest(unittest.TestCase):
         self.assertEqual(self.store.get(["P07"], "2026-10-07")["veh"], {})
 
 
+class RunsTest(unittest.TestCase):
+    def test_runs_numbered_in_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = MarksStore(Path(tmp) / "m.sqlite")
+            a = store.add_run("2026-10-08", ["P07"], {"line_filled": 323, "line_total": 323}, 0, 0.5)
+            b = store.add_run("2026-10-08", ["P07", "P03"], {"line_filled": 500, "line_total": 510}, 10, 1.2)
+            self.assertEqual(b["id"], a["id"] + 1)
+            self.assertEqual([r["id"] for r in store.runs()], [b["id"], a["id"]])
+            self.assertEqual(store.runs()[0]["parks"], ["P07", "P03"])
+
+
 if __name__ == "__main__":
     unittest.main()

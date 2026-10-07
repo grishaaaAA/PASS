@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+import re
 import sys
 import webbrowser
 from datetime import date as Date
@@ -152,6 +153,8 @@ class Handler(BaseHTTPRequestHandler):
         if url.path.startswith("/api/"):
             query = {k: v[-1] for k, v in parse_qs(url.query).items()}
             return self._json(*self.engine.handle("GET", url.path, query))
+        if url.path == "/x/runs":
+            return self._json(HTTPStatus.OK, {"runs": self.marks.runs()})
         if url.path in ("/x/marks", "/x/marks/journal"):
             q = {k: v[-1] for k, v in parse_qs(url.query).items()}
             parks = [p for p in (q.get("parks") or "").split(",") if p]
@@ -197,8 +200,22 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/api/days" and isinstance(body, dict) and "parks" in body:
             self._forget_same_day(body)
         if url.path.startswith("/api/"):
-            return self._json(*self.engine.handle("POST", url.path, {}, body))
+            status, payload = self.engine.handle("POST", url.path, {}, body)
+            plan = re.fullmatch(r"/api/days/([^/]+)/plan", url.path.rstrip("/"))
+            if plan and int(status) == 200:
+                payload["run"] = self._record_run(plan.group(1), payload)  # номер расчёта - в журнал расчётов
+            return self._json(status, payload)
         self._json(HTTPStatus.NOT_FOUND, {"error": "нет такого адреса"})
+
+    def _record_run(self, day_id: str, payload: dict) -> dict:
+        rec = self.engine.days.get(day_id)
+        meta = rec.raw.get("meta", {}) if rec else {}
+        parks = [p["id"] for p in rec.raw.get("parks", [])] if rec else []
+        numbers = (payload.get("summary") or {}).get("numbers") or {}
+        # проблемы - незакрытое на линии (невыпущенный резерв - не проблема) и нарушения норм
+        line = [u for u in (payload.get("plan") or {}).get("unfilled", []) if "-RES-" not in u.get("id", "")]
+        problems = len(line) + len(payload.get("violations", [])) + len(payload.get("rest_violations", []))
+        return self.marks.add_run(meta.get("date") or Date.today().isoformat(), parks, numbers, problems, payload.get("seconds", 0), who=self.client_address[0])
 
     def _forget_same_day(self, day: dict):
         """Повторный расчёт того же дня тех же парков заменяет прежний. Иначе движок держит в памяти

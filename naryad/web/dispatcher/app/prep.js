@@ -26,10 +26,7 @@
     // смена экрана - мягкое появление нового (приветствие анимирует себя само)
     if (changed && name !== "welcome") M.enter($(name === "parks" ? "#scrParks .scr__in" : name === "prep" ? "#scrPrep .scr__in" : "#scrResult"), "up");
     document.body.classList.toggle("is-result", name === "result");
-    var crumbs = [['<button data-go="parks">Выбор парков</button>', name === "parks"]];
-    if (name !== "parks" && P.ids.length) crumbs.push(['<button data-go="prep">' + esc(selTitle(true)) + "</button>", name === "prep"]);
-    if (name === "result") crumbs.push(["<span>Расчёт</span>", true]);
-    $("#crumbs").innerHTML = crumbs.map(function (c) { return '<span class="crumb' + (c[1] ? " is-on" : "") + '">' + c[0] + "</span>"; }).join('<span class="crumb__sep">/</span>');
+    renderCrumbs(name);
     if (!silent) {
       var hash = name === "parks" ? "#parks" : name === "welcome" ? "#" : "#" + name + "/" + P.ids.join(",");
       if (location.hash !== hash) history.pushState(null, "", hash);
@@ -38,6 +35,15 @@
     var scr = $(name === "parks" ? "#scrParks" : name === "prep" ? "#scrPrep" : "#scrResult");
     if (scr && name !== "prep") scr.scrollTop = 0;
   }
+  // Крошки: шаги работы, а не названия парков (парков может быть несколько): «Выбор парков / Подготовка дня / Расчёт № 12»
+  function renderCrumbs(name) {
+    var no = window.App && window.App.runNo && window.App.runNo();
+    var crumbs = [['<button data-go="parks">Выбор парков</button>', name === "parks"]];
+    if (name !== "parks" && name !== "welcome" && P.ids.length) crumbs.push(['<button data-go="prep">Подготовка дня</button>', name === "prep"]);
+    if (name === "result") crumbs.push(["<span>Расчёт" + (no ? " № " + no : "") + "</span>", true]);
+    $("#crumbs").innerHTML = crumbs.map(function (c) { return '<span class="crumb' + (c[1] ? " is-on" : "") + '">' + c[0] + "</span>"; }).join('<span class="crumb__sep">/</span>');
+  }
+  window.addEventListener("autodisp:run", function () { if (current === "result") renderCrumbs("result"); });
   document.addEventListener("click", function (e) {
     var b = e.target.closest("[data-go]"); if (!b) return;
     var to = b.getAttribute("data-go");

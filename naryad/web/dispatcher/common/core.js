@@ -406,8 +406,11 @@
       '<button type="button" class="mc__z" data-z="1" aria-label="Приблизить">' + PLUS + "</button>" +
       '<span class="mc__sep"></span>' +
       '<button type="button" class="mc__z" data-z="-1" aria-label="Отдалить">' + MINUS + "</button></div>" +
-      '<div class="mc__layers"><button type="button" class="mc__lbtn" aria-expanded="false"><i class="ad-icon ad-icon--map-trifold ad-icon--sm"></i><span>Слои</span></button>' +
-      '<div class="mc__panel" hidden><div class="mc__h">Подложка</div><div class="mc__seg" data-bases></div><div data-overlays></div></div></div>';
+      '<div class="mc__layers"><button type="button" class="mc__lbtn" data-pop="layers" aria-expanded="false"><i class="ad-icon ad-icon--map-trifold ad-icon--sm"></i><span>Слои</span></button>' +
+      '<div class="mc__panel" data-panel="layers" hidden><div class="mc__h">Подложка</div><div class="mc__seg" data-bases></div><div data-overlays></div></div></div>' +
+      '<div class="mc__layers" data-legend-wrap hidden><button type="button" class="mc__lbtn" data-pop="legend" aria-expanded="false"><i class="ad-icon ad-icon--info ad-icon--sm"></i><span>Легенда</span></button>' +
+      '<div class="mc__panel mc__panel--legend" data-panel="legend" hidden></div></div>' +
+      '<button type="button" class="mc__lbtn mc__full" data-full aria-pressed="false" title="Карта на весь экран"><i class="mc__fic"></i><span>На весь экран</span></button>';
     el.appendChild(box);
     var credit = document.createElement("div");
     credit.className = "mc__credit";
@@ -417,10 +420,32 @@
     box.querySelectorAll("[data-z]").forEach(function (b) {
       b.addEventListener("click", function () { map.setZoom(Math.round(map.getZoom()) + +b.getAttribute("data-z"), { animate: !REDUCE }); });
     });
-    var btn = box.querySelector(".mc__lbtn"), panel = box.querySelector(".mc__panel");
-    function setPanel(on) { if (on) window.Motion.show(panel, "side"); else window.Motion.hide(panel, "side"); btn.setAttribute("aria-expanded", String(on)); }
-    btn.addEventListener("click", function () { setPanel(panel.hidden); });
-    map.on("click", function () { if (!panel.hidden) setPanel(false); });
+    // Всплывающие панели «Слои» и «Легенда»: открыта одна, клик по карте закрывает
+    function setPanel(name, on) {
+      box.querySelectorAll("[data-panel]").forEach(function (p) {
+        var me = p.getAttribute("data-panel") === name && on, b = box.querySelector('[data-pop="' + p.getAttribute("data-panel") + '"]');
+        if (me) window.Motion.show(p, "side"); else if (!p.hidden) window.Motion.hide(p, "side");
+        b.setAttribute("aria-expanded", String(me));
+      });
+    }
+    box.querySelectorAll("[data-pop]").forEach(function (b) {
+      b.addEventListener("click", function () { var n = b.getAttribute("data-pop"); setPanel(n, box.querySelector('[data-panel="' + n + '"]').hidden); });
+    });
+    map.on("click", function () { setPanel(null, false); });
+    // Карта на весь экран: прячем всё вокруг (класс у ближайшего экрана), Escape - обратно
+    var full = box.querySelector("[data-full]"), host = el.closest(".layout") || el.parentElement;
+    function setFull(on) {
+      host.classList.toggle("map-full", on);
+      full.setAttribute("aria-pressed", String(on));
+      full.title = on ? "Свернуть карту" : "Карта на весь экран";
+      full.querySelector("span").textContent = on ? "Свернуть" : "На весь экран";
+      var t0 = Date.now();
+      (function tick() { map.invalidateSize({ pan: false }); if (Date.now() - t0 < 420) requestAnimationFrame(tick); })();
+      setTimeout(function () { map.invalidateSize(); map.fire("moveend"); }, 460);
+    }
+    full.addEventListener("click", function () { setFull(!host.classList.contains("map-full")); });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape" && host.classList.contains("map-full") && !document.querySelector(".modal")) setFull(false); });
+    map._legend = function (html) { var w = box.querySelector("[data-legend-wrap]"); w.hidden = !html; box.querySelector('[data-panel="legend"]').innerHTML = html || ""; };
     var seg = box.querySelector("[data-bases]");
     Object.keys(map._bases).forEach(function (name, i) {
       var b = document.createElement("button");
@@ -566,7 +591,23 @@
       });
       return b;
     }
+    // Легенда - ровно то, что сейчас может быть на карте
+    function legend() {
+      var multi = (current.parkList || []).length > 1, st = !!current.state;
+      var it = [
+        ['<i class="lg-line lg-line--multi"></i>', "Маршрут - у каждого свой цвет"],
+        st ? ['<i class="lg-line lg-line--bad"></i>', "На маршруте есть наряды без автобуса"] : null,
+        ['<i class="lg-line lg-line--a"></i><i class="lg-line lg-line--b"></i>', "Выбранный маршрут: направление A и обратное B"],
+        ['<i class="lg-arrow"></i>', "Направление движения"],
+        ['<i class="lg-stop"></i><i class="lg-stop lg-stop--end"></i>', "Остановка, начальная и конечная"],
+        ['<span class="rl lg-rl" style="--c:#0067a5">26</span>', "Номер маршрута (видно при приближении)"],
+        st ? ['<span class="lg-pk lg-pk--ok"></span><span class="lg-pk lg-pk--bad"></span>', "Парк: все наряды на линии / есть нехватка"] : ['<span class="lg-pk"></span>', "Парк"],
+        multi ? ['<i class="lg-line lg-line--transfer"></i>', "Переброска автобусов между парками"] : null
+      ].filter(Boolean);
+      map._legend('<div class="mc__h">Обозначения</div>' + it.map(function (x) { return '<div class="lg-it"><span class="lg-ic">' + x[0] + "</span><span>" + x[1] + "</span></div>"; }).join(""));
+    }
     function draw() {
+      legend();
       drawRoutes();
       layer.clearLayers(); markers = {};
       var pts = [];

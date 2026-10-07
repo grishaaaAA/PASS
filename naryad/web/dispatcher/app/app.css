@@ -24,17 +24,24 @@ body { display: grid; grid-template-rows: 60px 1fr; height: 100vh; overflow: hid
 .warns ul { margin: var(--space-2) 0 0; padding-left: 18px; }
 
 .pane--result { gap: var(--space-3); padding-bottom: var(--space-7); }
-/* Шапка результата: парк и состояние одной строкой-галочкой */
-.res-head { display: grid; gap: var(--space-2); }
-.res-park { font: var(--text-heading-3); }
-.res-status { display: flex; gap: 8px; align-items: center; text-align: left; border: 0; border-radius: var(--radius-sm); padding: 8px 12px; font: var(--text-label); cursor: pointer; }
-.res-status:disabled { cursor: default; }
-.res-status--ok { background: var(--success-fill); color: var(--on-fill); }
-.res-status--bad { background: var(--danger-fill); color: var(--on-fill); }
-.res-status--bad:hover { box-shadow: var(--shadow-md); }
+/* Шапка результата: номер расчёта и дата; справа маленький красный значок, только если есть проблемы; ниже - парки с адресами */
+.res-head { display: grid; gap: 6px; }
+.res-title { display: flex; align-items: center; gap: 10px; }
+.res-h { margin: 0; font: var(--text-heading-3); flex: 1; }
+.res-h small { font: var(--text-body); color: var(--ink-muted); margin-left: 4px; }
+.res-alert { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 9px 0 7px; border: 0; border-radius: var(--radius-pill); background: var(--danger-fill);
+  color: var(--on-fill); font: var(--text-label); font-size: 13px; cursor: pointer; transition: transform 220ms var(--easing-standard), box-shadow 320ms var(--easing-standard); }
+.res-alert:hover { box-shadow: var(--shadow-md); }
+.res-alert:active { transform: scale(0.95); }
+.res-parks { display: grid; gap: 2px; }
+.res-park { display: grid; text-align: left; border: 0; background: none; padding: 4px 6px; margin: 0 -6px; border-radius: 8px; cursor: pointer; font: inherit; color: inherit;
+  transition: background-color 220ms var(--easing-standard); }
+.res-park:hover { background: var(--bg); }
+.res-park b { font: var(--text-label); }
+.res-park span { font: var(--text-caption); font-size: 12px; color: var(--ink-muted); }
 /* Показатели - кнопки: переключают список ниже */
 .kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
-.kpi { display: grid; gap: 2px; text-align: left; font: inherit; color: inherit; background: var(--bg); border: 1px solid transparent; border-radius: var(--radius-sm); padding: var(--space-3);
+.kpi { display: grid; gap: 2px; text-align: left; font: inherit; color: inherit; background: var(--bg); border: 1px solid transparent; border-radius: var(--radius-sm); padding: 8px 10px;
   cursor: pointer; transition: border-color 220ms var(--easing-standard), background-color 220ms var(--easing-standard), box-shadow 320ms var(--easing-standard), transform 220ms var(--easing-standard); }
 .kpi:hover { border-color: var(--border-strong); background: var(--surface); }
 .kpi:active { transform: scale(0.97); }
@@ -77,9 +84,6 @@ body { display: grid; grid-template-rows: 60px 1fr; height: 100vh; overflow: hid
 /* Сцена: карта и выезжающая панель */
 .stage { position: relative; min-height: 0; }
 .map { position: absolute; inset: 0; }
-.legend { position: absolute; bottom: 26px; right: 14px; z-index: 500; background: var(--surface); border-radius: var(--radius-sm); box-shadow: var(--shadow-md); padding: 8px 12px;
-  display: flex; gap: var(--space-3); font: var(--text-caption); font-size: 12px; flex-wrap: wrap; max-width: 60%; }
-.legend span { display: inline-flex; gap: 6px; align-items: center; }
 .dot { width: 12px; height: 12px; border-radius: 50%; border: 3px solid; }
 .dot--ok { border-color: var(--success-fill); } .dot--warn { border-color: var(--warning-fill); } .dot--bad { border-color: var(--danger-fill); }
 .ln { width: 22px; height: 0; border-top: 2px solid #227b81; opacity: .7; }
@@ -219,3 +223,21 @@ body { display: grid; grid-template-rows: 60px 1fr; height: 100vh; overflow: hid
 .pcard__addr { color: var(--ink-muted); font: var(--text-caption); margin-top: -6px; }
 .pcard__dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; margin: 4px 0 6px; padding: 12px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
 .pcard .ad-btn { justify-self: start; }
+
+/* Компактные строки списков: больше маршрутов в кадре */
+.list { gap: 0; }
+.rows-head { display: grid; grid-template-columns: 48px 70px 1fr 10px; gap: 10px; padding: 0 8px 6px; font-size: 11px; color: var(--ink-muted); border-bottom: 1px solid var(--border); }
+.row { display: grid; grid-template-columns: 48px 70px 1fr 10px; gap: 10px; align-items: center; width: 100%; padding: 6px 8px; border: 0; border-bottom: 1px solid var(--bg);
+  background: none; text-align: left; font: var(--text-caption); color: var(--ink); cursor: pointer; border-radius: 0; transition: background-color 220ms var(--easing-standard); }
+.row:hover { background: var(--bg); }
+.row.is-on { background: var(--accent-deep); color: var(--on-fill); }
+.row.is-on .row__sub { color: var(--on-fill); }
+.row--static { cursor: default; }
+.row--static:hover { background: none; }
+.row .chip { min-width: 44px; height: 24px; font-size: 12px; border-radius: 6px; }
+.row__main { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.row__main b { font-weight: 600; }
+.row__sub { font-size: 12px; color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chip--res { background: var(--surface-sunken); color: var(--ink); }
+.item__dot--off { background: var(--border-strong); }
+.pane--result { gap: var(--space-3); padding-top: var(--space-2); }

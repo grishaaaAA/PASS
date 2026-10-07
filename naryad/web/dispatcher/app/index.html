@@ -90,8 +90,9 @@
     <!-- 3. Результат -->
     <section class="pane pane--result" id="paneResult" hidden>
       <div class="res-head">
-        <div class="res-park" id="resPark"></div>
-        <button type="button" class="res-status" id="resStatus"></button>
+        <div class="res-title"><h2 class="res-h" id="resTitle">Расчёт</h2>
+          <button type="button" class="res-alert" id="resAlert" hidden><i class="ad-icon ad-icon--warning-circle ad-icon--sm"></i><span id="resAlertN"></span></button></div>
+        <div class="res-parks" id="resParks"></div>
       </div>
       <div class="kpis" id="kpis" role="tablist" aria-label="Показатели"></div>
       <nav class="tabs" role="tablist">
@@ -117,11 +118,6 @@
       <button type="button" class="probs__head" id="probsHead" aria-expanded="false"><i class="ad-icon ad-icon--warning-circle ad-icon--sm"></i><span>Проблемы</span><span class="probs__kinds" id="probsKinds"></span><b id="probsN"></b><i class="ad-icon ad-icon--caret-down ad-icon--sm probs__car"></i></button>
       <div class="probs__body" id="probsBody"></div>
     </section>
-    <div class="legend" id="legend" hidden>
-      <span><i class="ln ln--route"></i>маршрут</span>
-      <span><i class="ln ln--bad"></i>маршрут с нарядами без автобуса</span>
-      <span id="lgTransfer"><i class="ln"></i>переброска автобусов</span>
-    </div>
     <div class="busy" id="busy" hidden><span class="spinner"></span><span id="busyText">Считаю…</span></div>
     <section class="drawer" id="drawer" hidden>
       <header class="drawer__head">
