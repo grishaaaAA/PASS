@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AUTODISP - маршруты и остановки</title>
+<link rel="icon" href="ds/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="ds/tokens.css">
+<link rel="stylesheet" href="ds/bundle.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="common/core.css">
+<link rel="stylesheet" href="common/routes.css">
+</head>
+<body>
+<header class="bar">
+  <img class="bar__logo" src="ds/logo.svg" alt="AUTODISP">
+  <span class="bar__title">Маршруты и остановки</span>
+  <select class="ad-input bar__park" id="park" aria-label="Парк"></select>
+  <span class="bar__grow"></span>
+  <span class="caption muted" id="stat"></span>
+  <a class="ad-btn ad-btn--ghost ad-btn--sm" id="toPark" href="/"><i class="arr arr--left"></i>К подготовке дня</a>
+</header>
+
+<div class="layout">
+  <aside class="side">
+    <!-- Список -->
+    <section class="pane" id="paneList">
+      <div class="row">
+        <input class="ad-input grow" id="q" placeholder="Номер или конечная" aria-label="Поиск маршрута">
+        <button class="ad-btn ad-btn--primary ad-btn--sm" id="btnAdd"><i class="ad-icon ad-icon--plus-circle ad-icon--sm"></i>Новый</button>
+      </div>
+      <div class="list" id="list"></div>
+      <p class="caption muted">Первичные трассы и остановки - из OpenStreetMap (© участники OpenStreetMap, ODbL). Всё можно поправить: изменения сохраняются в data/geo/routes.json, прошлая версия - в routes.json.bak.</p>
+    </section>
+
+    <!-- Карточка маршрута -->
+    <section class="pane" id="paneEdit" hidden>
+      <div class="row">
+        <button class="ad-btn ad-btn--ghost ad-btn--sm" id="btnBack"><i class="arr arr--left"></i>К списку</button>
+        <span class="grow"></span>
+        <span class="dirty" id="dirty" hidden>не сохранено</span>
+      </div>
+      <div class="grid2">
+        <label class="ad-field"><span class="ad-field__label">Номер</span><input class="ad-input" id="fNumber" maxlength="20"></label>
+        <label class="ad-field"><span class="ad-field__label">Цвет на карте</span><input class="ad-input color" id="fColor" type="color"></label>
+      </div>
+      <label class="ad-field"><span class="ad-field__label">Название</span><input class="ad-input" id="fName" maxlength="200" placeholder="Конечная - конечная"></label>
+      <label class="ad-field"><span class="ad-field__label">Заметка</span><textarea class="ad-input" id="fNote" rows="2" maxlength="1000"></textarea></label>
+      <div class="caption muted" id="fSource"></div>
+
+      <div class="dirs">
+        <div class="dirs__head"><span class="label">Направления</span>
+          <button class="ad-btn ad-btn--ghost ad-btn--sm" id="btnDirAdd"><i class="ad-icon ad-icon--plus-circle ad-icon--sm"></i>Добавить</button></div>
+        <div class="chips" id="dirChips"></div>
+      </div>
+
+      <div class="dir" id="dirBox">
+        <label class="ad-field"><span class="ad-field__label">Название направления</span><input class="ad-input" id="dName" maxlength="200"></label>
+        <div class="tools">
+          <button class="tool" id="tLine" aria-pressed="false"><i class="ad-icon ad-icon--path ad-icon--sm"></i>Править трассу</button>
+          <button class="tool" id="tStop" aria-pressed="false"><i class="ad-icon ad-icon--map-pin ad-icon--sm"></i>Поставить остановку</button>
+        </div>
+        <div class="tools tools--small">
+          <button class="ad-btn ad-btn--ghost ad-btn--sm" id="tReverse" title="Создать обратное направление из этого">Сделать обратное</button>
+          <button class="ad-btn ad-btn--ghost ad-btn--sm" id="tFlip">Развернуть</button>
+          <button class="ad-btn ad-btn--ghost ad-btn--sm" id="tClear">Очистить трассу</button>
+          <button class="ad-btn ad-btn--ghost ad-btn--sm danger" id="tDirDel">Удалить направление</button>
+        </div>
+        <div class="caption muted" id="dInfo"></div>
+        <div class="stops__head"><span class="label">Остановки по порядку</span><span class="caption muted" id="sCount"></span></div>
+        <ol class="stops" id="stops"></ol>
+      </div>
+
+      <div class="actions">
+        <button class="ad-btn ad-btn--primary" id="btnSave"><i class="ad-icon ad-icon--check ad-icon--sm"></i>Сохранить</button>
+        <button class="ad-btn ad-btn--outline" id="btnUndo" title="Ctrl+Z">Отменить шаг</button>
+        <span class="grow"></span>
+        <button class="ad-btn ad-btn--ghost danger" id="btnDel"><i class="ad-icon ad-icon--trash ad-icon--sm"></i>Удалить</button>
+      </div>
+      <p class="err" id="err" hidden></p>
+    </section>
+  </aside>
+
+  <main class="stage">
+    <div class="map" id="map"></div>
+    <div class="hint" id="hint" hidden></div>
+  </main>
+</div>
+
+<script src="ds/bundle.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="common/motion.js"></script>
+<script src="common/core.js"></script>
+<script src="common/events.js"></script>
+<script src="common/routes.js"></script>
+</body>
+</html>

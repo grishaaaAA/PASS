@@ -274,7 +274,7 @@ def _why_shift_unfilled(day: Day, plan: Plan, shift_id: str, history: History, l
                        f"{_hm(work)}, дневная норма {_hm(limit)}",
                        [f"Смена {_hm(shift.length)}, подготовка и медосмотры до и после {_hm(extra)}",
                         "Норма смены - п. 4 Приказа Минтранса № 160; длину смены задают данные наряда, "
-                        "а не нарядка",
+                        "а не расчёт",
                         "Это вопрос к перевозчику: либо смена короче, либо установленный режим до 12 ч"],
                        {"shift_min": shift.length, "work_min": work, "limit_min": limit,
                         "prep_min": extra})

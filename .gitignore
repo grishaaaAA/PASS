@@ -1,3 +1,6 @@
 __pycache__/
 *.pyc
 dist/
+data/marks.sqlite*
+data/geo/routes.json.bak
+data/geo/journal.jsonl
