@@ -194,9 +194,22 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
         if url.path == "/x/geo/routes":
             return self._geo(lambda: self.geo.create(body))
+        if url.path == "/api/days" and isinstance(body, dict) and "parks" in body:
+            self._forget_same_day(body)
         if url.path.startswith("/api/"):
             return self._json(*self.engine.handle("POST", url.path, {}, body))
         self._json(HTTPStatus.NOT_FOUND, {"error": "нет такого адреса"})
+
+    def _forget_same_day(self, day: dict):
+        """Повторный расчёт того же дня тех же парков заменяет прежний. Иначе движок держит в памяти
+        несколько копий одного дня и при проверке отдыха между днями принимает их за дни подряд -
+        получаются сотни ложных «нарушений норм» (одна и та же смена без отдыха)."""
+        date = (day.get("meta") or {}).get("date")
+        parks = sorted(p.get("id") for p in day.get("parks", []) if isinstance(p, dict))
+        with self.engine._lock:
+            for key, rec in list(self.engine.days.items()):
+                if rec.raw.get("meta", {}).get("date") == date and sorted(p["id"] for p in rec.raw.get("parks", [])) == parks:
+                    del self.engine.days[key]
 
     def _geo(self, action):
         try:

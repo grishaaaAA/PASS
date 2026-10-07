@@ -113,8 +113,8 @@
   <main class="stage">
     <div class="map" id="map"></div>
     <!-- Проблемы дня: окошко поверх карты, появляется, только когда они есть -->
-    <section class="probs" id="probs" hidden aria-label="Проблемы">
-      <button type="button" class="probs__head" id="probsHead" aria-expanded="true"><i class="ad-icon ad-icon--warning-circle ad-icon--sm"></i><span>Проблемы</span><b id="probsN"></b><i class="ad-icon ad-icon--caret-down ad-icon--sm probs__car"></i></button>
+    <section class="probs is-collapsed" id="probs" hidden aria-label="Проблемы">
+      <button type="button" class="probs__head" id="probsHead" aria-expanded="false"><i class="ad-icon ad-icon--warning-circle ad-icon--sm"></i><span>Проблемы</span><span class="probs__kinds" id="probsKinds"></span><b id="probsN"></b><i class="ad-icon ad-icon--caret-down ad-icon--sm probs__car"></i></button>
       <div class="probs__body" id="probsBody"></div>
     </section>
     <div class="legend" id="legend" hidden>

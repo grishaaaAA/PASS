@@ -2,7 +2,7 @@
 (function () {
   "use strict";
   var D = window.Disp, $ = D.$, esc = D.esc, M = window.Motion;
-  var S = { info: null, day: null, plan: null, m: null, map: null, tab: "routes", route: null, park: null, probsOpen: true };
+  var S = { info: null, day: null, plan: null, m: null, map: null, tab: "routes", route: null, park: null, probsOpen: false };
   // Фото парков для карточки (откуда взяты - app/img/CREDITS.md)
   var PARK_PHOTOS = {
     P07: { src: "img/park-P07.jpg" }
@@ -32,6 +32,7 @@
       else { S.map.resize(); S.map.refit(); S.map.redraw(S.m, handlers); }
       S.map.selectRoute(null);
       setTab("routes");
+      S.probsOpen = false;  // окно проблем по умолчанию свёрнуто - открывается по заголовку или строке состояния
       renderSummary(); renderProbs(); show("paneResult");
     });
   }
@@ -131,25 +132,39 @@
   }
 
   // ---------- Проблемы: окошко поверх карты ----------
+  // Виды проблем: у каждого свой значок и цвет. Порядок - от самого важного для линии.
+  var PROB_KINDS = [
+    { id: "bus", title: "Нет автобуса", icon: "bus", tone: "bad" },
+    { id: "driver", title: "Нет водителя", icon: "steering-wheel", tone: "warn" },
+    { id: "norms", title: "Нарушение норм труда", icon: "timer", tone: "bad" }
+  ];
   function renderProbs(focus) {
     var pr = problems(), box = $("#probs"), m = S.m;
-    var items = pr.line.concat(pr.shifts);
-    var n = items.length + pr.viol.length;
+    var lists = { bus: pr.line, driver: pr.shifts, norms: pr.viol };
+    var n = pr.line.length + pr.shifts.length + pr.viol.length;
     if (!n) { M.hide(box, "fade"); return; }
     $("#probsN").textContent = n;
-    var html = "";
-    function grp(title, list) {
-      if (!list.length) return "";
-      return '<div class="probs__grp">' + title + " <b>" + list.length + "</b></div>" + list.slice(0, 60).map(function (u) {
-        var r = u.route;
-        return '<button type="button" class="probs__it" data-problem="' + esc(u.id) + '"><span class="chip chip--route" style="--c:' + (r && r.geo ? r.geo.color : "var(--accent-deep)") + '">' + (r ? esc(r.number) : "Р") + "</span>" +
-          "<span>" + (u.kind === "shift" ? "смена " + D.hm(u.start) + "-" + D.hm(u.end) : "наряд " + D.hm(u.start) + "-" + D.hm(u.end)) + '<small>' + esc(D.REASONS[u.reason] || u.reason) + "</small></span></button>";
-      }).join("") + (list.length > 60 ? '<div class="probs__more">и ещё ' + (list.length - 60) + "</div>" : "");
-    }
-    html += grp("Без автобуса", pr.line) + grp("Без водителя", pr.shifts);
-    if (pr.viol.length) html += '<div class="probs__grp">Нарушения норм <b>' + pr.viol.length + "</b></div>" + pr.viol.slice(0, 20).map(function (v) { return '<div class="probs__it probs__it--text">' + esc(v.text) + "</div>"; }).join("");
-    $("#probsBody").innerHTML = html;
+    $("#probsBody").innerHTML = PROB_KINDS.filter(function (k) { return lists[k.id].length; }).map(function (k) {
+      var list = lists[k.id];
+      var head = '<div class="probs__grp"><span class="pk-ic pk-ic--' + k.tone + '"><i class="ad-icon ad-icon--' + k.icon + ' ad-icon--sm"></i></span><span>' + k.title + "</span><b>" + list.length + "</b></div>";
+      var items = k.id === "norms"
+        ? list.slice(0, 20).map(function (v) {
+            return '<div class="probs__it probs__it--text"><span class="pk-ic pk-ic--sm pk-ic--' + k.tone + '"><i class="ad-icon ad-icon--' + k.icon + '"></i></span><span class="probs__txt"><b>' + esc(v.code === "driver_overtime" ? "Переработка" : "Отдых между сменами") + "</b><small>" + esc(v.text) + "</small></span></div>";
+          }).join("")
+        : list.slice(0, 60).map(function (u) {
+            var r = u.route, what = u.kind === "shift" ? "смена " + m.shifts[u.id].order : "наряд " + u.duty.id.split("-").pop();
+            return '<button type="button" class="probs__it" data-problem="' + esc(u.id) + '"><span class="pk-ic pk-ic--sm pk-ic--' + k.tone + '"><i class="ad-icon ad-icon--' + k.icon + '"></i></span>' +
+              '<span class="probs__txt"><span class="probs__row"><span class="chip chip--route" style="--c:' + (r && r.geo ? r.geo.color : "var(--accent-deep)") + '">' + (r ? esc(r.number) : "Р") + "</span>" +
+              "<b>" + esc(what) + '</b><span class="probs__time">' + D.hm(u.start) + "–" + D.hm(u.end) + "</span></span>" +
+              "<small>" + esc(D.REASONS[u.reason] || u.reason) + "</small></span></button>";
+          }).join("") + (list.length > 60 ? '<div class="probs__more">и ещё ' + (list.length - 60) + "</div>" : "");
+      return '<section class="probs__sec">' + head + items + "</section>";
+    }).join("");
     $("#probsBody").querySelectorAll("[data-problem]").forEach(function (b) { b.addEventListener("click", function () { openProblem(b.getAttribute("data-problem")); }); });
+    // в заголовке свёрнутого окна - значки видов с числами, чтобы суть была видна без раскрытия
+    $("#probsKinds").innerHTML = PROB_KINDS.filter(function (k) { return lists[k.id].length; }).map(function (k) {
+      return '<span class="probs__kind" title="' + k.title + '"><i class="ad-icon ad-icon--' + k.icon + ' ad-icon--sm"></i>' + lists[k.id].length + "</span>";
+    }).join("");
     box.classList.toggle("is-collapsed", !S.probsOpen);
     $("#probsHead").setAttribute("aria-expanded", String(S.probsOpen));
     M.show(box, "down", { force: !!focus });

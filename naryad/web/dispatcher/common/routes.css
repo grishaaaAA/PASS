@@ -38,7 +38,8 @@ textarea.ad-input { height: auto; resize: vertical; padding-top: 8px; }
 .stops { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; max-height: 360px; overflow-y: auto; counter-reset: s; }
 .st { display: grid; grid-template-columns: 24px 1fr auto; gap: 6px; align-items: center; counter-increment: s; padding: 2px; border-radius: 8px; }
 .st::before { content: counter(s); font: var(--text-caption); font-size: 12px; color: var(--ink-muted); text-align: right; }
-.st.is-hl { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.st.is-hl { background: var(--accent-deep); }
+.st.is-hl::before { color: var(--on-fill); }
 .st input { border: 1px solid transparent; background: var(--bg); border-radius: 8px; padding: 5px 8px; font: var(--text-caption); width: 100%; min-width: 0; color: var(--ink); }
 .st input:focus { border-color: var(--accent-deep); outline: none; background: var(--surface); }
 .st__b { display: flex; }

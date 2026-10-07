@@ -20,7 +20,6 @@ body { display: grid; grid-template-rows: 60px 1fr; height: 100vh; overflow: hid
 .count b { display: block; font: var(--text-title); font-variant-numeric: tabular-nums; }
 .count span { font: var(--text-caption); color: var(--ink-muted); }
 .warns { display: grid; gap: var(--space-2); }
-.warns details { background: color-mix(in srgb, var(--warning-fill) 8%, var(--surface)); border-radius: var(--radius-sm); padding: var(--space-3); font: var(--text-caption); }
 .warns summary { cursor: pointer; font: var(--text-label); color: var(--warning-text); }
 .warns ul { margin: var(--space-2) 0 0; padding-left: 18px; }
 
@@ -30,9 +29,9 @@ body { display: grid; grid-template-rows: 60px 1fr; height: 100vh; overflow: hid
 .res-park { font: var(--text-heading-3); }
 .res-status { display: flex; gap: 8px; align-items: center; text-align: left; border: 0; border-radius: var(--radius-sm); padding: 8px 12px; font: var(--text-label); cursor: pointer; }
 .res-status:disabled { cursor: default; }
-.res-status--ok { background: color-mix(in srgb, var(--success-fill) 10%, var(--surface)); color: var(--success-text); }
-.res-status--bad { background: color-mix(in srgb, var(--danger-fill) 9%, var(--surface)); color: var(--danger-text); }
-.res-status--bad:hover { background: color-mix(in srgb, var(--danger-fill) 14%, var(--surface)); }
+.res-status--ok { background: var(--success-fill); color: var(--on-fill); }
+.res-status--bad { background: var(--danger-fill); color: var(--on-fill); }
+.res-status--bad:hover { box-shadow: var(--shadow-md); }
 /* Показатели - кнопки: переключают список ниже */
 .kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
 .kpi { display: grid; gap: 2px; text-align: left; font: inherit; color: inherit; background: var(--bg); border: 1px solid transparent; border-radius: var(--radius-sm); padding: var(--space-3);
@@ -62,9 +61,9 @@ body { display: grid; grid-template-rows: 60px 1fr; height: 100vh; overflow: hid
 .item__s { font: var(--text-caption); color: var(--ink-muted); font-size: 13px; }
 .item__r { font: var(--text-caption); color: var(--ink-muted); text-align: right; white-space: nowrap; }
 .chip { min-width: 46px; height: 32px; border-radius: 10px; display: grid; place-content: center; font: var(--text-label); background: var(--surface-sunken); padding: 0 6px; }
-.chip--bad { background: color-mix(in srgb, var(--danger-fill) 14%, var(--surface)); color: var(--danger-text); }
-.chip--warn { background: color-mix(in srgb, var(--warning-fill) 14%, var(--surface)); color: var(--warning-text); }
-.chip--ok { background: color-mix(in srgb, var(--success-fill) 12%, var(--surface)); color: var(--success-text); }
+.chip--bad { background: var(--danger-fill); color: var(--on-fill); }
+.chip--warn { background: var(--warning-fill); color: var(--on-fill); }
+.chip--ok { background: var(--success-fill); color: var(--on-fill); }
 .bar-p { height: 6px; border-radius: 3px; background: var(--surface-sunken); overflow: hidden; margin-top: 4px; }
 .bar-p i { display: block; height: 100%; background: var(--accent-deep); }
 .routes { display: grid; gap: 4px; padding: 4px 0 8px 18px; }
@@ -125,7 +124,9 @@ body { display: grid; grid-template-rows: 60px 1fr; height: 100vh; overflow: hid
 .rc__lbl { font-size: 12px; color: var(--ink-muted); margin-bottom: 4px; }
 .rc__dirs { display: grid; gap: 4px; }
 .rc__dir { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: start; padding: 6px 8px; border-radius: 8px; line-height: 1.35; }
-.rc__dir.is-on { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
+.rc__dir.is-on { background: var(--accent-deep); color: var(--on-fill); }
+.rc__dir.is-on small { color: var(--on-fill); }
+.rc__dir.is-on .rc__dl { background: var(--surface); color: var(--ink); }
 .rc__dir .arr { width: 12px; height: 12px; opacity: .6; }
 .rc__dir small { display: block; color: var(--ink-muted); font-size: 12px; }
 .rc__dl { display: grid; grid-template-columns: auto 1fr; gap: 4px var(--space-3); margin: 0; }
@@ -133,8 +134,8 @@ body { display: grid; grid-template-rows: 60px 1fr; height: 100vh; overflow: hid
 .rc__dl dd { margin: 0; }
 .rc__dir .rc__dl { display: grid; place-content: center; width: 22px; height: 22px; border-radius: 6px; background: var(--surface-sunken); font: var(--text-label); font-size: 12px; }
 .rc__why:empty { display: none; }
-.rc__why { background: color-mix(in srgb, var(--danger-fill) 7%, var(--surface)); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); }
-.rc__wq { color: var(--danger-text); font: var(--text-label); font-size: 13px; }
+.rc__why { background: var(--danger-fill); color: var(--on-fill); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); }
+.rc__wq { color: var(--on-fill); font: var(--text-label); font-size: 13px; }
 .rc__actions { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; padding-top: var(--space-2); border-top: 1px solid var(--border); }
 
 /* Списки: номер маршрута в цвете маршрута, состояние - точкой справа */
@@ -146,25 +147,41 @@ body { display: grid; grid-template-rows: 60px 1fr; height: 100vh; overflow: hid
 .item--static:hover { border-color: var(--border); box-shadow: none; }
 .tabs .tab { font-size: 13px; padding: 8px 4px; }
 
-/* Проблемы - окошко поверх карты, справа сверху; сворачивается до заголовка */
-.probs { position: absolute; top: 14px; right: 14px; z-index: 650; width: 300px; max-height: calc(100% - 120px); display: grid; grid-template-rows: auto 1fr;
-  background: var(--surface); border: 1px solid color-mix(in srgb, var(--danger-fill) 30%, var(--border)); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); overflow: hidden; }
-.probs__head { display: flex; gap: 8px; align-items: center; border: 0; background: color-mix(in srgb, var(--danger-fill) 8%, var(--surface)); color: var(--danger-text);
-  padding: 10px 14px; font: var(--text-label); cursor: pointer; text-align: left; }
-.probs__head span { flex: 1; }
-.probs__head b { min-width: 22px; height: 22px; border-radius: var(--radius-pill); background: var(--danger-fill); color: var(--on-fill); display: grid; place-content: center; font-size: 12px; padding: 0 6px; }
-.probs__car { transition: transform 320ms var(--easing-standard); }
-.probs.is-collapsed .probs__car { transform: rotate(-90deg); }
+/* Проблемы - окошко поверх карты, справа сверху; по умолчанию свёрнуто до заголовка.
+   Заголовок - насыщенный красный с белым текстом; виды проблем - значками с числами. */
+.probs { position: absolute; top: 14px; right: 14px; z-index: 650; width: 320px; max-height: calc(100% - 120px); display: grid; grid-template-rows: auto 1fr;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); overflow: hidden; }
+.probs__head { display: flex; gap: 8px; align-items: center; border: 0; background: var(--danger-fill); color: var(--on-fill); padding: 10px 14px; font: var(--text-label); cursor: pointer; text-align: left; }
+.probs__head > span:first-of-type { flex: 1; }
+.probs__head > b { min-width: 24px; height: 22px; border-radius: var(--radius-pill); background: var(--surface); color: var(--danger-text); display: grid; place-content: center; font-size: 12px; padding: 0 7px; }
+.probs__kinds { display: flex; gap: 8px; }
+.probs__kind { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; }
+.probs__kind .ad-icon { width: 15px; height: 15px; }
+.probs__car { transition: transform 320ms var(--easing-standard); transform: rotate(180deg); }
+.probs.is-collapsed .probs__car { transform: none; }
 .probs.is-collapsed .probs__body { display: none; }
-.probs__body { overflow-y: auto; padding: 4px 8px 10px; display: grid; gap: 2px; align-content: start; }
-.probs__grp { font: var(--text-caption); font-size: 12px; color: var(--ink-muted); padding: 8px 6px 4px; }
-.probs__grp b { color: var(--ink); }
-.probs__it { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: center; border: 0; background: none; text-align: left; font: var(--text-caption); color: var(--ink);
-  padding: 6px; border-radius: 8px; cursor: pointer; transition: background-color 220ms var(--easing-standard); }
+.probs__body { overflow-y: auto; padding: 6px 8px 10px; display: grid; gap: 6px; align-content: start; }
+.probs__sec { display: grid; gap: 2px; }
+.probs__grp { display: flex; align-items: center; gap: 8px; font: var(--text-label); font-size: 13px; padding: 8px 6px 4px; }
+.probs__grp > span:nth-child(2) { flex: 1; }
+.probs__grp b { font-variant-numeric: tabular-nums; color: var(--ink-muted); }
+/* Значок вида проблемы: насыщенный квадрат с белой иконкой */
+.pk-ic { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; color: var(--on-fill); flex: none; }
+.pk-ic--sm { width: 22px; height: 22px; border-radius: 6px; }
+.pk-ic--sm .ad-icon { width: 14px; height: 14px; }
+.pk-ic--bad { background: var(--danger-fill); }
+.pk-ic--warn { background: var(--warning-fill); }
+.probs__it { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; border: 0; background: none; text-align: left; font: var(--text-caption); color: var(--ink);
+  padding: 8px 6px; border-radius: 8px; cursor: pointer; transition: background-color 220ms var(--easing-standard); }
 .probs__it:hover { background: var(--bg); }
-.probs__it .chip { min-width: 40px; height: 26px; font-size: 12px; border-radius: 8px; }
-.probs__it small { display: block; color: var(--ink-muted); font-size: 12px; }
-.probs__it--text { display: block; cursor: default; }
+.probs__txt { display: grid; gap: 3px; min-width: 0; }
+.probs__row { display: flex; align-items: center; gap: 8px; }
+.probs__row b { font: var(--text-label); font-size: 13px; }
+.probs__time { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--ink-muted); font-size: 12px; }
+.probs__it .chip { min-width: 36px; height: 22px; font-size: 11px; border-radius: 6px; }
+.probs__txt small { color: var(--ink-muted); font-size: 12px; line-height: 1.3; }
+.probs__it--text { cursor: default; }
+.probs__it--text:hover { background: none; }
 .probs__more { font-size: 12px; color: var(--ink-muted); padding: 4px 6px; }
 
 /* Подписи номеров маршрутов на карте: маленькие, в цвете маршрута */

@@ -94,7 +94,7 @@ button.pc:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 
 .rc-card__l { font: var(--text-title); }
 .rc-card__car { color: var(--ink-muted); transition: transform 320ms var(--easing-standard); }
 .rc-card.is-on .rc-card__car { transform: rotate(180deg); color: var(--accent-text); }
-.rc-card--bad:not(.is-on):not(:hover) { border-color: color-mix(in srgb, var(--danger-fill) 40%, var(--border)); }
+.rc-card--bad:not(.is-on):not(:hover) { border-color: var(--danger-fill); }
 /* Показатели в карточке: число и подпись под ним */
 .rc-card__stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3) var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--border); }
 .rc-st { display: grid; gap: 1px; }
@@ -124,7 +124,6 @@ button.pc:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 
 .tbl tr.is-off .num { opacity: .4; }
 /* Строка того, что сегодня не работает: приглушена, но переключатель остаётся ярким */
 .rows tr.is-off td, .tbl tr.is-off td { color: var(--ink-muted); }
-.rows tr.is-off td:not(:last-child) { opacity: .6; }
 .rows td, .tbl td { transition: color 320ms var(--easing-standard), opacity 320ms var(--easing-standard); }
 
 /* Переключатель «в работе» */
@@ -162,10 +161,6 @@ button.pc:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 
   appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%235f575a' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: right 7px center; background-size: 12px; min-width: 132px; }
 .st:disabled { cursor: default; opacity: .5; }
-.st--ok, .st--work, .st--passed { border-color: color-mix(in srgb, var(--success-fill) 45%, var(--border)); }
-.st--maintenance, .st--pending, .st--day_off { border-color: color-mix(in srgb, var(--warning-fill) 50%, var(--border)); background-color: color-mix(in srgb, var(--warning-fill) 7%, var(--surface)); }
-.st--repair, .st--accident, .st--failed, .st--sick { border-color: color-mix(in srgb, var(--danger-fill) 50%, var(--border)); background-color: color-mix(in srgb, var(--danger-fill) 7%, var(--surface)); }
-.st--vacation { background-color: var(--bg); }
 
 /* Нижняя панель «Рассчитать» */
 .go { position: sticky; bottom: 0; z-index: 20; background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
@@ -197,7 +192,7 @@ button.pc:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 
   transition: opacity 360ms var(--easing-standard); }
 .splash.is-done { opacity: 0; pointer-events: none; }
 .splash__logo { height: 34px; }
-.splash__bar { position: relative; width: 168px; height: 3px; border-radius: 3px; background: color-mix(in srgb, var(--accent) 16%, transparent); overflow: visible; }
+.splash__bar { position: relative; width: 168px; height: 3px; border-radius: 3px; background: var(--surface-sunken); overflow: visible; }
 .splash__bar i { position: absolute; top: 0; left: 0; height: 100%; width: 38%; border-radius: 3px; background: var(--accent);
   box-shadow: 0 0 8px 1px color-mix(in srgb, var(--accent) 70%, transparent), 0 0 18px 2px color-mix(in srgb, var(--accent) 35%, transparent);
   animation: splash-run 1.3s cubic-bezier(0.65, 0, 0.35, 1) infinite alternate; }
