@@ -1021,6 +1021,19 @@ class TestRestBetweenDays(unittest.TestCase):
         self.assertTrue(any("применено событий" in note
                             for note in self.plan(1, {"history_from": self.ids[0]})["notes"]))
 
+    def test_recalculating_the_same_day_is_not_counted_as_yesterday(self):
+        """Повторный расчёт того же дня - не вчерашний день: нарушений отдыха быть не должно.
+
+        Интерфейс диспетчера на каждое «Рассчитать» загружает день заново,
+        и в памяти лежит несколько копий одной даты.
+        """
+        raw = generate("park7", "2026-10-05", seed=1, moment="morning")
+        for _ in range(3):
+            day_id = ok(self.engine.handle("POST", "/api/days", None, raw))["day_id"]
+            answer = ok(self.engine.handle("POST", f"/api/days/{day_id}/plan", None, {}))
+            self.assertEqual(answer["rest_violations"], [])
+            self.assertEqual(answer["notes"], [])
+
     def test_other_city_is_not_counted_as_yesterday(self):
         """День другого города не должен считаться предыдущей сменой тех же водителей."""
         self.plan(0)
