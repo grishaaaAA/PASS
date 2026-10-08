@@ -4,6 +4,7 @@
 Запуск:
     python -m naryad.demo                                  # парк №7 из data/samples
     python -m naryad.demo --at 08:40 --no-show             # плюс недопуск водителя утром
+    python -m naryad.demo --late 30                        # плюс опоздание водителя на 30 минут
     python -m naryad.demo --day data/samples/park7_weekday.json
     python -m naryad.demo --labor likely                   # на другом наборе норм
 
@@ -124,6 +125,27 @@ class Demo:
         print(f"  {hm(at)}: водитель {driver.tab_number} не допущен, "
               f"смена {hm(shift.start)}-{hm(shift.end)} на маршруте {route.number}")
         self.event({"type": "no_show", "driver_id": driver_id, "at": hm(at)})
+
+    def late(self, delay: int = 30) -> None:
+        """Водитель опаздывает на утреннюю смену: самая частая замена в парке.
+
+        Так, как описал директор парка: водитель должен выехать в 7:30 и
+        опаздывает. Его можно ждать, а можно поменять сменами с тем, кто
+        выходит чуть позже и уже пришёл.
+        """
+        self.next_step(f"Событие: водитель опаздывает на {delay} мин")
+        state = self.engine.days[self.day_id].state
+        shifts = [s for s in self.day.shifts.values()
+                  if self.day.duties[s.duty_id].type == "line" and s.start >= 7 * 60 + 20
+                  and state.driver_at(s.id, s.start)]
+        if not shifts:
+            raise DemoError("в дне нет утренней смены на линии с водителем")
+        shift = min(shifts, key=lambda s: (s.start, s.id))
+        driver = self.day.drivers[state.driver_at(shift.id, shift.start)]
+        route = self.day.routes[self.day.duties[shift.duty_id].route_id]
+        print(f"  {hm(shift.start)}: водитель {driver.tab_number} должен выехать на маршрут {route.number} "
+              f"и опаздывает на {delay} мин")
+        self.event({"type": "late", "driver_id": driver.id, "at": hm(shift.start), "delay_min": delay})
 
     def breakdown(self, at: int, duration: int | None) -> None:
         """Сход автобуса с важного маршрута: то, из-за чего срываются рейсы."""
@@ -271,7 +293,7 @@ class Demo:
               "Диспетчер видит те же цифры и те же объяснения.")
 
 
-def run(path: Path, at: int, duration: int | None, with_no_show: bool) -> None:
+def run(path: Path, at: int, duration: int | None, with_no_show: bool, late: int | None = None) -> None:
     demo = Demo(path)
     print("=" * WIDTH)
     print("AUTODISP: нарядка автобусов и водителей, показ на одном парке".center(WIDTH))
@@ -280,6 +302,8 @@ def run(path: Path, at: int, duration: int | None, with_no_show: bool) -> None:
     demo.plan()
     if with_no_show:
         demo.no_show()
+    if late:
+        demo.late(late)
     demo.breakdown(at, duration)
     demo.dispatcher_edit()
     demo.journal()
@@ -294,12 +318,16 @@ def main(argv=None) -> int:
                         help="через сколько минут автобус вернётся; без него - выбыл на день")
     parser.add_argument("--no-show", action="store_true",
                         help="добавить шаг: водителя не допустил медосмотр утром")
+    parser.add_argument("--late", type=int, default=None, metavar="МИН",
+                        help="добавить шаг: водитель утренней смены опаздывает на столько минут")
     parser.add_argument("--labor", default=None,
                         help="набор норм из naryad/core/labor_presets.json: current, likely, strict")
     args = parser.parse_args(argv)
     try:
         use_labor_preset(args.labor)
-        run(Path(args.day), parse_time(args.at, "--at"), args.duration, args.no_show)
+        if args.late is not None and args.late <= 0:
+            raise ValueError("--late: на сколько минут опаздывает водитель, больше нуля")
+        run(Path(args.day), parse_time(args.at, "--at"), args.duration, args.no_show, args.late)
     except (ApiError, DemoError, ValueError) as error:
         print(f"Показ не удался: {error}", file=sys.stderr)
         return 1

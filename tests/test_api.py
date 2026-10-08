@@ -19,7 +19,7 @@ from naryad.web.api import EXAMPLES_FILE, Engine, Handler, make_examples
 PARK7 = {"preset": "park7", "date": "2026-10-05", "seed": 1, "moment": "morning"}
 DUTY, SHIFT, ROUTE = "P07-R01-WD01", "P07-R01-WD01-S1", "P07-R01"
 # все виды вариантов из docs/CONTRACT.md, раздел «API движка»
-KINDS = ("none", "idle", "reserve", "donor", "free_driver", "reserve_driver")
+KINDS = ("none", "idle", "reserve", "donor", "free_driver", "reserve_driver", "swap")
 CITY = dict(release_per_park=40, routes_total=6,
             class_mix={"medium": 30, "big": 30, "extra_big": 20})
 
@@ -302,6 +302,48 @@ class TestEvents(unittest.TestCase):
                                         {"type": "no_show", "driver_id": driver, "at": "04:30"}))
         self.assertEqual(payload["event"], {"type": "no_show", "driver_id": driver, "at": "04:30"})
         self.assertEqual(payload["options"][0]["kind"] in ("none", "free_driver", "reserve"), True)
+
+    def late_event(self, delay=30):
+        state, day = self.engine.days["day-1"].state, self.engine.days["day-1"].day
+        shift = min((s for s in day.shifts.values() if day.duties[s.duty_id].type == "line"
+                     and s.start >= 7 * 60 + 20 and state.driver_at(s.id, s.start)),
+                    key=lambda s: (s.start, s.id))
+        return {"type": "late", "driver_id": state.driver_at(shift.id, shift.start),
+                "at": hm(shift.start), "delay_min": delay}, shift
+
+    def test_late_options_and_swap(self):
+        event, shift = self.late_event()
+        payload = ok(self.engine.handle("POST", "/api/days/day-1/events/options", None, event))
+        self.assertEqual(payload["event"], event)
+        kinds = [o["kind"] for o in payload["options"]]
+        self.assertIn("swap", kinds)
+        self.assertIn("none", kinds)
+        wait = next(o for o in payload["options"] if o["kind"] == "none")
+        self.assertEqual((wait["title"], wait["lost_minutes"]), ("Ждать водителя", 30))
+        index = kinds.index("swap")
+        after = ok(self.engine.handle("POST", "/api/days/day-1/events/apply", None,
+                                      {"event": event, "option": index}))
+        self.assertEqual(after["violations"], [])
+        self.assertEqual(after["down_drivers"], [], "опоздавший из дня не выбывает")
+        self.assertEqual(after["log"][-1]["type"], "late")
+        self.assertEqual(after["log"][-1]["delay_min"], 30)
+        taken = next(x for x in after["shifts"] if x["shift_id"] == shift.id)["drivers"]
+        self.assertEqual(taken[0]["from"], hm(shift.start), "смена выходит вовремя")
+        self.assertNotEqual(taken[0]["driver_id"], event["driver_id"])
+
+    def test_late_errors(self):
+        event, shift = self.late_event()
+        for body, code, text in (
+                (dict(event, delay_min=0), 400, "delay_min"),
+                (dict(event, delay_min="30"), 400, "delay_min"),
+                (dict(event, delay_min=True), 400, "delay_min"),
+                ({k: v for k, v in event.items() if k != "delay_min"}, 400, "delay_min"),
+                ({k: v for k, v in event.items() if k != "driver_id"}, 400, "driver_id"),
+                (dict(event, driver_id="нет"), 404, "Нет водителя"),
+                (dict(event, at="27:00"), 400, "ещё не началась")):
+            status, payload = self.engine.handle("POST", "/api/days/day-1/events/options", None, body)
+            self.assertEqual(status, code, body)
+            self.assertIn(text, payload["error"], body)
 
     def test_event_errors(self):
         cases = (({"type": "fire", "vehicle_id": self.vehicle, "at": "08:40"}, 400, "type"),

@@ -7,12 +7,13 @@ import unittest
 
 from naryad.core.model import Day
 from naryad.data.generate import generate
-from naryad.ops.replan import (SUPPLY_MIN, TRANSFER_MIN, Accident, Breakdown, Losses, NoShow,
+from naryad.ops.replan import (SUPPLY_MIN, SWAP_WINDOW_MIN, TRANSFER_MIN, Accident, Breakdown, Late,
+                               Losses, NoShow, late_shift,
                                OpsState, Segment, _cut, _end, apply, check_state, free_drivers,
                                options_for)
 from naryad.core.invariants import load_labor
 from naryad.ops.scenarios import build, run
-from naryad.solve.drivers import History, day_base, solve_drivers
+from naryad.solve.drivers import History, day_base, rest_status, solve_drivers
 from naryad.solve.vehicles import solve_vehicles
 
 from tests.test_core import SAMPLES, WEEKDAY
@@ -433,6 +434,97 @@ class TestAccidentAndDriver(unittest.TestCase):
         history.get(tired.id).last_length = 8 * 60
         again = OpsState.from_plan(day, solve_drivers(day, solve_vehicles(day)), history)
         self.assertNotIn(tab, " ".join(o.title for o in options_for(again, event, limit=None)))
+
+
+class TestLate(unittest.TestCase):
+    """Опоздание водителя: ждать, обмен сменами, замена. Так, как описал директор парка."""
+
+    def setUp(self):
+        self.state = morning_state()
+        day = self.state.day
+        self.shift = min((s for s in day.shifts.values()
+                          if day.duties[s.duty_id].type == "line" and s.start >= 7 * 60 + 20
+                          and self.state.driver_at(s.id, s.start)), key=lambda s: (s.start, s.id))
+        self.driver = self.state.driver_at(self.shift.id, self.shift.start)
+        self.event = Late(self.driver, self.shift.start - 10, 30)
+
+    def kinds(self, event=None):
+        return {o.kind: o for o in options_for(self.state, event or self.event, limit=None)}
+
+    def test_every_option_is_legal(self):
+        for option in options_for(self.state, self.event, limit=None):
+            self.assertEqual(check_state(apply(self.state, self.event, option)), [], option.title)
+
+    def test_wait_starts_the_shift_when_the_driver_comes(self):
+        wait = self.kinds()["none"]
+        self.assertEqual(wait.title, "Ждать водителя")
+        self.assertEqual(wait.lost_minutes, 30)
+        after = apply(self.state, self.event, wait)
+        segments = after.drivers[self.shift.id]
+        self.assertEqual([(s.start, s.who) for s in segments], [(self.shift.start + 30, self.driver)])
+        self.assertNotIn(self.driver, after.down_drivers, "опоздавший из дня не выбывает")
+
+    def test_swap_exchanges_two_shifts_and_nobody_waits(self):
+        swap = self.kinds()["swap"]
+        self.assertEqual(swap.lost_minutes, 0)
+        self.assertIn("если он уже в парке", swap.note)
+        after = apply(self.state, self.event, swap)
+        (taken,) = after.drivers[self.shift.id]
+        self.assertEqual(taken.start, self.shift.start, "смена опоздавшего выходит вовремя")
+        other = next(k for k, segs in after.drivers.items()
+                     if any(s.who == self.driver for s in segs))
+        start = self.state.day.shifts[other].start
+        self.assertEqual(self.state.driver_at(other, start), taken.who, "это смена того, кто выехал раньше")
+        self.assertGreaterEqual(start, self.shift.start + 30, "опоздавший успевает на новую смену")
+        self.assertLessEqual(start, self.shift.start + SWAP_WINDOW_MIN)
+
+    def test_swap_is_cheaper_than_waiting(self):
+        options = self.kinds()
+        self.assertLess(options["swap"].cost, options["none"].cost)
+
+    def test_no_swap_when_the_driver_comes_too_late(self):
+        far = Late(self.driver, self.event.at, SWAP_WINDOW_MIN + 10)
+        self.assertNotIn("swap", self.kinds(far))
+        self.assertIn("none", self.kinds(far))
+
+    def test_late_driver_is_not_offered_as_his_own_replacement(self):
+        for option in options_for(self.state, self.event, limit=None):
+            if option.kind == "free_driver":
+                self.assertNotIn(self.driver, [v.who for _, _, v in option.changes if hasattr(v, "who")])
+
+    def test_shift_that_already_started_cannot_be_late(self):
+        self.assertIsNone(late_shift(self.state, self.driver, self.shift.start + 1)
+                          if not any(s.start > self.shift.start for segs in self.state.drivers.values()
+                                     for s in segs if s.who == self.driver) else None)
+        self.assertEqual(late_shift(self.state, self.driver, self.event.at),
+                         (self.shift.id, self.shift.start))
+
+    def test_swap_respects_rest_after_yesterday(self):
+        """Водитель, который при раннем выходе не отдохнул бы, в обмен не годится.
+
+        План тот же, меняется только память о вчерашней смене напарника:
+        к его собственной смене отдых законный, к смене опоздавшего - нет.
+        """
+        swap = self.kinds()["swap"]
+        partner = next(v.who for kind, key, v in swap.changes if kind == "driver" and key == self.shift.id)
+        own_start = min(s.start for segs in self.state.drivers.values() for s in segs if s.who == partner)
+        tired = copy.deepcopy(self.state)
+        base, labor = day_base(tired.day), load_labor()
+        known = tired.history.peek(partner)
+        # ищем вчерашний конец смены: к своей смене отдых законный, к смене опоздавшего - нет
+        last_end = next(end for end in range(base + self.shift.start - 30 * 60, base + self.shift.start)
+                        if rest_status(dataclasses.replace(known, last_end=end, last_length=480),
+                                       base + self.shift.start, labor) is None
+                        and rest_status(dataclasses.replace(known, last_end=end, last_length=480),
+                                        base + own_start, labor) is not None)
+        tired.history.drivers[partner] = dataclasses.replace(known, last_end=last_end, last_length=480)
+        self.assertEqual(check_state(tired), [], "его собственная смена остаётся законной")
+        again = {o.kind: o for o in options_for(tired, self.event, limit=None)}
+        if "swap" in again:
+            chosen = next(v.who for kind, key, v in again["swap"].changes
+                          if kind == "driver" and key == self.shift.id)
+            self.assertNotEqual(chosen, partner, "не отдохнувшего водителя нельзя ставить раньше")
+            self.assertEqual(check_state(apply(tired, self.event, again["swap"])), [])
 
 
 class TestScenarios(unittest.TestCase):

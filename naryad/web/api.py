@@ -54,9 +54,9 @@ from naryad.core.model import Day, Plan
 from naryad.data.check import check
 from naryad.data import registry
 from naryad.data.generate import generate
-from naryad.ops.replan import (EDIT_TYPES, Accident, Breakdown, Edit, NoShow, OpsState, apply,
+from naryad.ops.replan import (EDIT_TYPES, Accident, Breakdown, Edit, Late, NoShow, OpsState, apply,
                                check_state, free_drivers, free_vehicles, history_after,
-                               manual_edit, options_for)
+                               late_shift, manual_edit, options_for)
 from naryad.solve.city import add_transfers
 from naryad.solve.drivers import History, solve_drivers
 from naryad.solve.vehicles import solve_vehicles
@@ -70,7 +70,7 @@ OK, BAD, NOT_FOUND, TOO_EARLY = (HTTPStatus.OK, HTTPStatus.BAD_REQUEST, HTTPStat
                                  HTTPStatus.CONFLICT)
 BLOCKED = HTTPStatus.CONFLICT  # тот же 409: запрос понятен, но в этом состоянии не выполняется
 SERVER_ERROR = HTTPStatus.INTERNAL_SERVER_ERROR
-EVENT_TYPES = ("breakdown", "accident", "no_show")
+EVENT_TYPES = ("breakdown", "accident", "no_show", "late")
 MAX_CANDIDATES = 50
 MAX_BODY = 64 * 1024 * 1024   # реестр целого города и то меньше
 MAX_FILES = 24                # по файлу на сущность с запасом
@@ -593,6 +593,19 @@ class Engine:
             if not any(s.who == driver_id and s.end > at for segs in state.drivers.values() for s in segs):
                 raise ApiError(BAD, f"Водитель {driver_id} после {hm(at)} не на смене")
             return NoShow(driver_id, at)
+        if kind == "late":
+            driver_id = body.get("driver_id")
+            if not isinstance(driver_id, str) or not driver_id:
+                raise ApiError(BAD, "нужно поле driver_id: номер водителя")
+            if driver_id not in record.day.drivers:
+                raise ApiError(NOT_FOUND, f"Нет водителя {driver_id}")
+            delay = body.get("delay_min")
+            if isinstance(delay, bool) or not isinstance(delay, int) or delay <= 0:
+                raise ApiError(BAD, "delay_min: на сколько минут опаздывает водитель, целое число больше нуля")
+            if late_shift(state, driver_id, at) is None:
+                raise ApiError(BAD, f"У водителя {driver_id} нет смены, которая начинается в {hm(at)} или позже: "
+                                    "опоздать можно только на смену, которая ещё не началась")
+            return Late(driver_id, at, delay)
         vehicle_id = body.get("vehicle_id")
         if vehicle_id not in record.day.vehicles:
             raise ApiError(NOT_FOUND, f"Нет автобуса {vehicle_id}")
@@ -835,6 +848,8 @@ def _violations(items: list) -> list:
 def _event_dict(event) -> dict:
     if isinstance(event, NoShow):
         return {"type": "no_show", "driver_id": event.driver_id, "at": hm(event.at)}
+    if isinstance(event, Late):
+        return {"type": "late", "driver_id": event.driver_id, "at": hm(event.at), "delay_min": event.delay}
     if isinstance(event, Accident):
         return {"type": "accident", "vehicle_id": event.vehicle_id, "at": hm(event.at)}
     return {"type": "breakdown", "vehicle_id": event.vehicle_id, "at": hm(event.at),

@@ -57,6 +57,8 @@ from naryad.solve.vehicles import GROWTH_POWER, PRIORITY_WEIGHT, STOP_SHARE
 SUPPLY_MIN = 30
 TRANSFER_MIN = 20
 RESERVE_COST_PER_HOUR = 0.2  # цена часа израсходованного резерва
+SWAP_WINDOW_MIN = 90   # обмен при опоздании: смена другого водителя начинается не позже чем через 1,5 ч
+SWAP_COST = 0.1        # символическая цена обмена: двум водителям меняют смену, оба выходят вовремя
 
 
 @dataclass
@@ -154,6 +156,31 @@ class NoShow:
     driver_id: str
     at: int
     title: str = "Неявка водителя"
+
+
+@dataclass(frozen=True)
+class Late:
+    """Водитель опаздывает: придёт на delay минут позже начала своей смены.
+
+    В отличие от неявки, водитель из дня не выбывает: когда придёт, он
+    может выйти позже или взять смену другого водителя. Так в парках и
+    делают: опоздавшего ставят на наряд попозже, а на его место едет тот,
+    кто уже пришёл.
+    """
+    driver_id: str
+    at: int
+    delay: int
+    title: str = "Опоздание водителя"
+
+
+def late_shift(state: "OpsState", driver_id: str, at: int):
+    """(смена, начало отрезка) ближайшей смены водителя, которая ещё не началась к at."""
+    found = [(s.start, shift_id) for shift_id, segments in state.drivers.items()
+             for s in segments if s.who == driver_id and s.start >= at]
+    if not found:
+        return None
+    start, shift_id = min(found)
+    return shift_id, start
 
 
 @dataclass
@@ -455,29 +482,59 @@ def _all_options(state: OpsState, event, labor: dict) -> list:
         trial = _cut(state, event)
         back = event.duration if isinstance(event, Breakdown) else None
         return _replacement_options(trial, duty_id, event.at, labor, back)
-    if isinstance(event, NoShow):
+    if isinstance(event, (NoShow, Late)):
         return _driver_options(state, event, labor)
     raise TypeError(f"Неизвестное событие {event!r}")
 
 
-def _driver_options(state: OpsState, event: NoShow, labor: dict) -> list:
+def _driver_options(state: OpsState, event, labor: dict) -> list:
+    """Варианты на неявку или опоздание водителя.
+
+    Неявка: водитель выбыл на весь день, его смену берёт свободный водитель
+    или водитель резерва, либо наряд стоит до пересменки.
+    Опоздание: те же замены, плюс «ждать водителя» вместо «не заменять» и
+    обмен - смену опоздавшего берёт водитель, который выходит чуть позже,
+    а опоздавший, когда придёт, едет на его смену.
+    """
     day = state.day
-    shift_id = next((sid for sid, segs in state.drivers.items()
-                     if any(s.who == event.driver_id and s.end > event.at for s in segs)), None)
-    if shift_id is None:
-        return []
+    if isinstance(event, Late):
+        found = late_shift(state, event.driver_id, event.at)
+        if found is None:
+            return []
+        shift_id, from_t = found
+    else:
+        shift_id = next((sid for sid, segs in state.drivers.items()
+                         if any(s.who == event.driver_id and s.end > event.at for s in segs)), None)
+        if shift_id is None:
+            return []
+        from_t = max(day.shifts[shift_id].start, event.at)
     shift = day.shifts[shift_id]
     duty = day.duties[shift.duty_id]
-    from_t = max(shift.start, event.at)
     trial = _cut(state, event)
     losses = Losses(trial)
     arrive = max(from_t, event.at + SUPPLY_MIN) if event.at > shift.start else from_t
-    until = _free_until(trial.drivers, shift_id, event.at, shift.end)
+    until = _free_until(trial.drivers, shift_id, from_t, shift.end)
     bus = trial.vehicle_at(duty.id, arrive)
     cls = day.vehicles[bus].cls if bus else None
-    options = [Option("none", "Не заменять", losses.cost(duty.id, from_t, shift.end),
-                      shift.end - from_t, [], "автобус стоит без водителя до пересменки")]
+
+    if isinstance(event, Late):
+        comes = from_t + event.delay
+        if comes < until:
+            options = [Option("none", "Ждать водителя", losses.cost(duty.id, from_t, comes), event.delay,
+                              [("driver", shift_id, Segment(comes, until, event.driver_id))],
+                              f"водитель выйдет в {_hm(comes)}, наряд стоит {event.delay} мин")]
+        else:
+            options = [Option("none", "Ждать водителя", losses.cost(duty.id, from_t, until), until - from_t,
+                              [], "водитель придёт, когда его смена уже кончится")]
+        swapped = _swap_option(state, event, shift_id, from_t, until, labor)
+        if swapped is not None:
+            options.append(swapped)
+    else:
+        options = [Option("none", "Не заменять", losses.cost(duty.id, from_t, shift.end),
+                          shift.end - from_t, [], "автобус стоит без водителя до пересменки")]
+
     free = free_drivers(trial, duty, arrive, until, labor, cls) if arrive < until else []
+    free = [d for d in free if d != event.driver_id]  # опоздавший ещё не пришёл
     if free:
         options.append(Option("free_driver", f"Водитель {day.drivers[free[0]].tab_number}",
                               losses.cost(duty.id, from_t, arrive), arrive - from_t,
@@ -502,6 +559,52 @@ def _driver_options(state: OpsState, event: NoShow, labor: dict) -> list:
             f"резервный наряд {reserve.id} остаётся без водителя"))
         break
     return sorted(options, key=lambda o: (o.cost, o.kind))
+
+
+def _swap_option(state: OpsState, event: Late, shift_id: str, from_t: int, until: int,
+                 labor: dict):
+    """Обмен сменами с водителем, который выходит чуть позже опоздавшего.
+
+    Кандидат - смена того же парка, которая начинается позже смены
+    опоздавшего, не позже чем через SWAP_WINDOW_MIN и не раньше, чем
+    опоздавший придёт. Её водитель берёт смену опоздавшего с начала,
+    опоздавший - его смену. Законность проверяет check_state: вариант
+    годится, только если не добавляет ни одного нарушения (допуск к
+    автобусу, отдых после вчерашней смены, длина рабочего дня). Из
+    подходящих берётся тот, чья смена начинается раньше всех: ему
+    приходится выйти раньше меньше всех.
+    """
+    day = state.day
+    duty = day.duties[day.shifts[shift_id].duty_id]
+    comes = from_t + event.delay
+    candidates = []
+    for other_id, segments in state.drivers.items():
+        if other_id == shift_id or len(segments) != 1:
+            continue
+        seg = segments[0]
+        other = day.shifts[other_id]
+        if (seg.who == event.driver_id or seg.who in state.down_drivers or seg.start != other.start
+                or day.duties[other.duty_id].park_id != duty.park_id):
+            continue
+        if not (from_t < seg.start <= from_t + SWAP_WINDOW_MIN and seg.start >= comes):
+            continue
+        candidates.append((seg.start, other_id, seg))
+    if not candidates:
+        return None
+    before = {(v.code, v.text, v.ids) for v in check_state(state, labor)}
+    for start, other_id, seg in sorted(candidates):
+        changes = [("driver_end", other_id, start),
+                   ("driver", shift_id, Segment(from_t, until, seg.who)),
+                   ("driver", other_id, Segment(start, seg.end, event.driver_id))]
+        trial = apply(state, event, Option("swap", "", 0, 0, changes))
+        if any((v.code, v.text, v.ids) not in before for v in check_state(trial, labor)):
+            continue
+        x, late = day.drivers[seg.who].tab_number, day.drivers[event.driver_id].tab_number
+        return Option("swap", f"Обмен сменами с водителем {x}", SWAP_COST, 0, changes,
+                      f"{x} выходит в {_hm(from_t)} вместо {_hm(start)}, если он уже в парке; "
+                      f"{late} придёт в {_hm(comes)} и едет на его смену в {_hm(start)}. "
+                      f"Оба наряда выходят вовремя")
+    return None
 
 
 def _cut(state: OpsState, event) -> OpsState:
@@ -545,6 +648,11 @@ def _cut(state: OpsState, event) -> OpsState:
         if isinstance(event, Accident) and driver:
             out.down_drivers[driver] = event.at
             _hold(out.drivers, driver, event.at, None)
+    elif isinstance(event, Late):
+        # водитель не выбывает: снимаем его только со смены, на которую он опаздывает
+        found = late_shift(out, event.driver_id, event.at)
+        if found is not None:
+            _end(out.drivers, found[0], found[1], event.driver_id)
     elif isinstance(event, NoShow):
         out.down_drivers[event.driver_id] = event.at
         for shift_id in list(out.drivers):

@@ -60,6 +60,16 @@ class TestDemo(unittest.TestCase):
         self.assertLess(text.index("Журнал дня"), text.index("правка  Диспетчер"))
         self.assertLess(text.index("Применяем лучший вариант"), text.index("Диспетчер правит план сам"))
 
+    def test_late_step(self):
+        code, text = run(["--late", "30"])
+        self.assertEqual(code, 0, text)
+        self.assertIn("опаздывает на 30 мин", text)
+        self.assertIn("Обмен сменами с водителем", text)
+        self.assertIn("Ждать водителя", text)
+        self.assertLess(text.index("опаздывает"), text.index("сошёл"))
+        code, text = run(["--late", "0"])
+        self.assertEqual(code, 1)
+
     def test_temporary_breakdown(self):
         code, text = run(["--duration", "20"])
         self.assertEqual(code, 0, text)
