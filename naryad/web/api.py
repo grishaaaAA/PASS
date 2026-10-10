@@ -528,6 +528,8 @@ class Engine:
         return explain.why_driver(record.day, record.plan, shift_id, record.history_before)
 
     def explain_unfilled(self, day_id, item_id, query, body):
+        """Почему не закрыто. Утром не закрытое - по утреннему плану; закрытое
+        утром и опустевшее за день (событие или правка) - по состоянию дня."""
         record = self._planned(day_id)
         if item_id in record.day.duties:
             what, where = "наряд закрыт", "explain/vehicle"
@@ -535,9 +537,13 @@ class Engine:
             what, where = "смена закрыта", "explain/driver"
         else:
             raise ApiError(NOT_FOUND, f"Нет наряда или смены {item_id}")
-        if item_id not in record.plan.unfilled:
-            raise ApiError(NOT_FOUND, f"{what}, смотрите {where}")
-        return explain.why_unfilled(record.day, record.plan, item_id, record.history_before)
+        if item_id in record.plan.unfilled:
+            return explain.why_unfilled(record.day, record.plan, item_id, record.history_before)
+        now = _unfilled_now(record)
+        if item_id in now:
+            return explain.why_emptied(record.day, record.plan, record.state, item_id,
+                                       now[item_id], record.log)
+        raise ApiError(NOT_FOUND, f"{what}, смотрите {where}")
 
     def explain_summary(self, day_id, query, body):
         record = self._planned(day_id)
@@ -602,6 +608,11 @@ class Engine:
             delay = body.get("delay_min")
             if isinstance(delay, bool) or not isinstance(delay, int) or delay <= 0:
                 raise ApiError(BAD, "delay_min: на сколько минут опаздывает водитель, целое число больше нуля")
+            busy = next((key for key, segs in sorted(state.drivers.items())
+                         for s in segs if s.who == driver_id and s.start < at < s.end), None)
+            if busy is not None:
+                raise ApiError(BAD, f"Водитель {driver_id} в {hm(at)} уже на смене {busy}: "
+                                    "опоздать может только тот, кто ещё не вышел")
             if late_shift(state, driver_id, at) is None:
                 raise ApiError(BAD, f"У водителя {driver_id} нет смены, которая начинается в {hm(at)} или позже: "
                                     "опоздать можно только на смену, которая ещё не началась")
@@ -869,36 +880,50 @@ def _segments(items: dict, key: str, who: str) -> list:
             for item_id, segs in sorted(items.items()) if segs]
 
 
-def _state_dict(record: DayRecord) -> dict:
-    """Состояние дня для интерфейса.
+def _unfilled_now(record: DayRecord) -> dict:
+    """Незакрытое на этот момент, а не утром: id -> причина.
 
-    unfilled - незакрытое на этот момент, а не утром: наряд, закрытый
-    диспетчером вручную, из списка уходит, а наряд, с которого он снял
-    автобус, в список попадает с причиной removed_by_dispatcher. Иначе
-    один и тот же наряд был бы и с автобусом, и в незакрытых, а снятый
-    автобус пропадал бы из виду совсем.
+    Наряд, закрытый диспетчером вручную, из списка уходит, а наряд, с
+    которого он снял автобус, в список попадает с причиной
+    removed_by_dispatcher. Наряд или смена линии, закрытые утром, у которых
+    после событий дня не осталось ни одного отрезка (ДТП в начале наряда,
+    неявка без замены), попадают с причиной after_event. Иначе один и тот же
+    наряд был бы и с автобусом, и в незакрытых, а снятый автобус или
+    опустевшая смена пропадали бы из виду совсем.
 
     Смены резервных нарядов, которым движок не ставил водителя, в список
-    не попадают: они не незакрыты, они не нужны.
+    не попадают: они не незакрыты, они не нужны. Опустевший резерв (его
+    автобус отдан на линию) - тоже: это расход резерва, а не дыра на линии.
     """
-    state, plan = record.state, record.plan
+    state, plan, day = record.state, record.plan, record.day
     filled = {k for k, segs in {**state.vehicles, **state.drivers}.items() if segs}
     reasons = dict(plan.unfilled)
     for entry in record.log:
         if entry.get("kind") == "edit" and str(entry.get("type", "")).startswith("clear"):
             reasons.setdefault(entry.get("duty_id") or entry.get("shift_id"), "removed_by_dispatcher")
+    for key in list(plan.vehicles) + list(plan.drivers):
+        duty = day.duties[key] if key in day.duties else day.duties[day.shifts[key].duty_id]
+        if duty.type == "line":
+            reasons.setdefault(key, "after_event")
+    return {k: r for k, r in reasons.items() if k and k not in filled}
+
+
+def _state_dict(record: DayRecord) -> dict:
+    """Состояние дня для интерфейса. Что считается незакрытым - _unfilled_now."""
+    state = record.state
     return {"meta": {"day_id": record.id, "date": record.day.meta["date"],
                      "events": _count(record.log, "event"), "edits": _count(record.log, "edit"),
                      "labor": labor_preset_name()},
             "duties": _segments(state.vehicles, "duty_id", "vehicle"),
             "shifts": _segments(state.drivers, "shift_id", "driver"),
-            "unfilled": [{"id": k, "reason": r} for k, r in sorted(reasons.items())
-                         if k and k not in filled],
+            "unfilled": [{"id": k, "reason": r} for k, r in sorted(_unfilled_now(record).items())],
             "transfers": [{"vehicle_id": v, "to_park": p} for v, p in sorted(state.transfers.items())],
             "down_vehicles": [{"vehicle_id": v, "since": hm(t)} for v, t in sorted(state.down_vehicles.items())],
             "down_drivers": [{"driver_id": d, "since": hm(t)} for d, t in sorted(state.down_drivers.items())],
             "repairs": [{"vehicle_id": v, "from": hm(a), "to": hm(b)}
                         for v, windows in sorted(state.repairs.items()) for a, b in sorted(windows)],
+            "late_drivers": [{"driver_id": d, "since": hm(a), "comes": hm(b)}
+                             for d, (a, b) in sorted(state.late.items())],
             "log": list(record.log)}
 
 
@@ -969,6 +994,24 @@ def make_examples() -> dict:
          note=f"до этого с наряда {spare} сняли автобус тем же адресом с type: clear_vehicle - "
               "тогда ответ такой же, но наряд стоит в unfilled с причиной removed_by_dispatcher. "
               "Здесь на него поставлен свободный автобус: new_violations пуст, правка в журнале")
+
+    # опоздание водителя - на отдельном дне того же образца, чтобы журнал схода остался как есть
+    late_day = call("POST", "/api/days", {"preset": "park7", "date": "2026-10-05", "seed": 1,
+                                          "moment": "morning"}, keep=False)["day_id"]
+    call("POST", f"/api/days/{late_day}/plan", {}, keep=False)
+    late_record = engine.days[late_day]
+    late_shift_ = min((s for s in late_record.day.shifts.values()
+                       if late_record.day.duties[s.duty_id].type == "line" and s.start >= 7 * 60 + 20
+                       and late_record.state.driver_at(s.id, s.start)), key=lambda s: (s.start, s.id))
+    late = {"type": "late", "driver_id": late_record.state.driver_at(late_shift_.id, late_shift_.start),
+            "at": hm(late_shift_.start), "delay_min": 30}
+    late_options = call("POST", f"/api/days/{late_day}/events/options", late,
+                        note=f"{late_day} - тот же день, что day-1, без схода: водитель первой смены "
+                             "после 07:20 опаздывает на 30 минут")
+    swap = [o["kind"] for o in late_options["options"]].index("swap")
+    call("POST", f"/api/days/{late_day}/events/apply", {"event": late, "option": swap},
+         note="выбран обмен сменами (swap); late_drivers - кто опаздывает и когда придёт")
+    call("GET", f"/api/days/{late_day}/log", note="запись опоздания: delay_min и выбранный вариант")
 
     # загрузка реестра перевозчика: нарочно маленький, с русскими заголовками
     tiny = {

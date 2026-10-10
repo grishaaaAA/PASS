@@ -345,6 +345,67 @@ class TestEvents(unittest.TestCase):
             self.assertEqual(status, code, body)
             self.assertIn(text, payload["error"], body)
 
+    def test_late_driver_who_is_already_at_work_is_refused(self):
+        event, shift = self.late_event()
+        status, payload = self.engine.handle("POST", "/api/days/day-1/events/options", None,
+                                             dict(event, at=hm(shift.start + 10)))
+        self.assertEqual(status, 400)
+        self.assertIn("уже на смене", payload["error"])
+
+    def test_late_is_remembered_in_the_state(self):
+        event, shift = self.late_event(delay=120)
+        kinds = [o["kind"] for o in ok(self.engine.handle("POST", "/api/days/day-1/events/options",
+                                                          None, event))["options"]]
+        after = ok(self.engine.handle("POST", "/api/days/day-1/events/apply", None,
+                                      {"event": event, "option": kinds.index("free_driver")}))
+        self.assertEqual(after["late_drivers"], [{"driver_id": event["driver_id"], "since": event["at"],
+                                                  "comes": hm(shift.start + 120)}])
+        # до прихода опоздавшего правкой не поставить
+        other = next(s for s in self.engine.days["day-1"].day.shifts.values()
+                     if s.start <= shift.start + 30 < s.end and s.id != shift.id)
+        status, payload = self.engine.handle("POST", "/api/days/day-1/edits", None,
+                                             {"type": "set_driver", "shift_id": other.id,
+                                              "driver_id": event["driver_id"],
+                                              "from": hm(shift.start + 30)})
+        self.assertEqual(status, 409)
+        self.assertIn("driver_late", [v["code"] for v in payload["violations"]])
+
+    def test_duty_and_shift_left_empty_by_an_event_are_unfilled(self):
+        """ДТП в начале наряда и неявка без замены: опустевшее видно в unfilled и объясняется."""
+        record = self.engine.days["day-1"]
+        day, state = record.day, record.state
+        duty = min((d for d in day.duties.values() if d.type == "line" and d.start >= 9 * 60
+                    and state.vehicle_at(d.id, d.start)), key=lambda d: (d.start, d.id))
+        accident = {"type": "accident", "vehicle_id": state.vehicle_at(duty.id, duty.start),
+                    "at": hm(duty.start)}
+        kinds = [o["kind"] for o in ok(self.engine.handle("POST", "/api/days/day-1/events/options",
+                                                          None, accident))["options"]]
+        after = ok(self.engine.handle("POST", "/api/days/day-1/events/apply", None,
+                                      {"event": accident, "option": kinds.index("none")}))
+        first = day.shifts_by_duty[duty.id][0].id
+        self.assertIn({"id": duty.id, "reason": "after_event"}, after["unfilled"])
+        self.assertIn({"id": first, "reason": "after_event"}, after["unfilled"])
+        why = ok(self.engine.handle("GET", f"/api/days/day-1/explain/unfilled/{duty.id}"))
+        self.assertIn("остался без автобуса", why["answer"])
+        self.assertIn(f"выбыл в {hm(duty.start)}", " ".join(why["reasons"]))
+        self.assertEqual(why["numbers"]["reason"], "after_event")
+
+        shift = min((s for s in day.shifts.values() if day.duties[s.duty_id].type == "line"
+                     and s.start >= duty.start + 60 and record.state.driver_at(s.id, s.start)),
+                    key=lambda s: (s.start, s.id))
+        no_show = {"type": "no_show", "driver_id": record.state.driver_at(shift.id, shift.start),
+                   "at": hm(shift.start)}
+        kinds = [o["kind"] for o in ok(self.engine.handle("POST", "/api/days/day-1/events/options",
+                                                          None, no_show))["options"]]
+        after = ok(self.engine.handle("POST", "/api/days/day-1/events/apply", None,
+                                      {"event": no_show, "option": kinds.index("none")}))
+        self.assertIn({"id": shift.id, "reason": "after_event"}, after["unfilled"])
+        why = ok(self.engine.handle("GET", f"/api/days/day-1/explain/unfilled/{shift.id}"))
+        self.assertIn("осталась без водителя", why["answer"])
+        # опустевший резерв (его автобус отдан на линию) - не дыра на линии
+        reserve = {d.id for d in day.duties.values() if d.type == "reserve"}
+        self.assertFalse(any(u["id"] in reserve for u in after["unfilled"] if u["reason"] == "after_event"))
+
     def test_event_errors(self):
         cases = (({"type": "fire", "vehicle_id": self.vehicle, "at": "08:40"}, 400, "type"),
                  ({"type": "breakdown", "vehicle_id": self.vehicle, "at": "8-40"}, 400, "ЧЧ:ММ"),

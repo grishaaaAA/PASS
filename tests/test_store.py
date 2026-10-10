@@ -229,6 +229,26 @@ class TestStore(unittest.TestCase):
                                         "from": "09:00", "to": "10:00"})
         self.assertEqual((status, [v["code"] for v in payload["violations"]]), (409, ["in_repair"]))
 
+    def test_late_driver_is_remembered_after_restart(self):
+        """Опоздание - часть состояния: после перезапуска опоздавшего так же нельзя ставить до прихода."""
+        engine = self.engine()
+        ok(engine.handle("POST", "/api/days", None, PARK7))
+        ok(engine.handle("POST", "/api/days/day-1/plan", None, {}))
+        record = engine.days["day-1"]
+        day, state = record.day, record.state
+        shift = min((s for s in day.shifts.values() if day.duties[s.duty_id].type == "line"
+                     and s.start >= 7 * 60 + 20 and state.driver_at(s.id, s.start)),
+                    key=lambda s: (s.start, s.id))
+        driver = state.driver_at(shift.id, shift.start)
+        event = {"type": "late", "driver_id": driver, "at": "07:00", "delay_min": 120}
+        options = ok(engine.handle("POST", "/api/days/day-1/events/options", None, event))["options"]
+        index = [o["kind"] for o in options].index("free_driver")
+        before = ok(engine.handle("POST", "/api/days/day-1/events/apply", None, {"event": event, "option": index}))
+        self.assertEqual(len(before["late_drivers"]), 1)
+        again = self.engine()
+        self.assertEqual(ok(again.handle("GET", "/api/days/day-1/state"))["late_drivers"], before["late_drivers"])
+        self.assertEqual(again.days["day-1"].state.late, engine.days["day-1"].state.late)
+
     def test_broken_day_file_is_skipped_and_the_rest_open(self):
         engine = self.engine()
         ok(engine.handle("POST", "/api/days", None, PARK7))

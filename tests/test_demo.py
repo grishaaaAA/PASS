@@ -70,6 +70,13 @@ class TestDemo(unittest.TestCase):
         code, text = run(["--late", "0"])
         self.assertEqual(code, 1)
 
+    def test_late_with_an_earlier_breakdown_goes_by_time(self):
+        """Сход раньше опоздания: показ идёт по времени, а не падает на порядке событий."""
+        code, text = run(["--late", "30", "--at", "07:00"])
+        self.assertEqual(code, 0, text)
+        self.assertLess(text.index("сошёл"), text.index("опаздывает на 30 мин"))
+        self.assertIn("07:00", text)
+
     def test_temporary_breakdown(self):
         code, text = run(["--duration", "20"])
         self.assertEqual(code, 0, text)

@@ -8,7 +8,7 @@ import unittest
 from naryad.core.model import Day
 from naryad.data.generate import generate
 from naryad.ops.replan import (SUPPLY_MIN, SWAP_WINDOW_MIN, TRANSFER_MIN, Accident, Breakdown, Late,
-                               Losses, NoShow, late_shift,
+                               Edit, Losses, NoShow, late_shift, manual_edit,
                                OpsState, Segment, _cut, _end, apply, check_state, free_drivers,
                                options_for)
 from naryad.core.invariants import load_labor
@@ -525,6 +525,151 @@ class TestLate(unittest.TestCase):
                           if kind == "driver" and key == self.shift.id)
             self.assertNotEqual(chosen, partner, "не отдохнувшего водителя нельзя ставить раньше")
             self.assertEqual(check_state(apply(tired, self.event, again["swap"])), [])
+
+
+def _marks(state):
+    return {(v.code, v.text, v.ids) for v in check_state(state)}
+
+
+def _starts_of(state, driver):
+    return sorted(s.start for segs in state.drivers.values() for s in segs if s.who == driver)
+
+
+class TestLateAfterwards(unittest.TestCase):
+    """Что движок помнит об опоздании и как оно сходится с другими событиями дня."""
+
+    def setUp(self):
+        self.state = morning_state()
+        self.day = self.state.day
+        self.shift = min((s for s in self.day.shifts.values()
+                          if self.day.duties[s.duty_id].type == "line" and s.start >= 7 * 60 + 20
+                          and self.state.driver_at(s.id, s.start)), key=lambda s: (s.start, s.id))
+        self.driver = self.state.driver_at(self.shift.id, self.shift.start)
+
+    def late_then(self, delay, kind):
+        event = Late(self.driver, self.shift.start - 10, delay)
+        option = next(o for o in options_for(self.state, event, limit=None) if o.kind == kind)
+        return event, apply(self.state, event, option)
+
+    def assert_legal_after(self, state, event):
+        """Каждый вариант на событие законен и не ставит опоздавшего раньше его прихода."""
+        before = _marks(state)
+        for option in options_for(state, event, limit=None):
+            after = apply(state, event, option)
+            self.assertEqual([v for v in check_state(after) if (v.code, v.text, v.ids) not in before], [],
+                             option.title)
+
+    def test_replaced_late_driver_is_not_offered_before_he_comes(self):
+        """Опоздавшего заменили свободным водителем: до прихода его нельзя поставить никуда."""
+        event, state = self.late_then(120, "free_driver")
+        comes = self.shift.start + 120
+        self.assertEqual(state.late[self.driver], (event.at, comes))
+        duty = self.day.duties[self.shift.duty_id]
+        labor = load_labor()
+        self.assertNotIn(self.driver, free_drivers(state, duty, event.at + 5, event.at + 65, labor))
+        self.assertIn(self.driver, free_drivers(state, duty, comes, comes + 60, labor),
+                      "когда придёт, он свободен")
+        # следующие события: ни один вариант не ставит его раньше прихода
+        later = next(s for s in sorted(self.day.shifts.values(), key=lambda s: (s.start, s.id))
+                     if s.start >= event.at + 5 and s.id != self.shift.id
+                     and self.day.duties[s.duty_id].type == "line" and state.driver_at(s.id, s.start))
+        self.assert_legal_after(state, Late(state.driver_at(later.id, later.start), event.at + 5, 30))
+        running = important_running(state, event.at + 5)
+        self.assert_legal_after(state, Breakdown(state.vehicle_at(running.id, event.at + 5), event.at + 5))
+
+    def test_partner_who_is_late_himself_is_not_taken_for_a_swap(self):
+        """После обмена напарник опаздывает сам: опоздавший первым ещё не пришёл и в обмен не годится."""
+        event, state = self.late_then(30, "swap")
+        partner = state.driver_at(self.shift.id, self.shift.start)
+        second = Late(partner, event.at + 5, 20)
+        for option in options_for(state, second, limit=None):
+            for kind, key, value in option.changes:
+                if kind == "driver" and value.who == self.driver:
+                    self.assertGreaterEqual(value.start, self.shift.start + 30, option.title)
+        self.assert_legal_after(state, second)
+
+    def test_dispatcher_cannot_set_the_late_driver_before_he_comes(self):
+        event, state = self.late_then(120, "free_driver")
+        other = next(s for s in self.day.shifts.values() if s.start <= event.at + 30 < s.end
+                     and self.day.duties[s.duty_id].type == "line")
+        edited = manual_edit(state, Edit("set_driver", other.id, self.driver, event.at + 30, other.end))
+        self.assertIn("driver_late", [v.code for v in check_state(edited)])
+
+    def test_late_reserve_driver_who_was_given_to_the_line(self):
+        """Водитель резерва уже отдан на линию и опаздывает на резерв: его линия не теряется и не перекрывается."""
+        found = None
+        for s in sorted(self.day.shifts.values(), key=lambda s: (s.start, s.id)):
+            x = self.state.driver_at(s.id, s.start)
+            if not x or self.day.duties[s.duty_id].type != "line" or s.start < 8 * 60:
+                continue
+            for lead in (90, 60, 30, 20):
+                first = Late(x, s.start - lead, 30)
+                taken = [o for o in options_for(self.state, first, limit=None) if o.kind == "reserve_driver"]
+                if taken and first.at < self.day.shifts[taken[0].changes[0][1]].start < s.start:
+                    found = first, taken[0]
+                    break
+            if found:
+                break
+        first, option = found
+        state = apply(self.state, first, option)
+        reserve_driver = option.changes[1][2].who
+        line_start = max(_starts_of(state, reserve_driver))
+        for delay in (60, 120):
+            with self.subTest(delay=delay):
+                event = Late(reserve_driver, first.at + 1, delay)
+                own = late_shift(state, reserve_driver, event.at)
+                comes = own[1] + delay
+                for opt in options_for(state, event, limit=None):
+                    after = apply(state, event, opt)
+                    self.assertEqual(check_state(after), [], opt.title)
+                    self.assertTrue(all(start >= comes or start < event.at
+                                        for start in _starts_of(after, reserve_driver)), opt.title)
+                    if opt.kind == "none" and opt.changes:
+                        self.assertLessEqual(opt.changes[0][2].end, line_start, "ждать - не дальше его отрезка")
+
+    def test_waiting_costs_nothing_when_the_duty_has_no_bus(self):
+        """Автобус сошёл без замены, сменщик опаздывает: ждать ничего не стоит, менять водителя незачем."""
+        duty = next(d for d in sorted(self.day.duties.values(), key=lambda d: d.id)
+                    if d.type == "line" and len(self.day.shifts_by_duty.get(d.id, [])) >= 2
+                    and self.state.vehicle_at(d.id, self.day.shifts_by_duty[d.id][1].start - 60))
+        second = self.day.shifts_by_duty[duty.id][1]
+        breakdown = Breakdown(self.state.vehicle_at(duty.id, second.start - 60), second.start - 60)
+        state = apply(self.state, breakdown,
+                      next(o for o in options_for(self.state, breakdown, limit=None) if o.kind == "none"))
+        driver = state.driver_at(second.id, second.start)
+        for event in (Late(driver, second.start - 10, 30), NoShow(driver, second.start - 10)):
+            with self.subTest(type(event).__name__):
+                options = options_for(state, event, limit=None)
+                self.assertEqual([o.kind for o in options], ["none"])
+                self.assertEqual(options[0].cost, 0)
+                self.assertIn("нет автобуса", options[0].note)
+
+    def test_replacement_driver_fits_a_bus_of_another_class_later_in_the_window(self):
+        """На маршрут допущены два класса: водитель замены нужен с допуском к обоим автобусам окна."""
+        day = self.day
+        duty = next(d for d in sorted(day.duties.values(), key=lambda d: d.id)
+                    if d.type == "line" and len(day.shifts_by_duty.get(d.id, [])) >= 2
+                    and self.state.vehicle_at(d.id, d.start)
+                    and day.vehicles[self.state.vehicle_at(d.id, d.start)].cls == "extra_big")
+        day.routes[duty.route_id] = dataclasses.replace(day.routes[duty.route_id],
+                                                        allowed_classes=("big", "extra_big"))
+        day.duties[duty.id] = dataclasses.replace(duty, vehicle_class="big")
+        second = day.shifts_by_duty[duty.id][1]
+        breakdown = Breakdown(self.state.vehicle_at(duty.id, second.start - 30), second.start - 30, 90)
+        state = apply(self.state, breakdown,
+                      next(o for o in options_for(self.state, breakdown, limit=None) if o.kind == "none"))
+        self.assert_legal_after(state, Late(state.driver_at(second.id, second.start), second.start - 10, 30))
+
+    def test_wait_text_when_the_rest_of_the_shift_is_driven_by_another(self):
+        labor = load_labor()
+        duty = self.day.duties[self.shift.duty_id]
+        other = free_drivers(self.state, duty, self.shift.start + 120, self.shift.end, labor)[0]
+        state = manual_edit(self.state, Edit("set_driver", self.shift.id, other,
+                                             self.shift.start + 120, self.shift.end))
+        wait = next(o for o in options_for(state, Late(self.driver, self.shift.start - 10, 150), limit=None)
+                    if o.kind == "none")
+        self.assertNotIn("смена уже кончится", wait.note)
+        self.assertIn(f"дальше смену ведёт водитель {self.day.drivers[other].tab_number}", wait.note)
 
 
 class TestScenarios(unittest.TestCase):

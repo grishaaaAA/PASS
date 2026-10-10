@@ -9,7 +9,7 @@ import unittest
 from naryad.core.model import Day, Plan
 from naryad.explain import (CLASS_NAMES, day_summary, explain_option, interval, intervals,
                             route_interval, why_driver, why_unfilled, why_vehicle)
-from naryad.ops.replan import Breakdown, OpsState, options_for
+from naryad.ops.replan import Breakdown, Late, OpsState, options_for
 from naryad.solve.compare import with_shortage, worst_growth
 from naryad.solve.drivers import History, day_base, solve_drivers
 from naryad.solve.vehicles import solve_vehicles
@@ -176,6 +176,21 @@ class TestExplain(unittest.TestCase):
             touched = explain_option(state, None, options_for(
                 state, Breakdown(state.vehicle_at(duty_id, at), at), limit=None), i)["numbers"]["touched_duties"]
             self.assertEqual(touched, expected[option.kind], option.kind)
+
+    def test_option_counts_duties_where_only_the_driver_changes(self):
+        """Обмен сменами меняет водителей на двух нарядах, а не «0 нарядов»."""
+        day = Day.load(SAMPLES / "park7_weekday.json")
+        state = OpsState.from_plan(day, solve_drivers(day, solve_vehicles(day)))
+        shift = min((s for s in day.shifts.values() if day.duties[s.duty_id].type == "line"
+                     and s.start >= 7 * 60 + 20 and state.driver_at(s.id, s.start)),
+                    key=lambda s: (s.start, s.id))
+        options = options_for(state, Late(state.driver_at(shift.id, shift.start), shift.start - 10, 30),
+                              limit=None)
+        expected = {"swap": 2, "free_driver": 1, "reserve_driver": 2, "none": 1}
+        for i, option in enumerate(options):
+            item = explain_option(state, None, options, i)
+            self.assertEqual(item["numbers"]["touched_duties"], expected[option.kind], option.kind)
+            self.assertIn(f"Меняется нарядов: {expected[option.kind]}", " ".join(item["reasons"]))
 
     def test_interval(self):
         """Фактический интервал считает только наряды, где есть и автобус, и водитель."""
@@ -378,3 +393,16 @@ class TestIntervals(unittest.TestCase):
         moment = intervals(day, state, (day.duties[next(iter(
             d.id for d in day.duties.values() if d.route_id == route))].start + 30))
         self.assertNotEqual(moment["answer"], "Интервалы как по плану")
+
+    def test_text_says_how_many_routes_stopped_beyond_the_first_five(self):
+        """Все маршруты стоят: в тексте видно, что их больше пяти, а не «остановились 5»."""
+        day = Day.load(SAMPLES / "park7_weekday.json")
+        state = OpsState.from_plan(day, solve_drivers(day, solve_vehicles(day)))
+        for duty_id in state.vehicles:
+            state.vehicles[duty_id] = []
+        answer = intervals(day, state)
+        total = answer["numbers"]["stopped_routes"]
+        self.assertGreater(total, 5)
+        self.assertEqual(total, answer["numbers"]["routes_total"])
+        self.assertIn(f"и ещё {total - 5}", answer["answer"])
+        self.assertIn(f"и ещё {total - 5}", " ".join(answer["reasons"]))

@@ -4484,7 +4484,7 @@
     }
    },
    "notes": [],
-   "seconds": 0.36
+   "seconds": 0.24
   }
  },
  "GET /api/days": {
@@ -15414,6 +15414,7 @@
    ],
    "down_drivers": [],
    "repairs": [],
+   "late_drivers": [],
    "log": [
     {
      "kind": "event",
@@ -26437,6 +26438,7 @@
    ],
    "down_drivers": [],
    "repairs": [],
+   "late_drivers": [],
    "log": [
     {
      "kind": "event",
@@ -37251,6 +37253,7 @@
    ],
    "down_drivers": [],
    "repairs": [],
+   "late_drivers": [],
    "log": [
     {
      "kind": "event",
@@ -37286,6 +37289,10831 @@
    ],
    "violations": [],
    "new_violations": []
+  }
+ },
+ "POST /api/days/day-3/events/options": {
+  "_note": "day-3 - тот же день, что day-1, без схода: водитель первой смены после 07:20 опаздывает на 30 минут",
+  "request": {
+   "type": "late",
+   "driver_id": "P07-D0199",
+   "at": "07:20",
+   "delay_min": 30
+  },
+  "response": {
+   "event": {
+    "type": "late",
+    "driver_id": "P07-D0199",
+    "at": "07:20",
+    "delay_min": 30
+   },
+   "options": [
+    {
+     "index": 0,
+     "kind": "free_driver",
+     "title": "Водитель 071224",
+     "cost": 0,
+     "lost_minutes": 0,
+     "note": "свободный водитель, отдых после вчерашней смены соблюдён",
+     "explanation": {
+      "question": "Что даст вариант «Водитель 071224»?",
+      "answer": "Водитель 071224",
+      "reasons": [
+       "свободный водитель, отдых после вчерашней смены соблюдён",
+       "Без работы на линии всего (на всех затронутых маршрутах): 0 ч 00 мин",
+       "Меняется нарядов: 1, остальные 349 без изменений",
+       "Следующий вариант «Обмен сменами с водителем 070202» хуже: цена 0.1 против 0.0"
+      ],
+      "numbers": {
+       "cost": 0,
+       "lost_minutes": 0,
+       "kind": "free_driver",
+       "touched_duties": 1
+      }
+     }
+    },
+    {
+     "index": 1,
+     "kind": "swap",
+     "title": "Обмен сменами с водителем 070202",
+     "cost": 0.1,
+     "lost_minutes": 0,
+     "note": "070202 выходит в 07:20 вместо 07:50, если он уже в парке; 070199 придёт в 07:50 и едет на его смену в 07:50. Оба наряда выходят вовремя",
+     "explanation": {
+      "question": "Что даст вариант «Обмен сменами с водителем 070202»?",
+      "answer": "Обмен сменами с водителем 070202",
+      "reasons": [
+       "070202 выходит в 07:20 вместо 07:50, если он уже в парке; 070199 придёт в 07:50 и едет на его смену в 07:50. Оба наряда выходят вовремя",
+       "Без работы на линии всего (на всех затронутых маршрутах): 0 ч 00 мин",
+       "Меняется нарядов: 2, остальные 348 без изменений",
+       "Следующий вариант «Ждать водителя» хуже: цена 1.1 против 0.1"
+      ],
+      "numbers": {
+       "cost": 0.1,
+       "lost_minutes": 0,
+       "kind": "swap",
+       "touched_duties": 2
+      }
+     }
+    },
+    {
+     "index": 2,
+     "kind": "none",
+     "title": "Ждать водителя",
+     "cost": 1.12,
+     "lost_minutes": 30,
+     "note": "водитель выйдет в 07:50, наряд стоит 30 мин",
+     "explanation": {
+      "question": "Что даст вариант «Ждать водителя»?",
+      "answer": "Ждать водителя",
+      "reasons": [
+       "водитель выйдет в 07:50, наряд стоит 30 мин",
+       "Без работы на линии всего (на всех затронутых маршрутах): 0 ч 30 мин",
+       "Меняется нарядов: 1, остальные 349 без изменений"
+      ],
+      "numbers": {
+       "cost": 1.12,
+       "lost_minutes": 30,
+       "kind": "none",
+       "touched_duties": 1
+      }
+     }
+    }
+   ]
+  }
+ },
+ "POST /api/days/day-3/events/apply": {
+  "_note": "выбран обмен сменами (swap); late_drivers - кто опаздывает и когда придёт",
+  "request": {
+   "event": {
+    "type": "late",
+    "driver_id": "P07-D0199",
+    "at": "07:20",
+    "delay_min": 30
+   },
+   "option": 1
+  },
+  "response": {
+   "meta": {
+    "day_id": "day-3",
+    "date": "2026-10-05",
+    "events": 1,
+    "edits": 0,
+    "labor": "current"
+   },
+   "duties": [
+    {
+     "duty_id": "P07-R01-WD01",
+     "vehicles": [
+      {
+       "from": "04:50",
+       "to": "25:20",
+       "vehicle_id": "P07-V0038"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R01-WD02",
+     "vehicles": [
+      {
+       "from": "06:10",
+       "to": "14:55",
+       "vehicle_id": "P07-V0048"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R01-WD03",
+     "vehicles": [
+      {
+       "from": "07:30",
+       "to": "16:45",
+       "vehicle_id": "P07-V0072"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R01-WD04",
+     "vehicles": [
+      {
+       "from": "05:40",
+       "to": "22:20",
+       "vehicle_id": "P07-V0074"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R01-WD05",
+     "vehicles": [
+      {
+       "from": "06:45",
+       "to": "15:35",
+       "vehicle_id": "P07-V0084"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R01-WD06",
+     "vehicles": [
+      {
+       "from": "07:35",
+       "to": "16:25",
+       "vehicle_id": "P07-V0116"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R01-WD07",
+     "vehicles": [
+      {
+       "from": "05:40",
+       "to": "22:20",
+       "vehicle_id": "P07-V0118"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R01-WD08",
+     "vehicles": [
+      {
+       "from": "06:35",
+       "to": "23:20",
+       "vehicle_id": "P07-V0125"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R01-WD09",
+     "vehicles": [
+      {
+       "from": "07:05",
+       "to": "15:25",
+       "vehicle_id": "P07-V0135"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R01-WD10",
+     "vehicles": [
+      {
+       "from": "06:40",
+       "to": "22:55",
+       "vehicle_id": "P07-V0141"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R01-WD11",
+     "vehicles": [
+      {
+       "from": "07:15",
+       "to": "16:40",
+       "vehicle_id": "P07-V0148"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R01-WD12",
+     "vehicles": [
+      {
+       "from": "05:00",
+       "to": "21:30",
+       "vehicle_id": "P07-V0162"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R01-WD13",
+     "vehicles": [
+      {
+       "from": "05:00",
+       "to": "24:50",
+       "vehicle_id": "P07-V0166"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R01-WD14",
+     "vehicles": [
+      {
+       "from": "04:55",
+       "to": "25:25",
+       "vehicle_id": "P07-V0168"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R01-WD15",
+     "vehicles": [
+      {
+       "from": "07:50",
+       "to": "17:20",
+       "vehicle_id": "P07-V0180"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R01-WD16",
+     "vehicles": [
+      {
+       "from": "07:50",
+       "to": "16:45",
+       "vehicle_id": "P07-V0187"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R01-WD17",
+     "vehicles": [
+      {
+       "from": "06:30",
+       "to": "22:55",
+       "vehicle_id": "P07-V0191"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R01-WD18",
+     "vehicles": [
+      {
+       "from": "05:40",
+       "to": "20:50",
+       "vehicle_id": "P07-V0221"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R01-WD19",
+     "vehicles": [
+      {
+       "from": "05:00",
+       "to": "21:05",
+       "vehicle_id": "P07-V0225"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R01-WD20",
+     "vehicles": [
+      {
+       "from": "05:05",
+       "to": "24:25",
+       "vehicle_id": "P07-V0227"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R01-WD21",
+     "vehicles": [
+      {
+       "from": "04:50",
+       "to": "24:10",
+       "vehicle_id": "P07-V0236"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R01-WD22",
+     "vehicles": [
+      {
+       "from": "05:25",
+       "to": "25:05",
+       "vehicle_id": "P07-V0003"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R01-WD23",
+     "vehicles": [
+      {
+       "from": "05:10",
+       "to": "25:15",
+       "vehicle_id": "P07-V0004"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R01-WD24",
+     "vehicles": [
+      {
+       "from": "06:20",
+       "to": "22:45",
+       "vehicle_id": "P07-V0012"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R02-WD01",
+     "vehicles": [
+      {
+       "from": "05:25",
+       "to": "21:05",
+       "vehicle_id": "P07-V0269"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R02-WD02",
+     "vehicles": [
+      {
+       "from": "08:25",
+       "to": "17:50",
+       "vehicle_id": "P07-V0273"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R02-WD03",
+     "vehicles": [
+      {
+       "from": "05:20",
+       "to": "21:55",
+       "vehicle_id": "P07-V0277"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R02-WD04",
+     "vehicles": [
+      {
+       "from": "05:35",
+       "to": "25:25",
+       "vehicle_id": "P07-V0285"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R02-WD05",
+     "vehicles": [
+      {
+       "from": "05:10",
+       "to": "25:35",
+       "vehicle_id": "P07-V0290"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R02-WD06",
+     "vehicles": [
+      {
+       "from": "06:35",
+       "to": "23:10",
+       "vehicle_id": "P07-V0293"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R02-WD07",
+     "vehicles": [
+      {
+       "from": "06:25",
+       "to": "22:00",
+       "vehicle_id": "P07-V0306"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R02-WD08",
+     "vehicles": [
+      {
+       "from": "05:25",
+       "to": "24:45",
+       "vehicle_id": "P07-V0320"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R02-WD09",
+     "vehicles": [
+      {
+       "from": "07:05",
+       "to": "16:30",
+       "vehicle_id": "P07-V0321"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R02-WD10",
+     "vehicles": [
+      {
+       "from": "05:30",
+       "to": "24:45",
+       "vehicle_id": "P07-V0328"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R02-WD11",
+     "vehicles": [
+      {
+       "from": "05:00",
+       "to": "24:30",
+       "vehicle_id": "P07-V0330"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R02-WD12",
+     "vehicles": [
+      {
+       "from": "05:15",
+       "to": "25:05",
+       "vehicle_id": "P07-V0339"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R02-WD13",
+     "vehicles": [
+      {
+       "from": "05:25",
+       "to": "24:35",
+       "vehicle_id": "P07-V0349"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R02-WD14",
+     "vehicles": [
+      {
+       "from": "05:15",
+       "to": "24:35",
+       "vehicle_id": "P07-V0354"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R02-WD15",
+     "vehicles": [
+      {
+       "from": "05:30",
+       "to": "24:40",
+       "vehicle_id": "P07-V0371"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R02-WD16",
+     "vehicles": [
+      {
+       "from": "06:30",
+       "to": "15:25",
+       "vehicle_id": "P07-V0373"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R02-WD17",
+     "vehicles": [
+      {
+       "from": "06:10",
+       "to": "22:20",
+       "vehicle_id": "P07-V0385"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R02-WD18",
+     "vehicles": [
+      {
+       "from": "08:45",
+       "to": "17:05",
+       "vehicle_id": "P07-V0397"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R02-WD19",
+     "vehicles": [
+      {
+       "from": "04:55",
+       "to": "24:35",
+       "vehicle_id": "P07-V0402"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R02-WD20",
+     "vehicles": [
+      {
+       "from": "05:25",
+       "to": "25:55",
+       "vehicle_id": "P07-V0407"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R02-WD21",
+     "vehicles": [
+      {
+       "from": "06:35",
+       "to": "22:20",
+       "vehicle_id": "P07-V0415"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R02-WD22",
+     "vehicles": [
+      {
+       "from": "06:35",
+       "to": "16:00",
+       "vehicle_id": "P07-V0417"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R02-WD23",
+     "vehicles": [
+      {
+       "from": "05:30",
+       "to": "24:55",
+       "vehicle_id": "P07-V0420"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R02-WD24",
+     "vehicles": [
+      {
+       "from": "06:15",
+       "to": "23:00",
+       "vehicle_id": "P07-V0259"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R02-WD25",
+     "vehicles": [
+      {
+       "from": "05:05",
+       "to": "25:25",
+       "vehicle_id": "P07-V0262"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R02-WD26",
+     "vehicles": [
+      {
+       "from": "05:50",
+       "to": "21:30",
+       "vehicle_id": "P07-V0263"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R02-WD27",
+     "vehicles": [
+      {
+       "from": "04:50",
+       "to": "24:35",
+       "vehicle_id": "P07-V0272"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R03-WD01",
+     "vehicles": [
+      {
+       "from": "05:10",
+       "to": "24:30",
+       "vehicle_id": "P07-V0008"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R03-WD02",
+     "vehicles": [
+      {
+       "from": "05:50",
+       "to": "22:05",
+       "vehicle_id": "P07-V0032"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R03-WD03",
+     "vehicles": [
+      {
+       "from": "05:25",
+       "to": "25:55",
+       "vehicle_id": "P07-V0134"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R03-WD04",
+     "vehicles": [
+      {
+       "from": "05:30",
+       "to": "24:50",
+       "vehicle_id": "P07-V0165"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R03-WD05",
+     "vehicles": [
+      {
+       "from": "06:25",
+       "to": "23:00",
+       "vehicle_id": "P07-V0020"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R03-WD06",
+     "vehicles": [
+      {
+       "from": "06:05",
+       "to": "22:35",
+       "vehicle_id": "P07-V0027"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R04-WD01",
+     "vehicles": [
+      {
+       "from": "06:45",
+       "to": "22:20",
+       "vehicle_id": "P07-V0007"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R04-WD02",
+     "vehicles": [
+      {
+       "from": "06:30",
+       "to": "22:10",
+       "vehicle_id": "P07-V0031"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R04-WD03",
+     "vehicles": [
+      {
+       "from": "05:15",
+       "to": "25:20",
+       "vehicle_id": "P07-V0045"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R04-WD04",
+     "vehicles": [
+      {
+       "from": "06:20",
+       "to": "21:25",
+       "vehicle_id": "P07-V0050"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R04-WD05",
+     "vehicles": [
+      {
+       "from": "05:40",
+       "to": "25:40",
+       "vehicle_id": "P07-V0051"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R04-WD06",
+     "vehicles": [
+      {
+       "from": "08:15",
+       "to": "17:25",
+       "vehicle_id": "P07-V0075"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R04-WD07",
+     "vehicles": [
+      {
+       "from": "06:15",
+       "to": "22:40",
+       "vehicle_id": "P07-V0092"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R04-WD08",
+     "vehicles": [
+      {
+       "from": "05:30",
+       "to": "14:45",
+       "vehicle_id": "P07-V0120"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R04-WD09",
+     "vehicles": [
+      {
+       "from": "07:00",
+       "to": "15:10",
+       "vehicle_id": "P07-V0146"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R04-WD10",
+     "vehicles": [
+      {
+       "from": "05:35",
+       "to": "25:10",
+       "vehicle_id": "P07-V0164"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R04-WD11",
+     "vehicles": [
+      {
+       "from": "07:45",
+       "to": "16:25",
+       "vehicle_id": "P07-V0169"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R04-WD12",
+     "vehicles": [
+      {
+       "from": "06:15",
+       "to": "23:00",
+       "vehicle_id": "P07-V0172"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R04-WD13",
+     "vehicles": [
+      {
+       "from": "07:15",
+       "to": "16:25",
+       "vehicle_id": "P07-V0177"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R04-WD14",
+     "vehicles": [
+      {
+       "from": "07:45",
+       "to": "17:15",
+       "vehicle_id": "P07-V0184"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R04-WD15",
+     "vehicles": [
+      {
+       "from": "08:45",
+       "to": "17:30",
+       "vehicle_id": "P07-V0200"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R04-WD16",
+     "vehicles": [
+      {
+       "from": "05:15",
+       "to": "20:20",
+       "vehicle_id": "P07-V0206"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R04-WD17",
+     "vehicles": [
+      {
+       "from": "08:25",
+       "to": "17:40",
+       "vehicle_id": "P07-V0210"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R04-WD18",
+     "vehicles": [
+      {
+       "from": "06:35",
+       "to": "23:00",
+       "vehicle_id": "P07-V0223"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R04-WD19",
+     "vehicles": [
+      {
+       "from": "05:40",
+       "to": "26:00",
+       "vehicle_id": "P07-V0224"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R04-WD20",
+     "vehicles": [
+      {
+       "from": "05:20",
+       "to": "25:45",
+       "vehicle_id": "P07-V0231"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R04-WD21",
+     "vehicles": [
+      {
+       "from": "05:25",
+       "to": "25:20",
+       "vehicle_id": "P07-V0241"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R04-WD22",
+     "vehicles": [
+      {
+       "from": "05:05",
+       "to": "21:45",
+       "vehicle_id": "P07-V0242"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R04-WD23",
+     "vehicles": [
+      {
+       "from": "06:55",
+       "to": "21:55",
+       "vehicle_id": "P07-V0250"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R04-WD24",
+     "vehicles": [
+      {
+       "from": "08:50",
+       "to": "16:55",
+       "vehicle_id": "P07-V0030"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R05-WD01",
+     "vehicles": [
+      {
+       "from": "08:10",
+       "to": "16:30",
+       "vehicle_id": "P07-V0018"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R05-WD02",
+     "vehicles": [
+      {
+       "from": "05:15",
+       "to": "24:30",
+       "vehicle_id": "P07-V0025"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R05-WD03",
+     "vehicles": [
+      {
+       "from": "05:30",
+       "to": "25:55",
+       "vehicle_id": "P07-V0037"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R05-WD04",
+     "vehicles": [
+      {
+       "from": "07:30",
+       "to": "16:45",
+       "vehicle_id": "P07-V0039"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R05-WD05",
+     "vehicles": [
+      {
+       "from": "06:15",
+       "to": "22:35",
+       "vehicle_id": "P07-V0042"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R05-WD06",
+     "vehicles": [
+      {
+       "from": "05:15",
+       "to": "24:30",
+       "vehicle_id": "P07-V0065"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R05-WD07",
+     "vehicles": [
+      {
+       "from": "07:00",
+       "to": "23:00",
+       "vehicle_id": "P07-V0067"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R05-WD08",
+     "vehicles": [
+      {
+       "from": "04:55",
+       "to": "25:15",
+       "vehicle_id": "P07-V0080"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R05-WD09",
+     "vehicles": [
+      {
+       "from": "06:35",
+       "to": "22:35",
+       "vehicle_id": "P07-V0093"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R05-WD10",
+     "vehicles": [
+      {
+       "from": "05:50",
+       "to": "22:10",
+       "vehicle_id": "P07-V0096"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R05-WD11",
+     "vehicles": [
+      {
+       "from": "05:35",
+       "to": "22:30",
+       "vehicle_id": "P07-V0102"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R05-WD12",
+     "vehicles": [
+      {
+       "from": "06:55",
+       "to": "22:15",
+       "vehicle_id": "P07-V0110"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R05-WD13",
+     "vehicles": [
+      {
+       "from": "06:05",
+       "to": "15:05",
+       "vehicle_id": "P07-V0128"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R05-WD14",
+     "vehicles": [
+      {
+       "from": "05:40",
+       "to": "25:35",
+       "vehicle_id": "P07-V0152"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R05-WD15",
+     "vehicles": [
+      {
+       "from": "06:20",
+       "to": "22:20",
+       "vehicle_id": "P07-V0209"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R05-WD16",
+     "vehicles": [
+      {
+       "from": "05:50",
+       "to": "22:25",
+       "vehicle_id": "P07-V0237"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R05-WD17",
+     "vehicles": [
+      {
+       "from": "05:00",
+       "to": "24:35",
+       "vehicle_id": "P07-V0248"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R05-WD18",
+     "vehicles": [
+      {
+       "from": "04:55",
+       "to": "24:45",
+       "vehicle_id": "P07-V0034"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD01",
+     "vehicles": [
+      {
+       "from": "07:10",
+       "to": "15:40",
+       "vehicle_id": "P07-V0261"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD02",
+     "vehicles": [
+      {
+       "from": "07:00",
+       "to": "24:00",
+       "vehicle_id": "P07-V0267"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD03",
+     "vehicles": [
+      {
+       "from": "05:20",
+       "to": "25:45",
+       "vehicle_id": "P07-V0276"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD04",
+     "vehicles": [
+      {
+       "from": "06:30",
+       "to": "14:55",
+       "vehicle_id": "P07-V0281"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD05",
+     "vehicles": [
+      {
+       "from": "08:00",
+       "to": "16:30",
+       "vehicle_id": "P07-V0287"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD06",
+     "vehicles": [
+      {
+       "from": "05:50",
+       "to": "14:25",
+       "vehicle_id": "P07-V0294"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD07",
+     "vehicles": [
+      {
+       "from": "08:55",
+       "to": "17:05",
+       "vehicle_id": "P07-V0297"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD08",
+     "vehicles": [
+      {
+       "from": "09:00",
+       "to": "18:30",
+       "vehicle_id": "P07-V0299"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD09",
+     "vehicles": [
+      {
+       "from": "06:20",
+       "to": "21:40",
+       "vehicle_id": "P07-V0309"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD10",
+     "vehicles": [
+      {
+       "from": "06:45",
+       "to": "15:05",
+       "vehicle_id": "P07-V0311"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD11",
+     "vehicles": [
+      {
+       "from": "05:20",
+       "to": "21:55",
+       "vehicle_id": "P07-V0316"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD12",
+     "vehicles": [
+      {
+       "from": "08:45",
+       "to": "18:10",
+       "vehicle_id": "P07-V0323"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD13",
+     "vehicles": [
+      {
+       "from": "05:15",
+       "to": "20:30",
+       "vehicle_id": "P07-V0332"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD14",
+     "vehicles": [
+      {
+       "from": "05:05",
+       "to": "24:40",
+       "vehicle_id": "P07-V0333"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD15",
+     "vehicles": [
+      {
+       "from": "05:35",
+       "to": "24:40",
+       "vehicle_id": "P07-V0335"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD16",
+     "vehicles": [
+      {
+       "from": "05:55",
+       "to": "22:05",
+       "vehicle_id": "P07-V0340"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD17",
+     "vehicles": [
+      {
+       "from": "05:25",
+       "to": "22:25",
+       "vehicle_id": "P07-V0347"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD18",
+     "vehicles": [
+      {
+       "from": "05:00",
+       "to": "25:05",
+       "vehicle_id": "P07-V0348"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD19",
+     "vehicles": [
+      {
+       "from": "05:30",
+       "to": "24:30",
+       "vehicle_id": "P07-V0352"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD20",
+     "vehicles": [
+      {
+       "from": "06:25",
+       "to": "21:45",
+       "vehicle_id": "P07-V0358"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD21",
+     "vehicles": [
+      {
+       "from": "06:00",
+       "to": "22:45",
+       "vehicle_id": "P07-V0360"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD22",
+     "vehicles": [
+      {
+       "from": "07:20",
+       "to": "16:25",
+       "vehicle_id": "P07-V0372"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD23",
+     "vehicles": [
+      {
+       "from": "05:00",
+       "to": "20:40",
+       "vehicle_id": "P07-V0378"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD24",
+     "vehicles": [
+      {
+       "from": "05:40",
+       "to": "22:00",
+       "vehicle_id": "P07-V0386"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD25",
+     "vehicles": [
+      {
+       "from": "06:05",
+       "to": "22:35",
+       "vehicle_id": "P07-V0388"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD26",
+     "vehicles": [
+      {
+       "from": "06:25",
+       "to": "21:35",
+       "vehicle_id": "P07-V0390"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD27",
+     "vehicles": [
+      {
+       "from": "05:05",
+       "to": "21:10",
+       "vehicle_id": "P07-V0396"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD28",
+     "vehicles": [
+      {
+       "from": "05:40",
+       "to": "25:40",
+       "vehicle_id": "P07-V0398"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD29",
+     "vehicles": [
+      {
+       "from": "08:05",
+       "to": "16:20",
+       "vehicle_id": "P07-V0403"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD30",
+     "vehicles": [
+      {
+       "from": "06:30",
+       "to": "14:30",
+       "vehicle_id": "P07-V0408"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD31",
+     "vehicles": [
+      {
+       "from": "07:55",
+       "to": "16:45",
+       "vehicle_id": "P07-V0411"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD32",
+     "vehicles": [
+      {
+       "from": "05:35",
+       "to": "14:25",
+       "vehicle_id": "P07-V0274"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R06-WD33",
+     "vehicles": [
+      {
+       "from": "08:05",
+       "to": "17:20",
+       "vehicle_id": "P07-V0279"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R07-WD01",
+     "vehicles": [
+      {
+       "from": "07:20",
+       "to": "15:45",
+       "vehicle_id": "P07-V0005"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R07-WD02",
+     "vehicles": [
+      {
+       "from": "05:10",
+       "to": "25:15",
+       "vehicle_id": "P07-V0026"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R07-WD03",
+     "vehicles": [
+      {
+       "from": "07:45",
+       "to": "16:15",
+       "vehicle_id": "P07-V0029"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R07-WD04",
+     "vehicles": [
+      {
+       "from": "04:55",
+       "to": "24:10",
+       "vehicle_id": "P07-V0081"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R07-WD05",
+     "vehicles": [
+      {
+       "from": "05:15",
+       "to": "24:25",
+       "vehicle_id": "P07-V0090"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R07-WD06",
+     "vehicles": [
+      {
+       "from": "05:10",
+       "to": "20:40",
+       "vehicle_id": "P07-V0112"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R07-WD07",
+     "vehicles": [
+      {
+       "from": "06:30",
+       "to": "14:50",
+       "vehicle_id": "P07-V0115"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R07-WD08",
+     "vehicles": [
+      {
+       "from": "05:35",
+       "to": "25:35",
+       "vehicle_id": "P07-V0142"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R07-WD09",
+     "vehicles": [
+      {
+       "from": "05:40",
+       "to": "21:10",
+       "vehicle_id": "P07-V0143"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R07-WD10",
+     "vehicles": [
+      {
+       "from": "05:00",
+       "to": "24:55",
+       "vehicle_id": "P07-V0156"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R07-WD11",
+     "vehicles": [
+      {
+       "from": "06:35",
+       "to": "22:00",
+       "vehicle_id": "P07-V0160"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R07-WD12",
+     "vehicles": [
+      {
+       "from": "07:10",
+       "to": "15:15",
+       "vehicle_id": "P07-V0161"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R07-WD13",
+     "vehicles": [
+      {
+       "from": "05:25",
+       "to": "25:50",
+       "vehicle_id": "P07-V0194"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R07-WD14",
+     "vehicles": [
+      {
+       "from": "06:40",
+       "to": "22:40",
+       "vehicle_id": "P07-V0195"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R07-WD15",
+     "vehicles": [
+      {
+       "from": "05:15",
+       "to": "21:15",
+       "vehicle_id": "P07-V0216"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R07-WD16",
+     "vehicles": [
+      {
+       "from": "08:15",
+       "to": "17:40",
+       "vehicle_id": "P07-V0240"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R07-WD17",
+     "vehicles": [
+      {
+       "from": "06:55",
+       "to": "21:55",
+       "vehicle_id": "P07-V0036"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R07-WD18",
+     "vehicles": [
+      {
+       "from": "06:40",
+       "to": "22:40",
+       "vehicle_id": "P07-V0040"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R08-WD01",
+     "vehicles": [
+      {
+       "from": "05:30",
+       "to": "20:30",
+       "vehicle_id": "P07-V0017"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R08-WD02",
+     "vehicles": [
+      {
+       "from": "08:20",
+       "to": "17:50",
+       "vehicle_id": "P07-V0024"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R08-WD03",
+     "vehicles": [
+      {
+       "from": "05:00",
+       "to": "21:20",
+       "vehicle_id": "P07-V0033"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R08-WD04",
+     "vehicles": [
+      {
+       "from": "06:30",
+       "to": "21:55",
+       "vehicle_id": "P07-V0035"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R08-WD05",
+     "vehicles": [
+      {
+       "from": "08:05",
+       "to": "16:55",
+       "vehicle_id": "P07-V0058"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R08-WD06",
+     "vehicles": [
+      {
+       "from": "05:15",
+       "to": "25:25",
+       "vehicle_id": "P07-V0062"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R08-WD07",
+     "vehicles": [
+      {
+       "from": "05:25",
+       "to": "20:45",
+       "vehicle_id": "P07-V0068"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R08-WD08",
+     "vehicles": [
+      {
+       "from": "05:10",
+       "to": "24:25",
+       "vehicle_id": "P07-V0069"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R08-WD09",
+     "vehicles": [
+      {
+       "from": "05:15",
+       "to": "25:25",
+       "vehicle_id": "P07-V0082"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R08-WD10",
+     "vehicles": [
+      {
+       "from": "08:10",
+       "to": "16:20",
+       "vehicle_id": "P07-V0091"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R08-WD11",
+     "vehicles": [
+      {
+       "from": "04:55",
+       "to": "25:25",
+       "vehicle_id": "P07-V0113"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R08-WD12",
+     "vehicles": [
+      {
+       "from": "09:00",
+       "to": "18:10",
+       "vehicle_id": "P07-V0147"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R08-WD13",
+     "vehicles": [
+      {
+       "from": "05:15",
+       "to": "25:05",
+       "vehicle_id": "P07-V0181"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R08-WD14",
+     "vehicles": [
+      {
+       "from": "07:35",
+       "to": "15:40",
+       "vehicle_id": "P07-V0185"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R08-WD15",
+     "vehicles": [
+      {
+       "from": "04:55",
+       "to": "25:10",
+       "vehicle_id": "P07-V0208"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R08-WD16",
+     "vehicles": [
+      {
+       "from": "06:55",
+       "to": "23:35",
+       "vehicle_id": "P07-V0212"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R08-WD17",
+     "vehicles": [
+      {
+       "from": "08:50",
+       "to": "17:55",
+       "vehicle_id": "P07-V0217"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R08-WD18",
+     "vehicles": [
+      {
+       "from": "05:35",
+       "to": "21:15",
+       "vehicle_id": "P07-V0239"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R08-WD19",
+     "vehicles": [
+      {
+       "from": "06:40",
+       "to": "14:55",
+       "vehicle_id": "P07-V0258"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R08-WD20",
+     "vehicles": [
+      {
+       "from": "05:15",
+       "to": "21:50",
+       "vehicle_id": "P07-V0041"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R08-WD21",
+     "vehicles": [
+      {
+       "from": "05:25",
+       "to": "24:35",
+       "vehicle_id": "P07-V0044"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R08-WD22",
+     "vehicles": [
+      {
+       "from": "08:20",
+       "to": "16:55",
+       "vehicle_id": "P07-V0052"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R08-WD23",
+     "vehicles": [
+      {
+       "from": "06:45",
+       "to": "16:00",
+       "vehicle_id": "P07-V0054"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R09-WD01",
+     "vehicles": [
+      {
+       "from": "04:50",
+       "to": "24:30",
+       "vehicle_id": "P07-V0021"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R09-WD02",
+     "vehicles": [
+      {
+       "from": "05:25",
+       "to": "25:05",
+       "vehicle_id": "P07-V0046"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R09-WD03",
+     "vehicles": [
+      {
+       "from": "04:55",
+       "to": "24:35",
+       "vehicle_id": "P07-V0085"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R09-WD04",
+     "vehicles": [
+      {
+       "from": "06:35",
+       "to": "21:45",
+       "vehicle_id": "P07-V0106"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R09-WD05",
+     "vehicles": [
+      {
+       "from": "05:35",
+       "to": "13:35",
+       "vehicle_id": "P07-V0228"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R09-WD06",
+     "vehicles": [
+      {
+       "from": "05:05",
+       "to": "21:50",
+       "vehicle_id": "P07-V0257"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R09-WD07",
+     "vehicles": [
+      {
+       "from": "05:10",
+       "to": "20:10",
+       "vehicle_id": "P07-V0056"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R10-WD01",
+     "vehicles": [
+      {
+       "from": "07:15",
+       "to": "16:45",
+       "vehicle_id": "P07-V0047"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R10-WD02",
+     "vehicles": [
+      {
+       "from": "05:45",
+       "to": "22:20",
+       "vehicle_id": "P07-V0095"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R10-WD03",
+     "vehicles": [
+      {
+       "from": "07:10",
+       "to": "16:30",
+       "vehicle_id": "P07-V0150"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R10-WD04",
+     "vehicles": [
+      {
+       "from": "05:40",
+       "to": "21:55",
+       "vehicle_id": "P07-V0154"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R10-WD05",
+     "vehicles": [
+      {
+       "from": "05:00",
+       "to": "25:10",
+       "vehicle_id": "P07-V0155"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R10-WD06",
+     "vehicles": [
+      {
+       "from": "05:20",
+       "to": "24:45",
+       "vehicle_id": "P07-V0171"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R10-WD07",
+     "vehicles": [
+      {
+       "from": "05:15",
+       "to": "25:25",
+       "vehicle_id": "P07-V0193"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R10-WD08",
+     "vehicles": [
+      {
+       "from": "05:35",
+       "to": "25:05",
+       "vehicle_id": "P07-V0057"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R10-WD09",
+     "vehicles": [
+      {
+       "from": "07:35",
+       "to": "16:10",
+       "vehicle_id": "P07-V0059"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R10-WD10",
+     "vehicles": [
+      {
+       "from": "05:15",
+       "to": "25:00",
+       "vehicle_id": "P07-V0061"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD01",
+     "vehicles": [
+      {
+       "from": "05:05",
+       "to": "24:10",
+       "vehicle_id": "P07-V0266"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD02",
+     "vehicles": [
+      {
+       "from": "06:50",
+       "to": "22:35",
+       "vehicle_id": "P07-V0268"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD03",
+     "vehicles": [
+      {
+       "from": "08:45",
+       "to": "17:05",
+       "vehicle_id": "P07-V0275"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD04",
+     "vehicles": [
+      {
+       "from": "06:35",
+       "to": "15:05",
+       "vehicle_id": "P07-V0278"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD05",
+     "vehicles": [
+      {
+       "from": "07:30",
+       "to": "16:10",
+       "vehicle_id": "P07-V0282"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD06",
+     "vehicles": [
+      {
+       "from": "06:40",
+       "to": "16:00",
+       "vehicle_id": "P07-V0283"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD07",
+     "vehicles": [
+      {
+       "from": "07:00",
+       "to": "16:00",
+       "vehicle_id": "P07-V0292"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD08",
+     "vehicles": [
+      {
+       "from": "05:20",
+       "to": "25:15",
+       "vehicle_id": "P07-V0308"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD09",
+     "vehicles": [
+      {
+       "from": "05:00",
+       "to": "25:15",
+       "vehicle_id": "P07-V0317"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD10",
+     "vehicles": [
+      {
+       "from": "06:15",
+       "to": "23:05",
+       "vehicle_id": "P07-V0319"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD11",
+     "vehicles": [
+      {
+       "from": "05:40",
+       "to": "25:35",
+       "vehicle_id": "P07-V0331"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD12",
+     "vehicles": [
+      {
+       "from": "05:30",
+       "to": "25:55",
+       "vehicle_id": "P07-V0336"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD13",
+     "vehicles": [
+      {
+       "from": "05:25",
+       "to": "20:55",
+       "vehicle_id": "P07-V0342"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD14",
+     "vehicles": [
+      {
+       "from": "05:35",
+       "to": "25:35",
+       "vehicle_id": "P07-V0344"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD15",
+     "vehicles": [
+      {
+       "from": "06:35",
+       "to": "16:00",
+       "vehicle_id": "P07-V0345"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD16",
+     "vehicles": [
+      {
+       "from": "05:25",
+       "to": "24:40",
+       "vehicle_id": "P07-V0346"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD17",
+     "vehicles": [
+      {
+       "from": "04:55",
+       "to": "25:25",
+       "vehicle_id": "P07-V0350"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD18",
+     "vehicles": [
+      {
+       "from": "05:40",
+       "to": "21:00",
+       "vehicle_id": "P07-V0356"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD19",
+     "vehicles": [
+      {
+       "from": "05:20",
+       "to": "25:15",
+       "vehicle_id": "P07-V0365"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD20",
+     "vehicles": [
+      {
+       "from": "05:30",
+       "to": "22:10",
+       "vehicle_id": "P07-V0367"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD21",
+     "vehicles": [
+      {
+       "from": "07:55",
+       "to": "16:10",
+       "vehicle_id": "P07-V0375"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD22",
+     "vehicles": [
+      {
+       "from": "05:15",
+       "to": "24:15",
+       "vehicle_id": "P07-V0376"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD23",
+     "vehicles": [
+      {
+       "from": "06:40",
+       "to": "22:25",
+       "vehicle_id": "P07-V0387"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD24",
+     "vehicles": [
+      {
+       "from": "05:15",
+       "to": "25:05",
+       "vehicle_id": "P07-V0392"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD25",
+     "vehicles": [
+      {
+       "from": "05:40",
+       "to": "21:15",
+       "vehicle_id": "P07-V0395"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD26",
+     "vehicles": [
+      {
+       "from": "05:10",
+       "to": "20:50",
+       "vehicle_id": "P07-V0404"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD27",
+     "vehicles": [
+      {
+       "from": "05:25",
+       "to": "20:25",
+       "vehicle_id": "P07-V0409"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD28",
+     "vehicles": [
+      {
+       "from": "05:40",
+       "to": "25:00",
+       "vehicle_id": "P07-V0413"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD29",
+     "vehicles": [
+      {
+       "from": "06:35",
+       "to": "23:35",
+       "vehicle_id": "P07-V0418"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD30",
+     "vehicles": [
+      {
+       "from": "05:00",
+       "to": "20:15",
+       "vehicle_id": "P07-V0284"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R11-WD31",
+     "vehicles": [
+      {
+       "from": "04:50",
+       "to": "23:55",
+       "vehicle_id": "P07-V0286"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R12-WD01",
+     "vehicles": [
+      {
+       "from": "05:55",
+       "to": "22:40",
+       "vehicle_id": "P07-V0002"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R12-WD02",
+     "vehicles": [
+      {
+       "from": "05:10",
+       "to": "20:25",
+       "vehicle_id": "P07-V0190"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R12-WD03",
+     "vehicles": [
+      {
+       "from": "05:00",
+       "to": "24:50",
+       "vehicle_id": "P07-V0226"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R12-WD04",
+     "vehicles": [
+      {
+       "from": "05:40",
+       "to": "25:25",
+       "vehicle_id": "P07-V0079"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R13-WD01",
+     "vehicles": [
+      {
+       "from": "05:20",
+       "to": "24:35",
+       "vehicle_id": "P07-V0073"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R13-WD02",
+     "vehicles": [
+      {
+       "from": "05:30",
+       "to": "20:45",
+       "vehicle_id": "P07-V0094"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R13-WD03",
+     "vehicles": [
+      {
+       "from": "06:55",
+       "to": "15:05",
+       "vehicle_id": "P07-V0119"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R13-WD04",
+     "vehicles": [
+      {
+       "from": "06:10",
+       "to": "15:00",
+       "vehicle_id": "P07-V0123"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R13-WD05",
+     "vehicles": [
+      {
+       "from": "06:30",
+       "to": "22:55",
+       "vehicle_id": "P07-V0139"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R13-WD06",
+     "vehicles": [
+      {
+       "from": "05:00",
+       "to": "21:55",
+       "vehicle_id": "P07-V0230"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R13-WD07",
+     "vehicles": [
+      {
+       "from": "05:15",
+       "to": "24:55",
+       "vehicle_id": "P07-V0247"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R13-WD08",
+     "vehicles": [
+      {
+       "from": "05:15",
+       "to": "25:25",
+       "vehicle_id": "P07-V0249"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R13-WD09",
+     "vehicles": [
+      {
+       "from": "05:20",
+       "to": "22:05",
+       "vehicle_id": "P07-V0083"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R14-WD01",
+     "vehicles": [
+      {
+       "from": "05:10",
+       "to": "20:10",
+       "vehicle_id": "P07-V0009"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R14-WD02",
+     "vehicles": [
+      {
+       "from": "04:50",
+       "to": "24:10",
+       "vehicle_id": "P07-V0104"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R14-WD03",
+     "vehicles": [
+      {
+       "from": "05:00",
+       "to": "21:30",
+       "vehicle_id": "P07-V0124"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R14-WD04",
+     "vehicles": [
+      {
+       "from": "05:40",
+       "to": "25:55",
+       "vehicle_id": "P07-V0170"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R14-WD05",
+     "vehicles": [
+      {
+       "from": "05:40",
+       "to": "14:25",
+       "vehicle_id": "P07-V0233"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R14-WD06",
+     "vehicles": [
+      {
+       "from": "08:50",
+       "to": "18:10",
+       "vehicle_id": "P07-V0253"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R14-WD07",
+     "vehicles": [
+      {
+       "from": "05:30",
+       "to": "25:20",
+       "vehicle_id": "P07-V0254"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R15-WD01",
+     "vehicles": [
+      {
+       "from": "05:10",
+       "to": "25:20",
+       "vehicle_id": "P07-V0053"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R15-WD02",
+     "vehicles": [
+      {
+       "from": "05:45",
+       "to": "21:50",
+       "vehicle_id": "P07-V0077"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R15-WD03",
+     "vehicles": [
+      {
+       "from": "05:35",
+       "to": "21:35",
+       "vehicle_id": "P07-V0108"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R15-WD04",
+     "vehicles": [
+      {
+       "from": "05:35",
+       "to": "25:40",
+       "vehicle_id": "P07-V0144"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R15-WD05",
+     "vehicles": [
+      {
+       "from": "05:40",
+       "to": "15:00",
+       "vehicle_id": "P07-V0149"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R15-WD06",
+     "vehicles": [
+      {
+       "from": "06:15",
+       "to": "14:20",
+       "vehicle_id": "P07-V0151"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R15-WD07",
+     "vehicles": [
+      {
+       "from": "06:00",
+       "to": "21:05",
+       "vehicle_id": "P07-V0175"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R15-WD08",
+     "vehicles": [
+      {
+       "from": "07:15",
+       "to": "16:00",
+       "vehicle_id": "P07-V0215"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD01",
+     "vehicles": [
+      {
+       "from": "07:00",
+       "to": "15:05",
+       "vehicle_id": "P07-V0265"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD02",
+     "vehicles": [
+      {
+       "from": "05:25",
+       "to": "24:45",
+       "vehicle_id": "P07-V0270"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD03",
+     "vehicles": [
+      {
+       "from": "05:40",
+       "to": "25:30",
+       "vehicle_id": "P07-V0288"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD04",
+     "vehicles": [
+      {
+       "from": "06:25",
+       "to": "23:05",
+       "vehicle_id": "P07-V0295"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD05",
+     "vehicles": [
+      {
+       "from": "06:00",
+       "to": "22:15",
+       "vehicle_id": "P07-V0296"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD06",
+     "vehicles": [
+      {
+       "from": "08:35",
+       "to": "16:45",
+       "vehicle_id": "P07-V0298"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD07",
+     "vehicles": [
+      {
+       "from": "05:35",
+       "to": "25:40",
+       "vehicle_id": "P07-V0303"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD08",
+     "vehicles": [
+      {
+       "from": "05:40",
+       "to": "25:15",
+       "vehicle_id": "P07-V0313"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD09",
+     "vehicles": [
+      {
+       "from": "05:05",
+       "to": "24:55",
+       "vehicle_id": "P07-V0315"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD10",
+     "vehicles": [
+      {
+       "from": "06:50",
+       "to": "22:40",
+       "vehicle_id": "P07-V0322"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD11",
+     "vehicles": [
+      {
+       "from": "05:20",
+       "to": "21:40",
+       "vehicle_id": "P07-V0325"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD12",
+     "vehicles": [
+      {
+       "from": "05:50",
+       "to": "21:10",
+       "vehicle_id": "P07-V0326"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD13",
+     "vehicles": [
+      {
+       "from": "07:10",
+       "to": "16:30",
+       "vehicle_id": "P07-V0341"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD14",
+     "vehicles": [
+      {
+       "from": "06:55",
+       "to": "22:30",
+       "vehicle_id": "P07-V0343"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD15",
+     "vehicles": [
+      {
+       "from": "05:00",
+       "to": "24:35",
+       "vehicle_id": "P07-V0362"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD16",
+     "vehicles": [
+      {
+       "from": "05:25",
+       "to": "24:35",
+       "vehicle_id": "P07-V0366"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD17",
+     "vehicles": [
+      {
+       "from": "05:10",
+       "to": "25:25",
+       "vehicle_id": "P07-V0369"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD18",
+     "vehicles": [
+      {
+       "from": "05:20",
+       "to": "24:30",
+       "vehicle_id": "P07-V0384"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD19",
+     "vehicles": [
+      {
+       "from": "06:15",
+       "to": "15:45",
+       "vehicle_id": "P07-V0391"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD20",
+     "vehicles": [
+      {
+       "from": "05:25",
+       "to": "25:15",
+       "vehicle_id": "P07-V0393"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD21",
+     "vehicles": [
+      {
+       "from": "08:35",
+       "to": "16:40",
+       "vehicle_id": "P07-V0399"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD22",
+     "vehicles": [
+      {
+       "from": "07:50",
+       "to": "16:50",
+       "vehicle_id": "P07-V0400"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD23",
+     "vehicles": [
+      {
+       "from": "06:05",
+       "to": "22:45",
+       "vehicle_id": "P07-V0412"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD24",
+     "vehicles": [
+      {
+       "from": "05:40",
+       "to": "25:15",
+       "vehicle_id": "P07-V0414"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD25",
+     "vehicles": [
+      {
+       "from": "05:40",
+       "to": "20:55",
+       "vehicle_id": "P07-V0416"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD26",
+     "vehicles": [
+      {
+       "from": "08:40",
+       "to": "17:40",
+       "vehicle_id": "P07-V0419"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD27",
+     "vehicles": [
+      {
+       "from": "06:55",
+       "to": "22:30",
+       "vehicle_id": "P07-V0300"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD28",
+     "vehicles": [
+      {
+       "from": "08:10",
+       "to": "16:35",
+       "vehicle_id": "P07-V0301"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD29",
+     "vehicles": [
+      {
+       "from": "04:50",
+       "to": "24:55",
+       "vehicle_id": "P07-V0302"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R16-WD30",
+     "vehicles": [
+      {
+       "from": "06:20",
+       "to": "22:40",
+       "vehicle_id": "P07-V0304"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R17-WD01",
+     "vehicles": [
+      {
+       "from": "04:55",
+       "to": "25:15",
+       "vehicle_id": "P07-V0006"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R17-WD02",
+     "vehicles": [
+      {
+       "from": "04:50",
+       "to": "24:10",
+       "vehicle_id": "P07-V0011"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R17-WD03",
+     "vehicles": [
+      {
+       "from": "07:30",
+       "to": "16:00",
+       "vehicle_id": "P07-V0019"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R17-WD04",
+     "vehicles": [
+      {
+       "from": "05:20",
+       "to": "24:55",
+       "vehicle_id": "P07-V0022"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R17-WD05",
+     "vehicles": [
+      {
+       "from": "05:10",
+       "to": "22:05",
+       "vehicle_id": "P07-V0105"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R17-WD06",
+     "vehicles": [
+      {
+       "from": "08:20",
+       "to": "17:05",
+       "vehicle_id": "P07-V0111"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R17-WD07",
+     "vehicles": [
+      {
+       "from": "05:40",
+       "to": "24:50",
+       "vehicle_id": "P07-V0114"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R17-WD08",
+     "vehicles": [
+      {
+       "from": "05:15",
+       "to": "25:30",
+       "vehicle_id": "P07-V0129"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R17-WD09",
+     "vehicles": [
+      {
+       "from": "05:15",
+       "to": "25:15",
+       "vehicle_id": "P07-V0131"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R17-WD10",
+     "vehicles": [
+      {
+       "from": "06:40",
+       "to": "22:35",
+       "vehicle_id": "P07-V0137"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R17-WD11",
+     "vehicles": [
+      {
+       "from": "06:25",
+       "to": "15:50",
+       "vehicle_id": "P07-V0138"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R17-WD12",
+     "vehicles": [
+      {
+       "from": "06:05",
+       "to": "15:15",
+       "vehicle_id": "P07-V0179"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R17-WD13",
+     "vehicles": [
+      {
+       "from": "07:40",
+       "to": "16:15",
+       "vehicle_id": "P07-V0189"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R17-WD14",
+     "vehicles": [
+      {
+       "from": "05:45",
+       "to": "21:15",
+       "vehicle_id": "P07-V0205"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R17-WD15",
+     "vehicles": [
+      {
+       "from": "05:35",
+       "to": "20:55",
+       "vehicle_id": "P07-V0213"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R17-WD16",
+     "vehicles": [
+      {
+       "from": "05:40",
+       "to": "21:25",
+       "vehicle_id": "P07-V0244"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R17-WD17",
+     "vehicles": [
+      {
+       "from": "05:25",
+       "to": "25:50",
+       "vehicle_id": "P07-V0086"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R17-WD18",
+     "vehicles": [
+      {
+       "from": "07:20",
+       "to": "15:45",
+       "vehicle_id": "P07-V0088"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R18-WD01",
+     "vehicles": [
+      {
+       "from": "06:40",
+       "to": "15:15",
+       "vehicle_id": "P07-V0013"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R18-WD02",
+     "vehicles": [
+      {
+       "from": "07:40",
+       "to": "16:05",
+       "vehicle_id": "P07-V0055"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R18-WD03",
+     "vehicles": [
+      {
+       "from": "05:45",
+       "to": "22:20",
+       "vehicle_id": "P07-V0063"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R18-WD04",
+     "vehicles": [
+      {
+       "from": "08:40",
+       "to": "16:45",
+       "vehicle_id": "P07-V0066"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R18-WD05",
+     "vehicles": [
+      {
+       "from": "08:55",
+       "to": "17:35",
+       "vehicle_id": "P07-V0109"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R18-WD06",
+     "vehicles": [
+      {
+       "from": "05:35",
+       "to": "25:50",
+       "vehicle_id": "P07-V0126"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R18-WD07",
+     "vehicles": [
+      {
+       "from": "05:35",
+       "to": "25:15",
+       "vehicle_id": "P07-V0133"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R18-WD08",
+     "vehicles": [
+      {
+       "from": "05:35",
+       "to": "25:55",
+       "vehicle_id": "P07-V0157"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R18-WD09",
+     "vehicles": [
+      {
+       "from": "08:55",
+       "to": "17:35",
+       "vehicle_id": "P07-V0163"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R18-WD10",
+     "vehicles": [
+      {
+       "from": "04:50",
+       "to": "24:40",
+       "vehicle_id": "P07-V0167"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R18-WD11",
+     "vehicles": [
+      {
+       "from": "08:00",
+       "to": "17:20",
+       "vehicle_id": "P07-V0219"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R18-WD12",
+     "vehicles": [
+      {
+       "from": "05:30",
+       "to": "25:35",
+       "vehicle_id": "P07-V0097"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R18-WD13",
+     "vehicles": [
+      {
+       "from": "06:10",
+       "to": "15:20",
+       "vehicle_id": "P07-V0098"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R18-WD14",
+     "vehicles": [
+      {
+       "from": "05:00",
+       "to": "21:00",
+       "vehicle_id": "P07-V0099"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R19-WD01",
+     "vehicles": [
+      {
+       "from": "05:35",
+       "to": "21:50",
+       "vehicle_id": "P07-V0014"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R19-WD02",
+     "vehicles": [
+      {
+       "from": "06:25",
+       "to": "15:35",
+       "vehicle_id": "P07-V0023"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R19-WD03",
+     "vehicles": [
+      {
+       "from": "05:35",
+       "to": "14:50",
+       "vehicle_id": "P07-V0049"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R19-WD04",
+     "vehicles": [
+      {
+       "from": "08:50",
+       "to": "17:35",
+       "vehicle_id": "P07-V0103"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R19-WD05",
+     "vehicles": [
+      {
+       "from": "05:15",
+       "to": "24:15",
+       "vehicle_id": "P07-V0132"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R19-WD06",
+     "vehicles": [
+      {
+       "from": "08:40",
+       "to": "17:15",
+       "vehicle_id": "P07-V0183"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R19-WD07",
+     "vehicles": [
+      {
+       "from": "08:05",
+       "to": "16:20",
+       "vehicle_id": "P07-V0186"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R19-WD08",
+     "vehicles": [
+      {
+       "from": "05:35",
+       "to": "15:05",
+       "vehicle_id": "P07-V0196"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R19-WD09",
+     "vehicles": [
+      {
+       "from": "04:55",
+       "to": "24:15",
+       "vehicle_id": "P07-V0201"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R19-WD10",
+     "vehicles": [
+      {
+       "from": "06:15",
+       "to": "15:25",
+       "vehicle_id": "P07-V0207"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R19-WD11",
+     "vehicles": [
+      {
+       "from": "05:35",
+       "to": "22:30",
+       "vehicle_id": "P07-V0229"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R19-WD12",
+     "vehicles": [
+      {
+       "from": "08:05",
+       "to": "16:15",
+       "vehicle_id": "P07-V0101"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R24-WD01",
+     "vehicles": [
+      {
+       "from": "05:15",
+       "to": "25:35",
+       "vehicle_id": "P07-V0070"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R24-WD02",
+     "vehicles": [
+      {
+       "from": "06:15",
+       "to": "21:30",
+       "vehicle_id": "P07-V0076"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-R24-WD03",
+     "vehicles": [
+      {
+       "from": "05:20",
+       "to": "25:35",
+       "vehicle_id": "P07-V0218"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-RES-WD01",
+     "vehicles": [
+      {
+       "from": "06:25",
+       "to": "15:35",
+       "vehicle_id": "P07-V0117"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-RES-WD02",
+     "vehicles": [
+      {
+       "from": "08:35",
+       "to": "17:40",
+       "vehicle_id": "P07-V0121"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-RES-WD03",
+     "vehicles": [
+      {
+       "from": "05:15",
+       "to": "25:05",
+       "vehicle_id": "P07-V0136"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-RES-WD04",
+     "vehicles": [
+      {
+       "from": "06:55",
+       "to": "23:55",
+       "vehicle_id": "P07-V0140"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-RES-WD05",
+     "vehicles": [
+      {
+       "from": "06:20",
+       "to": "22:15",
+       "vehicle_id": "P07-V0145"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-RES-WD06",
+     "vehicles": [
+      {
+       "from": "05:05",
+       "to": "25:25",
+       "vehicle_id": "P07-V0153"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-RES-WD07",
+     "vehicles": [
+      {
+       "from": "05:30",
+       "to": "25:15",
+       "vehicle_id": "P07-V0158"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-RES-WD08",
+     "vehicles": [
+      {
+       "from": "06:45",
+       "to": "23:40",
+       "vehicle_id": "P07-V0173"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-RES-WD09",
+     "vehicles": [
+      {
+       "from": "06:00",
+       "to": "21:10",
+       "vehicle_id": "P07-V0174"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-RES-WD10",
+     "vehicles": [
+      {
+       "from": "08:30",
+       "to": "17:55",
+       "vehicle_id": "P07-V0176"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-RES-WD11",
+     "vehicles": [
+      {
+       "from": "06:05",
+       "to": "21:25",
+       "vehicle_id": "P07-V0178"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-RES-WD12",
+     "vehicles": [
+      {
+       "from": "06:55",
+       "to": "15:00",
+       "vehicle_id": "P07-V0188"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-RES-WD13",
+     "vehicles": [
+      {
+       "from": "04:50",
+       "to": "25:15",
+       "vehicle_id": "P07-V0305"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-RES-WD14",
+     "vehicles": [
+      {
+       "from": "04:55",
+       "to": "25:15",
+       "vehicle_id": "P07-V0312"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-RES-WD15",
+     "vehicles": [
+      {
+       "from": "06:30",
+       "to": "15:40",
+       "vehicle_id": "P07-V0318"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-RES-WD16",
+     "vehicles": [
+      {
+       "from": "06:10",
+       "to": "14:10",
+       "vehicle_id": "P07-V0324"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-RES-WD17",
+     "vehicles": [
+      {
+       "from": "07:00",
+       "to": "22:50",
+       "vehicle_id": "P07-V0329"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-RES-WD18",
+     "vehicles": [
+      {
+       "from": "05:30",
+       "to": "25:20",
+       "vehicle_id": "P07-V0334"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-RES-WD19",
+     "vehicles": [
+      {
+       "from": "06:20",
+       "to": "14:55",
+       "vehicle_id": "P07-V0338"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-RES-WD20",
+     "vehicles": [
+      {
+       "from": "06:15",
+       "to": "23:15",
+       "vehicle_id": "P07-V0353"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-RES-WD21",
+     "vehicles": [
+      {
+       "from": "05:30",
+       "to": "25:35",
+       "vehicle_id": "P07-V0355"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-RES-WD22",
+     "vehicles": [
+      {
+       "from": "05:40",
+       "to": "25:30",
+       "vehicle_id": "P07-V0363"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-RES-WD23",
+     "vehicles": [
+      {
+       "from": "05:20",
+       "to": "25:00",
+       "vehicle_id": "P07-V0364"
+      }
+     ]
+    },
+    {
+     "duty_id": "P07-RES-WD24",
+     "vehicles": [
+      {
+       "from": "05:55",
+       "to": "21:10",
+       "vehicle_id": "P07-V0368"
+      }
+     ]
+    }
+   ],
+   "shifts": [
+    {
+     "shift_id": "P07-R01-WD01-S1",
+     "drivers": [
+      {
+       "from": "04:50",
+       "to": "11:40",
+       "driver_id": "P07-D0603"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD01-S2",
+     "drivers": [
+      {
+       "from": "11:40",
+       "to": "18:30",
+       "driver_id": "P07-D0607"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD01-S3",
+     "drivers": [
+      {
+       "from": "18:30",
+       "to": "25:20",
+       "driver_id": "P07-D0756"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD02-S1",
+     "drivers": [
+      {
+       "from": "06:10",
+       "to": "14:55",
+       "driver_id": "P07-D0676"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD03-S1",
+     "drivers": [
+      {
+       "from": "07:30",
+       "to": "16:45",
+       "driver_id": "P07-D1210"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD04-S1",
+     "drivers": [
+      {
+       "from": "05:40",
+       "to": "14:00",
+       "driver_id": "P07-D1200"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD04-S2",
+     "drivers": [
+      {
+       "from": "14:00",
+       "to": "22:20",
+       "driver_id": "P07-D1204"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD05-S1",
+     "drivers": [
+      {
+       "from": "06:45",
+       "to": "15:35",
+       "driver_id": "P07-D0638"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD06-S1",
+     "drivers": [
+      {
+       "from": "07:35",
+       "to": "16:25",
+       "driver_id": "P07-D0598"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD07-S1",
+     "drivers": [
+      {
+       "from": "05:40",
+       "to": "14:00",
+       "driver_id": "P07-D0734"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD07-S2",
+     "drivers": [
+      {
+       "from": "14:00",
+       "to": "22:20",
+       "driver_id": "P07-D0736"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD08-S1",
+     "drivers": [
+      {
+       "from": "06:35",
+       "to": "14:55",
+       "driver_id": "P07-D0160"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD08-S2",
+     "drivers": [
+      {
+       "from": "14:55",
+       "to": "23:20",
+       "driver_id": "P07-D0499"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD09-S1",
+     "drivers": [
+      {
+       "from": "07:05",
+       "to": "15:25",
+       "driver_id": "P07-D0568"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD10-S1",
+     "drivers": [
+      {
+       "from": "06:40",
+       "to": "14:45",
+       "driver_id": "P07-D1014"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD10-S2",
+     "drivers": [
+      {
+       "from": "14:45",
+       "to": "22:55",
+       "driver_id": "P07-D0495"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD11-S1",
+     "drivers": [
+      {
+       "from": "07:15",
+       "to": "16:40",
+       "driver_id": "P07-D0767"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD12-S1",
+     "drivers": [
+      {
+       "from": "05:00",
+       "to": "13:15",
+       "driver_id": "P07-D1174"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD12-S2",
+     "drivers": [
+      {
+       "from": "13:15",
+       "to": "21:30",
+       "driver_id": "P07-D1176"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD13-S1",
+     "drivers": [
+      {
+       "from": "05:00",
+       "to": "11:35",
+       "driver_id": "P07-D0022"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD13-S2",
+     "drivers": [
+      {
+       "from": "11:35",
+       "to": "18:10",
+       "driver_id": "P07-D0240"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD13-S3",
+     "drivers": [
+      {
+       "from": "18:10",
+       "to": "24:50",
+       "driver_id": "P07-D0642"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD14-S1",
+     "drivers": [
+      {
+       "from": "04:55",
+       "to": "11:45",
+       "driver_id": "P07-D1102"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD14-S2",
+     "drivers": [
+      {
+       "from": "11:45",
+       "to": "18:35",
+       "driver_id": "P07-D0274"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD14-S3",
+     "drivers": [
+      {
+       "from": "18:35",
+       "to": "25:25",
+       "driver_id": "P07-D0774"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD15-S1",
+     "drivers": [
+      {
+       "from": "07:50",
+       "to": "17:20",
+       "driver_id": "P07-D0915"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD16-S1",
+     "drivers": [
+      {
+       "from": "07:50",
+       "to": "16:45",
+       "driver_id": "P07-D1179"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD17-S1",
+     "drivers": [
+      {
+       "from": "06:30",
+       "to": "14:40",
+       "driver_id": "P07-D0806"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD17-S2",
+     "drivers": [
+      {
+       "from": "14:40",
+       "to": "22:55",
+       "driver_id": "P07-D0490"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD18-S1",
+     "drivers": [
+      {
+       "from": "05:40",
+       "to": "13:15",
+       "driver_id": "P07-D0106"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD18-S2",
+     "drivers": [
+      {
+       "from": "13:15",
+       "to": "20:50",
+       "driver_id": "P07-D0399"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD19-S1",
+     "drivers": [
+      {
+       "from": "05:00",
+       "to": "13:00",
+       "driver_id": "P07-D0789"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD19-S2",
+     "drivers": [
+      {
+       "from": "13:00",
+       "to": "21:05",
+       "driver_id": "P07-D0390"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD20-S1",
+     "drivers": [
+      {
+       "from": "05:05",
+       "to": "11:30",
+       "driver_id": "P07-D0634"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD20-S2",
+     "drivers": [
+      {
+       "from": "11:30",
+       "to": "17:55",
+       "driver_id": "P07-D0635"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD20-S3",
+     "drivers": [
+      {
+       "from": "17:55",
+       "to": "24:25",
+       "driver_id": "P07-D0548"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD21-S1",
+     "drivers": [
+      {
+       "from": "04:50",
+       "to": "11:15",
+       "driver_id": "P07-D0002"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD21-S2",
+     "drivers": [
+      {
+       "from": "11:15",
+       "to": "17:40",
+       "driver_id": "P07-D0220"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD21-S3",
+     "drivers": [
+      {
+       "from": "17:40",
+       "to": "24:10",
+       "driver_id": "P07-D0513"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD22-S1",
+     "drivers": [
+      {
+       "from": "05:25",
+       "to": "11:55",
+       "driver_id": "P07-D0072"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD22-S2",
+     "drivers": [
+      {
+       "from": "11:55",
+       "to": "18:25",
+       "driver_id": "P07-D0315"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD22-S3",
+     "drivers": [
+      {
+       "from": "18:25",
+       "to": "25:05",
+       "driver_id": "P07-D0721"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD23-S1",
+     "drivers": [
+      {
+       "from": "05:10",
+       "to": "11:50",
+       "driver_id": "P07-D0051"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD23-S2",
+     "drivers": [
+      {
+       "from": "11:50",
+       "to": "18:30",
+       "driver_id": "P07-D0292"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD23-S3",
+     "drivers": [
+      {
+       "from": "18:30",
+       "to": "25:15",
+       "driver_id": "P07-D0758"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD24-S1",
+     "drivers": [
+      {
+       "from": "06:20",
+       "to": "14:30",
+       "driver_id": "P07-D0132"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R01-WD24-S2",
+     "drivers": [
+      {
+       "from": "14:30",
+       "to": "22:45",
+       "driver_id": "P07-D0474"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD01-S1",
+     "drivers": [
+      {
+       "from": "05:25",
+       "to": "13:15",
+       "driver_id": "P07-D0080"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD01-S2",
+     "drivers": [
+      {
+       "from": "13:15",
+       "to": "21:05",
+       "driver_id": "P07-D0410"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD02-S1",
+     "drivers": [
+      {
+       "from": "08:25",
+       "to": "17:50",
+       "driver_id": "P07-D1043"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD03-S1",
+     "drivers": [
+      {
+       "from": "05:20",
+       "to": "13:35",
+       "driver_id": "P07-D1062"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD03-S2",
+     "drivers": [
+      {
+       "from": "13:35",
+       "to": "21:55",
+       "driver_id": "P07-D0420"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD04-S1",
+     "drivers": [
+      {
+       "from": "05:35",
+       "to": "12:10",
+       "driver_id": "P07-D1143"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD04-S2",
+     "drivers": [
+      {
+       "from": "12:10",
+       "to": "18:45",
+       "driver_id": "P07-D1147"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD04-S3",
+     "drivers": [
+      {
+       "from": "18:45",
+       "to": "25:25",
+       "driver_id": "P07-D1034"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD05-S1",
+     "drivers": [
+      {
+       "from": "05:10",
+       "to": "11:55",
+       "driver_id": "P07-D1170"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD05-S2",
+     "drivers": [
+      {
+       "from": "11:55",
+       "to": "18:40",
+       "driver_id": "P07-D1171"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD05-S3",
+     "drivers": [
+      {
+       "from": "18:40",
+       "to": "25:35",
+       "driver_id": "P07-D0935"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD06-S1",
+     "drivers": [
+      {
+       "from": "06:35",
+       "to": "14:50",
+       "driver_id": "P07-D0959"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD06-S2",
+     "drivers": [
+      {
+       "from": "14:50",
+       "to": "23:10",
+       "driver_id": "P07-D0523"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD07-S1",
+     "drivers": [
+      {
+       "from": "06:25",
+       "to": "14:10",
+       "driver_id": "P07-D1019"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD07-S2",
+     "drivers": [
+      {
+       "from": "14:10",
+       "to": "22:00",
+       "driver_id": "P07-D0468"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD08-S1",
+     "drivers": [
+      {
+       "from": "05:25",
+       "to": "11:50",
+       "driver_id": "P07-D1292"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD08-S2",
+     "drivers": [
+      {
+       "from": "11:50",
+       "to": "18:15",
+       "driver_id": "P07-D0297"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD08-S3",
+     "drivers": [
+      {
+       "from": "18:15",
+       "to": "24:45",
+       "driver_id": "P07-D0678"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD09-S1",
+     "drivers": [
+      {
+       "from": "07:05",
+       "to": "16:30",
+       "driver_id": "P07-D0862"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD10-S1",
+     "drivers": [
+      {
+       "from": "05:30",
+       "to": "11:55",
+       "driver_id": "P07-D0964"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD10-S2",
+     "drivers": [
+      {
+       "from": "11:55",
+       "to": "18:20",
+       "driver_id": "P07-D0333"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD10-S3",
+     "drivers": [
+      {
+       "from": "18:20",
+       "to": "24:45",
+       "driver_id": "P07-D0697"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD11-S1",
+     "drivers": [
+      {
+       "from": "05:00",
+       "to": "11:30",
+       "driver_id": "P07-D0031"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD11-S2",
+     "drivers": [
+      {
+       "from": "11:30",
+       "to": "18:00",
+       "driver_id": "P07-D0248"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD11-S3",
+     "drivers": [
+      {
+       "from": "18:00",
+       "to": "24:30",
+       "driver_id": "P07-D0576"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD12-S1",
+     "drivers": [
+      {
+       "from": "05:15",
+       "to": "11:50",
+       "driver_id": "P07-D1208"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD12-S2",
+     "drivers": [
+      {
+       "from": "11:50",
+       "to": "18:25",
+       "driver_id": "P07-D1209"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD12-S3",
+     "drivers": [
+      {
+       "from": "18:25",
+       "to": "25:05",
+       "driver_id": "P07-D0737"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD13-S1",
+     "drivers": [
+      {
+       "from": "05:25",
+       "to": "11:45",
+       "driver_id": "P07-D0081"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD13-S2",
+     "drivers": [
+      {
+       "from": "11:45",
+       "to": "18:05",
+       "driver_id": "P07-D0282"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD13-S3",
+     "drivers": [
+      {
+       "from": "18:05",
+       "to": "24:35",
+       "driver_id": "P07-D0619"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD14-S1",
+     "drivers": [
+      {
+       "from": "05:15",
+       "to": "11:40",
+       "driver_id": "P07-D1175"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD14-S2",
+     "drivers": [
+      {
+       "from": "11:40",
+       "to": "18:05",
+       "driver_id": "P07-D1181"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD14-S3",
+     "drivers": [
+      {
+       "from": "18:05",
+       "to": "24:35",
+       "driver_id": "P07-D0620"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD15-S1",
+     "drivers": [
+      {
+       "from": "05:30",
+       "to": "11:50",
+       "driver_id": "P07-D1299"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD15-S2",
+     "drivers": [
+      {
+       "from": "11:50",
+       "to": "18:10",
+       "driver_id": "P07-D0298"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD15-S3",
+     "drivers": [
+      {
+       "from": "18:10",
+       "to": "24:40",
+       "driver_id": "P07-D0644"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD16-S1",
+     "drivers": [
+      {
+       "from": "06:30",
+       "to": "15:25",
+       "driver_id": "P07-D0156"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD17-S1",
+     "drivers": [
+      {
+       "from": "06:10",
+       "to": "14:15",
+       "driver_id": "P07-D1103"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD17-S2",
+     "drivers": [
+      {
+       "from": "14:15",
+       "to": "22:20",
+       "driver_id": "P07-D1107"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD18-S1",
+     "drivers": [
+      {
+       "from": "08:45",
+       "to": "17:05",
+       "driver_id": "P07-D0841"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD19-S1",
+     "drivers": [
+      {
+       "from": "04:55",
+       "to": "11:25",
+       "driver_id": "P07-D0960"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD19-S2",
+     "drivers": [
+      {
+       "from": "11:25",
+       "to": "17:55",
+       "driver_id": "P07-D0226"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD19-S3",
+     "drivers": [
+      {
+       "from": "17:55",
+       "to": "24:35",
+       "driver_id": "P07-D0552"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD20-S1",
+     "drivers": [
+      {
+       "from": "05:25",
+       "to": "12:15",
+       "driver_id": "P07-D1234"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD20-S2",
+     "drivers": [
+      {
+       "from": "12:15",
+       "to": "19:05",
+       "driver_id": "P07-D1235"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD20-S3",
+     "drivers": [
+      {
+       "from": "19:05",
+       "to": "25:55",
+       "driver_id": "P07-D1110"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD21-S1",
+     "drivers": [
+      {
+       "from": "06:35",
+       "to": "14:25",
+       "driver_id": "P07-D0920"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD21-S2",
+     "drivers": [
+      {
+       "from": "14:25",
+       "to": "22:20",
+       "driver_id": "P07-D0922"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD22-S1",
+     "drivers": [
+      {
+       "from": "06:35",
+       "to": "16:00",
+       "driver_id": "P07-D0165"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD23-S1",
+     "drivers": [
+      {
+       "from": "05:30",
+       "to": "11:55",
+       "driver_id": "P07-D0968"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD23-S2",
+     "drivers": [
+      {
+       "from": "11:55",
+       "to": "18:20",
+       "driver_id": "P07-D0970"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD23-S3",
+     "drivers": [
+      {
+       "from": "18:20",
+       "to": "24:55",
+       "driver_id": "P07-D0698"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD24-S1",
+     "drivers": [
+      {
+       "from": "06:15",
+       "to": "14:35",
+       "driver_id": "P07-D0137"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD24-S2",
+     "drivers": [
+      {
+       "from": "14:35",
+       "to": "23:00",
+       "driver_id": "P07-D0480"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD25-S1",
+     "drivers": [
+      {
+       "from": "05:05",
+       "to": "11:50",
+       "driver_id": "P07-D0059"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD25-S2",
+     "drivers": [
+      {
+       "from": "11:50",
+       "to": "18:35",
+       "driver_id": "P07-D0314"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD25-S3",
+     "drivers": [
+      {
+       "from": "18:35",
+       "to": "25:25",
+       "driver_id": "P07-D0779"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD26-S1",
+     "drivers": [
+      {
+       "from": "05:50",
+       "to": "13:40",
+       "driver_id": "P07-D0126"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD26-S2",
+     "drivers": [
+      {
+       "from": "13:40",
+       "to": "21:30",
+       "driver_id": "P07-D0436"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD27-S1",
+     "drivers": [
+      {
+       "from": "04:50",
+       "to": "11:25",
+       "driver_id": "P07-D0010"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD27-S2",
+     "drivers": [
+      {
+       "from": "11:25",
+       "to": "18:00",
+       "driver_id": "P07-D0227"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R02-WD27-S3",
+     "drivers": [
+      {
+       "from": "18:00",
+       "to": "24:35",
+       "driver_id": "P07-D0577"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R03-WD01-S1",
+     "drivers": [
+      {
+       "from": "05:10",
+       "to": "11:35",
+       "driver_id": "P07-D0929"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R03-WD01-S2",
+     "drivers": [
+      {
+       "from": "11:35",
+       "to": "18:00",
+       "driver_id": "P07-D0242"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R03-WD01-S3",
+     "drivers": [
+      {
+       "from": "18:00",
+       "to": "24:30",
+       "driver_id": "P07-D0578"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R03-WD02-S1",
+     "drivers": [
+      {
+       "from": "05:50",
+       "to": "13:55",
+       "driver_id": "P07-D0116"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R03-WD02-S2",
+     "drivers": [
+      {
+       "from": "13:55",
+       "to": "22:05",
+       "driver_id": "P07-D0433"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R03-WD03-S1",
+     "drivers": [
+      {
+       "from": "05:25",
+       "to": "12:15",
+       "driver_id": "P07-D1269"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R03-WD03-S2",
+     "drivers": [
+      {
+       "from": "12:15",
+       "to": "19:05",
+       "driver_id": "P07-D0361"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R03-WD03-S3",
+     "drivers": [
+      {
+       "from": "19:05",
+       "to": "25:55",
+       "driver_id": "P07-D1177"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R03-WD04-S1",
+     "drivers": [
+      {
+       "from": "05:30",
+       "to": "11:55",
+       "driver_id": "P07-D0803"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R03-WD04-S2",
+     "drivers": [
+      {
+       "from": "11:55",
+       "to": "18:20",
+       "driver_id": "P07-D0322"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R03-WD04-S3",
+     "drivers": [
+      {
+       "from": "18:20",
+       "to": "24:50",
+       "driver_id": "P07-D0705"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R03-WD05-S1",
+     "drivers": [
+      {
+       "from": "06:25",
+       "to": "14:40",
+       "driver_id": "P07-D0148"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R03-WD05-S2",
+     "drivers": [
+      {
+       "from": "14:40",
+       "to": "23:00",
+       "driver_id": "P07-D0491"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R03-WD06-S1",
+     "drivers": [
+      {
+       "from": "06:05",
+       "to": "14:20",
+       "driver_id": "P07-D0122"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R03-WD06-S2",
+     "drivers": [
+      {
+       "from": "14:20",
+       "to": "22:35",
+       "driver_id": "P07-D0458"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD01-S1",
+     "drivers": [
+      {
+       "from": "06:45",
+       "to": "14:30",
+       "driver_id": "P07-D0640"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD01-S2",
+     "drivers": [
+      {
+       "from": "14:30",
+       "to": "22:20",
+       "driver_id": "P07-D0475"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD02-S1",
+     "drivers": [
+      {
+       "from": "06:30",
+       "to": "14:20",
+       "driver_id": "P07-D1216"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD02-S2",
+     "drivers": [
+      {
+       "from": "14:20",
+       "to": "22:10",
+       "driver_id": "P07-D0459"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD03-S1",
+     "drivers": [
+      {
+       "from": "05:15",
+       "to": "11:55",
+       "driver_id": "P07-D0610"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD03-S2",
+     "drivers": [
+      {
+       "from": "11:55",
+       "to": "18:35",
+       "driver_id": "P07-D0325"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD03-S3",
+     "drivers": [
+      {
+       "from": "18:35",
+       "to": "25:20",
+       "driver_id": "P07-D0780"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD04-S1",
+     "drivers": [
+      {
+       "from": "06:20",
+       "to": "13:50",
+       "driver_id": "P07-D0142"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD04-S2",
+     "drivers": [
+      {
+       "from": "13:50",
+       "to": "21:25",
+       "driver_id": "P07-D0426"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD05-S1",
+     "drivers": [
+      {
+       "from": "05:40",
+       "to": "12:20",
+       "driver_id": "P07-D0547"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD05-S2",
+     "drivers": [
+      {
+       "from": "12:20",
+       "to": "19:00",
+       "driver_id": "P07-D0549"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD05-S3",
+     "drivers": [
+      {
+       "from": "19:00",
+       "to": "25:40",
+       "driver_id": "P07-D1154"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD06-S1",
+     "drivers": [
+      {
+       "from": "08:15",
+       "to": "17:25",
+       "driver_id": "P07-D1185"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD07-S1",
+     "drivers": [
+      {
+       "from": "06:15",
+       "to": "14:25",
+       "driver_id": "P07-D0886"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD07-S2",
+     "drivers": [
+      {
+       "from": "14:25",
+       "to": "22:40",
+       "driver_id": "P07-D0888"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD08-S1",
+     "drivers": [
+      {
+       "from": "05:30",
+       "to": "14:45",
+       "driver_id": "P07-D1228"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD09-S1",
+     "drivers": [
+      {
+       "from": "07:00",
+       "to": "15:10",
+       "driver_id": "P07-D0185"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD10-S1",
+     "drivers": [
+      {
+       "from": "05:35",
+       "to": "12:05",
+       "driver_id": "P07-D0099"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD10-S2",
+     "drivers": [
+      {
+       "from": "12:05",
+       "to": "18:35",
+       "driver_id": "P07-D0344"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD10-S3",
+     "drivers": [
+      {
+       "from": "18:35",
+       "to": "25:10",
+       "driver_id": "P07-D0787"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD11-S1",
+     "drivers": [
+      {
+       "from": "07:45",
+       "to": "16:25",
+       "driver_id": "P07-D0629"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD12-S1",
+     "drivers": [
+      {
+       "from": "06:15",
+       "to": "14:35",
+       "driver_id": "P07-D0807"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD12-S2",
+     "drivers": [
+      {
+       "from": "14:35",
+       "to": "23:00",
+       "driver_id": "P07-D0809"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD13-S1",
+     "drivers": [
+      {
+       "from": "07:15",
+       "to": "16:25",
+       "driver_id": "P07-D0186"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD14-S1",
+     "drivers": [
+      {
+       "from": "07:45",
+       "to": "17:15",
+       "driver_id": "P07-D0544"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD15-S1",
+     "drivers": [
+      {
+       "from": "08:45",
+       "to": "17:30",
+       "driver_id": "P07-D1232"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD16-S1",
+     "drivers": [
+      {
+       "from": "05:15",
+       "to": "12:45",
+       "driver_id": "P07-D0824"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD16-S2",
+     "drivers": [
+      {
+       "from": "12:45",
+       "to": "20:20",
+       "driver_id": "P07-D0387"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD17-S1",
+     "drivers": [
+      {
+       "from": "08:25",
+       "to": "17:40",
+       "driver_id": "P07-D0205"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD18-S1",
+     "drivers": [
+      {
+       "from": "06:35",
+       "to": "14:45",
+       "driver_id": "P07-D0716"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD18-S2",
+     "drivers": [
+      {
+       "from": "14:45",
+       "to": "23:00",
+       "driver_id": "P07-D0496"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD19-S1",
+     "drivers": [
+      {
+       "from": "05:40",
+       "to": "12:25",
+       "driver_id": "P07-D0692"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD19-S2",
+     "drivers": [
+      {
+       "from": "12:25",
+       "to": "19:10",
+       "driver_id": "P07-D0373"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD19-S3",
+     "drivers": [
+      {
+       "from": "19:10",
+       "to": "26:00",
+       "driver_id": "P07-D0540"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD20-S1",
+     "drivers": [
+      {
+       "from": "05:20",
+       "to": "12:05",
+       "driver_id": "P07-D0870"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD20-S2",
+     "drivers": [
+      {
+       "from": "12:05",
+       "to": "18:50",
+       "driver_id": "P07-D0345"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD20-S3",
+     "drivers": [
+      {
+       "from": "18:50",
+       "to": "25:45",
+       "driver_id": "P07-D0991"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD21-S1",
+     "drivers": [
+      {
+       "from": "05:25",
+       "to": "12:00",
+       "driver_id": "P07-D0700"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD21-S2",
+     "drivers": [
+      {
+       "from": "12:00",
+       "to": "18:35",
+       "driver_id": "P07-D0702"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD21-S3",
+     "drivers": [
+      {
+       "from": "18:35",
+       "to": "25:20",
+       "driver_id": "P07-D0790"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD22-S1",
+     "drivers": [
+      {
+       "from": "05:05",
+       "to": "13:25",
+       "driver_id": "P07-D1128"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD22-S2",
+     "drivers": [
+      {
+       "from": "13:25",
+       "to": "21:45",
+       "driver_id": "P07-D0403"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD23-S1",
+     "drivers": [
+      {
+       "from": "06:55",
+       "to": "14:25",
+       "driver_id": "P07-D0176"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD23-S2",
+     "drivers": [
+      {
+       "from": "14:25",
+       "to": "21:55",
+       "driver_id": "P07-D0463"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R04-WD24-S1",
+     "drivers": [
+      {
+       "from": "08:50",
+       "to": "16:55",
+       "driver_id": "P07-D0214"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD01-S1",
+     "drivers": [
+      {
+       "from": "08:10",
+       "to": "16:30",
+       "driver_id": "P07-D0661"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD02-S1",
+     "drivers": [
+      {
+       "from": "05:15",
+       "to": "11:40",
+       "driver_id": "P07-D0712"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD02-S2",
+     "drivers": [
+      {
+       "from": "11:40",
+       "to": "18:05",
+       "driver_id": "P07-D0255"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD02-S3",
+     "drivers": [
+      {
+       "from": "18:05",
+       "to": "24:30",
+       "driver_id": "P07-D0621"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD03-S1",
+     "drivers": [
+      {
+       "from": "05:30",
+       "to": "12:15",
+       "driver_id": "P07-D1026"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD03-S2",
+     "drivers": [
+      {
+       "from": "12:15",
+       "to": "19:00",
+       "driver_id": "P07-D0362"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD03-S3",
+     "drivers": [
+      {
+       "from": "19:00",
+       "to": "25:55",
+       "driver_id": "P07-D1160"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD04-S1",
+     "drivers": [
+      {
+       "from": "07:30",
+       "to": "16:45",
+       "driver_id": "P07-D0738"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD05-S1",
+     "drivers": [
+      {
+       "from": "06:15",
+       "to": "14:25",
+       "driver_id": "P07-D1031"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD05-S2",
+     "drivers": [
+      {
+       "from": "14:25",
+       "to": "22:35",
+       "driver_id": "P07-D0466"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD06-S1",
+     "drivers": [
+      {
+       "from": "05:15",
+       "to": "11:40",
+       "driver_id": "P07-D1079"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD06-S2",
+     "drivers": [
+      {
+       "from": "11:40",
+       "to": "18:05",
+       "driver_id": "P07-D0257"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD06-S3",
+     "drivers": [
+      {
+       "from": "18:05",
+       "to": "24:30",
+       "driver_id": "P07-D0623"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD07-S1",
+     "drivers": [
+      {
+       "from": "07:00",
+       "to": "15:00",
+       "driver_id": "P07-D1035"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD07-S2",
+     "drivers": [
+      {
+       "from": "15:00",
+       "to": "23:00",
+       "driver_id": "P07-D0501"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD08-S1",
+     "drivers": [
+      {
+       "from": "04:55",
+       "to": "11:40",
+       "driver_id": "P07-D0890"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD08-S2",
+     "drivers": [
+      {
+       "from": "11:40",
+       "to": "18:25",
+       "driver_id": "P07-D0258"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD08-S3",
+     "drivers": [
+      {
+       "from": "18:25",
+       "to": "25:15",
+       "driver_id": "P07-D0723"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD09-S1",
+     "drivers": [
+      {
+       "from": "06:35",
+       "to": "14:35",
+       "driver_id": "P07-D0162"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD09-S2",
+     "drivers": [
+      {
+       "from": "14:35",
+       "to": "22:35",
+       "driver_id": "P07-D0485"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD10-S1",
+     "drivers": [
+      {
+       "from": "05:50",
+       "to": "14:00",
+       "driver_id": "P07-D1196"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD10-S2",
+     "drivers": [
+      {
+       "from": "14:00",
+       "to": "22:10",
+       "driver_id": "P07-D0434"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD11-S1",
+     "drivers": [
+      {
+       "from": "05:35",
+       "to": "14:00",
+       "driver_id": "P07-D0100"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD11-S2",
+     "drivers": [
+      {
+       "from": "14:00",
+       "to": "22:30",
+       "driver_id": "P07-D0437"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD12-S1",
+     "drivers": [
+      {
+       "from": "06:55",
+       "to": "14:35",
+       "driver_id": "P07-D1112"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD12-S2",
+     "drivers": [
+      {
+       "from": "14:35",
+       "to": "22:15",
+       "driver_id": "P07-D0486"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD13-S1",
+     "drivers": [
+      {
+       "from": "06:05",
+       "to": "15:05",
+       "driver_id": "P07-D0750"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD14-S1",
+     "drivers": [
+      {
+       "from": "05:40",
+       "to": "12:15",
+       "driver_id": "P07-D1263"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD14-S2",
+     "drivers": [
+      {
+       "from": "12:15",
+       "to": "18:50",
+       "driver_id": "P07-D1264"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD14-S3",
+     "drivers": [
+      {
+       "from": "18:50",
+       "to": "25:35",
+       "driver_id": "P07-D1036"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD15-S1",
+     "drivers": [
+      {
+       "from": "06:20",
+       "to": "14:20",
+       "driver_id": "P07-D0810"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD15-S2",
+     "drivers": [
+      {
+       "from": "14:20",
+       "to": "22:20",
+       "driver_id": "P07-D0815"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD16-S1",
+     "drivers": [
+      {
+       "from": "05:50",
+       "to": "14:05",
+       "driver_id": "P07-D0591"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD16-S2",
+     "drivers": [
+      {
+       "from": "14:05",
+       "to": "22:25",
+       "driver_id": "P07-D0445"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD17-S1",
+     "drivers": [
+      {
+       "from": "05:00",
+       "to": "11:30",
+       "driver_id": "P07-D0797"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD17-S2",
+     "drivers": [
+      {
+       "from": "11:30",
+       "to": "18:00",
+       "driver_id": "P07-D0236"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD17-S3",
+     "drivers": [
+      {
+       "from": "18:00",
+       "to": "24:35",
+       "driver_id": "P07-D0583"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD18-S1",
+     "drivers": [
+      {
+       "from": "04:55",
+       "to": "11:30",
+       "driver_id": "P07-D0014"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD18-S2",
+     "drivers": [
+      {
+       "from": "11:30",
+       "to": "18:05",
+       "driver_id": "P07-D0239"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R05-WD18-S3",
+     "drivers": [
+      {
+       "from": "18:05",
+       "to": "24:45",
+       "driver_id": "P07-D0624"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD01-S1",
+     "drivers": [
+      {
+       "from": "07:10",
+       "to": "15:40",
+       "driver_id": "P07-D0198"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD02-S1",
+     "drivers": [
+      {
+       "from": "07:00",
+       "to": "15:30",
+       "driver_id": "P07-D1121"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD02-S2",
+     "drivers": [
+      {
+       "from": "15:30",
+       "to": "24:00",
+       "driver_id": "P07-D1123"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD03-S1",
+     "drivers": [
+      {
+       "from": "05:20",
+       "to": "12:05",
+       "driver_id": "P07-D0068"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD03-S2",
+     "drivers": [
+      {
+       "from": "12:05",
+       "to": "18:50",
+       "driver_id": "P07-D0351"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD03-S3",
+     "drivers": [
+      {
+       "from": "18:50",
+       "to": "25:45",
+       "driver_id": "P07-D1069"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD04-S1",
+     "drivers": [
+      {
+       "from": "06:30",
+       "to": "14:55",
+       "driver_id": "P07-D1286"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD05-S1",
+     "drivers": [
+      {
+       "from": "08:00",
+       "to": "16:30",
+       "driver_id": "P07-D0203"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD06-S1",
+     "drivers": [
+      {
+       "from": "05:50",
+       "to": "14:25",
+       "driver_id": "P07-D1129"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD07-S1",
+     "drivers": [
+      {
+       "from": "08:55",
+       "to": "17:05",
+       "driver_id": "P07-D1197"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD08-S1",
+     "drivers": [
+      {
+       "from": "09:00",
+       "to": "18:30",
+       "driver_id": "P07-D0953"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD09-S1",
+     "drivers": [
+      {
+       "from": "06:20",
+       "to": "14:00",
+       "driver_id": "P07-D1188"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD09-S2",
+     "drivers": [
+      {
+       "from": "14:00",
+       "to": "21:40",
+       "driver_id": "P07-D0446"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD10-S1",
+     "drivers": [
+      {
+       "from": "06:45",
+       "to": "15:05",
+       "driver_id": "P07-D1254"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD11-S1",
+     "drivers": [
+      {
+       "from": "05:20",
+       "to": "13:35",
+       "driver_id": "P07-D1055"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD11-S2",
+     "drivers": [
+      {
+       "from": "13:35",
+       "to": "21:55",
+       "driver_id": "P07-D0425"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD12-S1",
+     "drivers": [
+      {
+       "from": "08:45",
+       "to": "18:10",
+       "driver_id": "P07-D0876"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD13-S1",
+     "drivers": [
+      {
+       "from": "05:15",
+       "to": "12:50",
+       "driver_id": "P07-D1251"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD13-S2",
+     "drivers": [
+      {
+       "from": "12:50",
+       "to": "20:30",
+       "driver_id": "P07-D0392"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD14-S1",
+     "drivers": [
+      {
+       "from": "05:05",
+       "to": "11:35",
+       "driver_id": "P07-D1182"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD14-S2",
+     "drivers": [
+      {
+       "from": "11:35",
+       "to": "18:05",
+       "driver_id": "P07-D0266"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD14-S3",
+     "drivers": [
+      {
+       "from": "18:05",
+       "to": "24:40",
+       "driver_id": "P07-D0625"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD15-S1",
+     "drivers": [
+      {
+       "from": "05:35",
+       "to": "11:55",
+       "driver_id": "P07-D0101"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD15-S2",
+     "drivers": [
+      {
+       "from": "11:55",
+       "to": "18:15",
+       "driver_id": "P07-D0335"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD15-S3",
+     "drivers": [
+      {
+       "from": "18:15",
+       "to": "24:40",
+       "driver_id": "P07-D0680"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD16-S1",
+     "drivers": [
+      {
+       "from": "05:55",
+       "to": "14:00",
+       "driver_id": "P07-D1244"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD16-S2",
+     "drivers": [
+      {
+       "from": "14:00",
+       "to": "22:05",
+       "driver_id": "P07-D0452"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD17-S1",
+     "drivers": [
+      {
+       "from": "05:25",
+       "to": "13:55",
+       "driver_id": "P07-D0900"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD17-S2",
+     "drivers": [
+      {
+       "from": "13:55",
+       "to": "22:25",
+       "driver_id": "P07-D0442"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD18-S1",
+     "drivers": [
+      {
+       "from": "05:00",
+       "to": "11:40",
+       "driver_id": "P07-D0037"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD18-S2",
+     "drivers": [
+      {
+       "from": "11:40",
+       "to": "18:20",
+       "driver_id": "P07-D0270"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD18-S3",
+     "drivers": [
+      {
+       "from": "18:20",
+       "to": "25:05",
+       "driver_id": "P07-D0707"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD19-S1",
+     "drivers": [
+      {
+       "from": "05:30",
+       "to": "11:50",
+       "driver_id": "P07-D1214"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD19-S2",
+     "drivers": [
+      {
+       "from": "11:50",
+       "to": "18:10",
+       "driver_id": "P07-D1217"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD19-S3",
+     "drivers": [
+      {
+       "from": "18:10",
+       "to": "24:30",
+       "driver_id": "P07-D0647"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD20-S1",
+     "drivers": [
+      {
+       "from": "06:25",
+       "to": "14:05",
+       "driver_id": "P07-D0149"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD20-S2",
+     "drivers": [
+      {
+       "from": "14:05",
+       "to": "21:45",
+       "driver_id": "P07-D0460"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD21-S1",
+     "drivers": [
+      {
+       "from": "06:00",
+       "to": "14:20",
+       "driver_id": "P07-D1191"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD21-S2",
+     "drivers": [
+      {
+       "from": "14:20",
+       "to": "22:45",
+       "driver_id": "P07-D1193"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD22-S1",
+     "drivers": [
+      {
+       "from": "07:20",
+       "to": "16:25",
+       "driver_id": "P07-D0202"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD23-S1",
+     "drivers": [
+      {
+       "from": "05:00",
+       "to": "12:50",
+       "driver_id": "P07-D1053"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD23-S2",
+     "drivers": [
+      {
+       "from": "12:50",
+       "to": "20:40",
+       "driver_id": "P07-D0395"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD24-S1",
+     "drivers": [
+      {
+       "from": "05:40",
+       "to": "13:50",
+       "driver_id": "P07-D1064"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD24-S2",
+     "drivers": [
+      {
+       "from": "13:50",
+       "to": "22:00",
+       "driver_id": "P07-D0440"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD25-S1",
+     "drivers": [
+      {
+       "from": "06:05",
+       "to": "14:20",
+       "driver_id": "P07-D0129"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD25-S2",
+     "drivers": [
+      {
+       "from": "14:20",
+       "to": "22:35",
+       "driver_id": "P07-D0469"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD26-S1",
+     "drivers": [
+      {
+       "from": "06:25",
+       "to": "14:00",
+       "driver_id": "P07-D1203"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD26-S2",
+     "drivers": [
+      {
+       "from": "14:00",
+       "to": "21:35",
+       "driver_id": "P07-D0456"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD27-S1",
+     "drivers": [
+      {
+       "from": "05:05",
+       "to": "13:05",
+       "driver_id": "P07-D1099"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD27-S2",
+     "drivers": [
+      {
+       "from": "13:05",
+       "to": "21:10",
+       "driver_id": "P07-D1100"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD28-S1",
+     "drivers": [
+      {
+       "from": "05:40",
+       "to": "12:20",
+       "driver_id": "P07-D1015"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD28-S2",
+     "drivers": [
+      {
+       "from": "12:20",
+       "to": "19:00",
+       "driver_id": "P07-D0381"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD28-S3",
+     "drivers": [
+      {
+       "from": "19:00",
+       "to": "25:40",
+       "driver_id": "P07-D1044"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD29-S1",
+     "drivers": [
+      {
+       "from": "08:05",
+       "to": "16:20",
+       "driver_id": "P07-D0954"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD30-S1",
+     "drivers": [
+      {
+       "from": "06:30",
+       "to": "14:30",
+       "driver_id": "P07-D0161"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD31-S1",
+     "drivers": [
+      {
+       "from": "07:55",
+       "to": "16:45",
+       "driver_id": "P07-D1267"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD32-S1",
+     "drivers": [
+      {
+       "from": "05:35",
+       "to": "14:25",
+       "driver_id": "P07-D0104"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R06-WD33-S1",
+     "drivers": [
+      {
+       "from": "08:05",
+       "to": "17:20",
+       "driver_id": "P07-D0204"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD01-S1",
+     "drivers": [
+      {
+       "from": "07:20",
+       "to": "15:45",
+       "driver_id": "P07-D0761"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD02-S1",
+     "drivers": [
+      {
+       "from": "05:10",
+       "to": "11:50",
+       "driver_id": "P07-D0559"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD02-S2",
+     "drivers": [
+      {
+       "from": "11:50",
+       "to": "18:30",
+       "driver_id": "P07-D0299"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD02-S3",
+     "drivers": [
+      {
+       "from": "18:30",
+       "to": "25:15",
+       "driver_id": "P07-D0760"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD03-S1",
+     "drivers": [
+      {
+       "from": "07:45",
+       "to": "16:15",
+       "driver_id": "P07-D1168"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD04-S1",
+     "drivers": [
+      {
+       "from": "04:55",
+       "to": "11:20",
+       "driver_id": "P07-D0657"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD04-S2",
+     "drivers": [
+      {
+       "from": "11:20",
+       "to": "17:45",
+       "driver_id": "P07-D0660"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD04-S3",
+     "drivers": [
+      {
+       "from": "17:45",
+       "to": "24:10",
+       "driver_id": "P07-D0532"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD05-S1",
+     "drivers": [
+      {
+       "from": "05:15",
+       "to": "11:35",
+       "driver_id": "P07-D0849"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD05-S2",
+     "drivers": [
+      {
+       "from": "11:35",
+       "to": "17:55",
+       "driver_id": "P07-D0246"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD05-S3",
+     "drivers": [
+      {
+       "from": "17:55",
+       "to": "24:25",
+       "driver_id": "P07-D0555"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD06-S1",
+     "drivers": [
+      {
+       "from": "05:10",
+       "to": "12:55",
+       "driver_id": "P07-D1077"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD06-S2",
+     "drivers": [
+      {
+       "from": "12:55",
+       "to": "20:40",
+       "driver_id": "P07-D0389"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD07-S1",
+     "drivers": [
+      {
+       "from": "06:30",
+       "to": "14:50",
+       "driver_id": "P07-D0158"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD08-S1",
+     "drivers": [
+      {
+       "from": "05:35",
+       "to": "12:15",
+       "driver_id": "P07-D1146"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD08-S2",
+     "drivers": [
+      {
+       "from": "12:15",
+       "to": "18:55",
+       "driver_id": "P07-D0363"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD08-S3",
+     "drivers": [
+      {
+       "from": "18:55",
+       "to": "25:35",
+       "driver_id": "P07-D1094"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD09-S1",
+     "drivers": [
+      {
+       "from": "05:40",
+       "to": "13:25",
+       "driver_id": "P07-D0903"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD09-S2",
+     "drivers": [
+      {
+       "from": "13:25",
+       "to": "21:10",
+       "driver_id": "P07-D0905"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD10-S1",
+     "drivers": [
+      {
+       "from": "05:00",
+       "to": "11:35",
+       "driver_id": "P07-D0885"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD10-S2",
+     "drivers": [
+      {
+       "from": "11:35",
+       "to": "18:10",
+       "driver_id": "P07-D0250"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD10-S3",
+     "drivers": [
+      {
+       "from": "18:10",
+       "to": "24:55",
+       "driver_id": "P07-D0648"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD11-S1",
+     "drivers": [
+      {
+       "from": "06:35",
+       "to": "14:15",
+       "driver_id": "P07-D0962"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD11-S2",
+     "drivers": [
+      {
+       "from": "14:15",
+       "to": "22:00",
+       "driver_id": "P07-D0965"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD12-S1",
+     "drivers": [
+      {
+       "from": "07:10",
+       "to": "15:15",
+       "driver_id": "P07-D0649"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD13-S1",
+     "drivers": [
+      {
+       "from": "05:25",
+       "to": "12:10",
+       "driver_id": "P07-D1088"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD13-S2",
+     "drivers": [
+      {
+       "from": "12:10",
+       "to": "18:55",
+       "driver_id": "P07-D0355"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD13-S3",
+     "drivers": [
+      {
+       "from": "18:55",
+       "to": "25:50",
+       "driver_id": "P07-D1117"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD14-S1",
+     "drivers": [
+      {
+       "from": "06:40",
+       "to": "14:40",
+       "driver_id": "P07-D0542"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD14-S2",
+     "drivers": [
+      {
+       "from": "14:40",
+       "to": "22:40",
+       "driver_id": "P07-D0492"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD15-S1",
+     "drivers": [
+      {
+       "from": "05:15",
+       "to": "13:15",
+       "driver_id": "P07-D0060"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD15-S2",
+     "drivers": [
+      {
+       "from": "13:15",
+       "to": "21:15",
+       "driver_id": "P07-D0400"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD16-S1",
+     "drivers": [
+      {
+       "from": "08:15",
+       "to": "17:40",
+       "driver_id": "P07-D0881"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD17-S1",
+     "drivers": [
+      {
+       "from": "06:55",
+       "to": "14:25",
+       "driver_id": "P07-D0178"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD17-S2",
+     "drivers": [
+      {
+       "from": "14:25",
+       "to": "21:55",
+       "driver_id": "P07-D0473"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD18-S1",
+     "drivers": [
+      {
+       "from": "06:40",
+       "to": "14:40",
+       "driver_id": "P07-D0169"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R07-WD18-S2",
+     "drivers": [
+      {
+       "from": "14:40",
+       "to": "22:40",
+       "driver_id": "P07-D0493"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD01-S1",
+     "drivers": [
+      {
+       "from": "05:30",
+       "to": "13:00",
+       "driver_id": "P07-D0085"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD01-S2",
+     "drivers": [
+      {
+       "from": "13:00",
+       "to": "20:30",
+       "driver_id": "P07-D0391"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD02-S1",
+     "drivers": [
+      {
+       "from": "08:20",
+       "to": "17:50",
+       "driver_id": "P07-D0895"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD03-S1",
+     "drivers": [
+      {
+       "from": "05:00",
+       "to": "13:10",
+       "driver_id": "P07-D0024"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD03-S2",
+     "drivers": [
+      {
+       "from": "13:10",
+       "to": "21:20",
+       "driver_id": "P07-D0398"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD04-S1",
+     "drivers": [
+      {
+       "from": "06:30",
+       "to": "14:10",
+       "driver_id": "P07-D1302"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD04-S2",
+     "drivers": [
+      {
+       "from": "14:10",
+       "to": "21:55",
+       "driver_id": "P07-D1303"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD05-S1",
+     "drivers": [
+      {
+       "from": "08:05",
+       "to": "16:55",
+       "driver_id": "P07-D1284"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD06-S1",
+     "drivers": [
+      {
+       "from": "05:15",
+       "to": "11:55",
+       "driver_id": "P07-D0757"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD06-S2",
+     "drivers": [
+      {
+       "from": "11:55",
+       "to": "18:35",
+       "driver_id": "P07-D0328"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD06-S3",
+     "drivers": [
+      {
+       "from": "18:35",
+       "to": "25:25",
+       "driver_id": "P07-D0791"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD07-S1",
+     "drivers": [
+      {
+       "from": "05:25",
+       "to": "13:05",
+       "driver_id": "P07-D0073"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD07-S2",
+     "drivers": [
+      {
+       "from": "13:05",
+       "to": "20:45",
+       "driver_id": "P07-D0394"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD08-S1",
+     "drivers": [
+      {
+       "from": "05:10",
+       "to": "11:35",
+       "driver_id": "P07-D0052"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD08-S2",
+     "drivers": [
+      {
+       "from": "11:35",
+       "to": "18:00",
+       "driver_id": "P07-D0252"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD08-S3",
+     "drivers": [
+      {
+       "from": "18:00",
+       "to": "24:25",
+       "driver_id": "P07-D0589"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD09-S1",
+     "drivers": [
+      {
+       "from": "05:15",
+       "to": "11:55",
+       "driver_id": "P07-D0731"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD09-S2",
+     "drivers": [
+      {
+       "from": "11:55",
+       "to": "18:35",
+       "driver_id": "P07-D0733"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD09-S3",
+     "drivers": [
+      {
+       "from": "18:35",
+       "to": "25:25",
+       "driver_id": "P07-D0798"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD10-S1",
+     "drivers": [
+      {
+       "from": "08:10",
+       "to": "16:20",
+       "driver_id": "P07-D0782"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD11-S1",
+     "drivers": [
+      {
+       "from": "04:55",
+       "to": "11:45",
+       "driver_id": "P07-D0015"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD11-S2",
+     "drivers": [
+      {
+       "from": "11:45",
+       "to": "18:35",
+       "driver_id": "P07-D0281"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD11-S3",
+     "drivers": [
+      {
+       "from": "18:35",
+       "to": "25:25",
+       "driver_id": "P07-D0800"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD12-S1",
+     "drivers": [
+      {
+       "from": "09:00",
+       "to": "18:10",
+       "driver_id": "P07-D0993"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD13-S1",
+     "drivers": [
+      {
+       "from": "05:15",
+       "to": "11:50",
+       "driver_id": "P07-D0061"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD13-S2",
+     "drivers": [
+      {
+       "from": "11:50",
+       "to": "18:25",
+       "driver_id": "P07-D0301"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD13-S3",
+     "drivers": [
+      {
+       "from": "18:25",
+       "to": "25:05",
+       "driver_id": "P07-D0726"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD14-S1",
+     "drivers": [
+      {
+       "from": "07:35",
+       "to": "15:40",
+       "driver_id": "P07-D1125"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD15-S1",
+     "drivers": [
+      {
+       "from": "04:55",
+       "to": "11:40",
+       "driver_id": "P07-D0858"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD15-S2",
+     "drivers": [
+      {
+       "from": "11:40",
+       "to": "18:25",
+       "driver_id": "P07-D0260"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD15-S3",
+     "drivers": [
+      {
+       "from": "18:25",
+       "to": "25:10",
+       "driver_id": "P07-D0729"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD16-S1",
+     "drivers": [
+      {
+       "from": "06:55",
+       "to": "15:15",
+       "driver_id": "P07-D0181"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD16-S2",
+     "drivers": [
+      {
+       "from": "15:15",
+       "to": "23:35",
+       "driver_id": "P07-D0506"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD17-S1",
+     "drivers": [
+      {
+       "from": "08:50",
+       "to": "17:55",
+       "driver_id": "P07-D0570"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD18-S1",
+     "drivers": [
+      {
+       "from": "05:35",
+       "to": "13:25",
+       "driver_id": "P07-D1300"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD18-S2",
+     "drivers": [
+      {
+       "from": "13:25",
+       "to": "21:15",
+       "driver_id": "P07-D0404"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD19-S1",
+     "drivers": [
+      {
+       "from": "06:40",
+       "to": "14:55",
+       "driver_id": "P07-D0948"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD20-S1",
+     "drivers": [
+      {
+       "from": "05:15",
+       "to": "13:30",
+       "driver_id": "P07-D0062"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD20-S2",
+     "drivers": [
+      {
+       "from": "13:30",
+       "to": "21:50",
+       "driver_id": "P07-D0407"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD21-S1",
+     "drivers": [
+      {
+       "from": "05:25",
+       "to": "11:45",
+       "driver_id": "P07-D0075"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD21-S2",
+     "drivers": [
+      {
+       "from": "11:45",
+       "to": "18:05",
+       "driver_id": "P07-D0285"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD21-S3",
+     "drivers": [
+      {
+       "from": "18:05",
+       "to": "24:35",
+       "driver_id": "P07-D0633"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD22-S1",
+     "drivers": [
+      {
+       "from": "08:20",
+       "to": "16:55",
+       "driver_id": "P07-D0197"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R08-WD23-S1",
+     "drivers": [
+      {
+       "from": "06:45",
+       "to": "16:00",
+       "driver_id": "P07-D0172"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R09-WD01-S1",
+     "drivers": [
+      {
+       "from": "04:50",
+       "to": "11:20",
+       "driver_id": "P07-D0631"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R09-WD01-S2",
+     "drivers": [
+      {
+       "from": "11:20",
+       "to": "17:50",
+       "driver_id": "P07-D0224"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R09-WD01-S3",
+     "drivers": [
+      {
+       "from": "17:50",
+       "to": "24:30",
+       "driver_id": "P07-D0546"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R09-WD02-S1",
+     "drivers": [
+      {
+       "from": "05:25",
+       "to": "11:55",
+       "driver_id": "P07-D0077"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R09-WD02-S2",
+     "drivers": [
+      {
+       "from": "11:55",
+       "to": "18:25",
+       "driver_id": "P07-D0330"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R09-WD02-S3",
+     "drivers": [
+      {
+       "from": "18:25",
+       "to": "25:05",
+       "driver_id": "P07-D0740"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R09-WD03-S1",
+     "drivers": [
+      {
+       "from": "04:55",
+       "to": "11:25",
+       "driver_id": "P07-D0908"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R09-WD03-S2",
+     "drivers": [
+      {
+       "from": "11:25",
+       "to": "17:55",
+       "driver_id": "P07-D0230"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R09-WD03-S3",
+     "drivers": [
+      {
+       "from": "17:55",
+       "to": "24:35",
+       "driver_id": "P07-D0561"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R09-WD04-S1",
+     "drivers": [
+      {
+       "from": "06:35",
+       "to": "14:10",
+       "driver_id": "P07-D1052"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R09-WD04-S2",
+     "drivers": [
+      {
+       "from": "14:10",
+       "to": "21:45",
+       "driver_id": "P07-D0447"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R09-WD05-S1",
+     "drivers": [
+      {
+       "from": "05:35",
+       "to": "13:35",
+       "driver_id": "P07-D0617"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R09-WD06-S1",
+     "drivers": [
+      {
+       "from": "05:05",
+       "to": "13:25",
+       "driver_id": "P07-D0665"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R09-WD06-S2",
+     "drivers": [
+      {
+       "from": "13:25",
+       "to": "21:50",
+       "driver_id": "P07-D0406"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R09-WD07-S1",
+     "drivers": [
+      {
+       "from": "05:10",
+       "to": "12:40",
+       "driver_id": "P07-D0056"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R09-WD07-S2",
+     "drivers": [
+      {
+       "from": "12:40",
+       "to": "20:10",
+       "driver_id": "P07-D0383"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R10-WD01-S1",
+     "drivers": [
+      {
+       "from": "07:15",
+       "to": "16:45",
+       "driver_id": "P07-D1236"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R10-WD02-S1",
+     "drivers": [
+      {
+       "from": "05:45",
+       "to": "14:00",
+       "driver_id": "P07-D0688"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R10-WD02-S2",
+     "drivers": [
+      {
+       "from": "14:00",
+       "to": "22:20",
+       "driver_id": "P07-D0439"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R10-WD03-S1",
+     "drivers": [
+      {
+       "from": "07:10",
+       "to": "16:30",
+       "driver_id": "P07-D1229"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R10-WD04-S1",
+     "drivers": [
+      {
+       "from": "05:40",
+       "to": "13:45",
+       "driver_id": "P07-D0979"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R10-WD04-S2",
+     "drivers": [
+      {
+       "from": "13:45",
+       "to": "21:55",
+       "driver_id": "P07-D0981"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R10-WD05-S1",
+     "drivers": [
+      {
+       "from": "05:00",
+       "to": "11:40",
+       "driver_id": "P07-D0704"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R10-WD05-S2",
+     "drivers": [
+      {
+       "from": "11:40",
+       "to": "18:20",
+       "driver_id": "P07-D0261"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R10-WD05-S3",
+     "drivers": [
+      {
+       "from": "18:20",
+       "to": "25:10",
+       "driver_id": "P07-D0709"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R10-WD06-S1",
+     "drivers": [
+      {
+       "from": "05:20",
+       "to": "11:45",
+       "driver_id": "P07-D1116"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R10-WD06-S2",
+     "drivers": [
+      {
+       "from": "11:45",
+       "to": "18:10",
+       "driver_id": "P07-D0286"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R10-WD06-S3",
+     "drivers": [
+      {
+       "from": "18:10",
+       "to": "24:45",
+       "driver_id": "P07-D0654"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R10-WD07-S1",
+     "drivers": [
+      {
+       "from": "05:15",
+       "to": "11:55",
+       "driver_id": "P07-D0063"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R10-WD07-S2",
+     "drivers": [
+      {
+       "from": "11:55",
+       "to": "18:35",
+       "driver_id": "P07-D0331"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R10-WD07-S3",
+     "drivers": [
+      {
+       "from": "18:35",
+       "to": "25:25",
+       "driver_id": "P07-D0804"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R10-WD08-S1",
+     "drivers": [
+      {
+       "from": "05:35",
+       "to": "12:05",
+       "driver_id": "P07-D0102"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R10-WD08-S2",
+     "drivers": [
+      {
+       "from": "12:05",
+       "to": "18:35",
+       "driver_id": "P07-D0346"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R10-WD08-S3",
+     "drivers": [
+      {
+       "from": "18:35",
+       "to": "25:05",
+       "driver_id": "P07-D0812"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R10-WD09-S1",
+     "drivers": [
+      {
+       "from": "07:35",
+       "to": "16:10",
+       "driver_id": "P07-D0191"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R10-WD10-S1",
+     "drivers": [
+      {
+       "from": "05:15",
+       "to": "11:50",
+       "driver_id": "P07-D0064"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R10-WD10-S2",
+     "drivers": [
+      {
+       "from": "11:50",
+       "to": "18:25",
+       "driver_id": "P07-D0305"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R10-WD10-S3",
+     "drivers": [
+      {
+       "from": "18:25",
+       "to": "25:00",
+       "driver_id": "P07-D0742"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD01-S1",
+     "drivers": [
+      {
+       "from": "05:05",
+       "to": "11:25",
+       "driver_id": "P07-D0994"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD01-S2",
+     "drivers": [
+      {
+       "from": "11:25",
+       "to": "17:45",
+       "driver_id": "P07-D0234"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD01-S3",
+     "drivers": [
+      {
+       "from": "17:45",
+       "to": "24:10",
+       "driver_id": "P07-D0533"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD02-S1",
+     "drivers": [
+      {
+       "from": "06:50",
+       "to": "14:40",
+       "driver_id": "P07-D0919"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD02-S2",
+     "drivers": [
+      {
+       "from": "14:40",
+       "to": "22:35",
+       "driver_id": "P07-D0498"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD03-S1",
+     "drivers": [
+      {
+       "from": "08:45",
+       "to": "17:05",
+       "driver_id": "P07-D0984"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD04-S1",
+     "drivers": [
+      {
+       "from": "06:35",
+       "to": "15:05",
+       "driver_id": "P07-D0168"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD05-S1",
+     "drivers": [
+      {
+       "from": "07:30",
+       "to": "16:10",
+       "driver_id": "P07-D1221"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD06-S1",
+     "drivers": [
+      {
+       "from": "06:40",
+       "to": "16:00",
+       "driver_id": "P07-D0171"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD07-S1",
+     "drivers": [
+      {
+       "from": "07:00",
+       "to": "16:00",
+       "driver_id": "P07-D0940"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD08-S1",
+     "drivers": [
+      {
+       "from": "05:20",
+       "to": "11:55",
+       "driver_id": "P07-D1248"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD08-S2",
+     "drivers": [
+      {
+       "from": "11:55",
+       "to": "18:30",
+       "driver_id": "P07-D1249"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD08-S3",
+     "drivers": [
+      {
+       "from": "18:30",
+       "to": "25:15",
+       "driver_id": "P07-D0763"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD09-S1",
+     "drivers": [
+      {
+       "from": "05:00",
+       "to": "11:45",
+       "driver_id": "P07-D0040"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD09-S2",
+     "drivers": [
+      {
+       "from": "11:45",
+       "to": "18:30",
+       "driver_id": "P07-D0291"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD09-S3",
+     "drivers": [
+      {
+       "from": "18:30",
+       "to": "25:15",
+       "driver_id": "P07-D0766"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD10-S1",
+     "drivers": [
+      {
+       "from": "06:15",
+       "to": "14:40",
+       "driver_id": "P07-D1091"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD10-S2",
+     "drivers": [
+      {
+       "from": "14:40",
+       "to": "23:05",
+       "driver_id": "P07-D0502"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD11-S1",
+     "drivers": [
+      {
+       "from": "05:40",
+       "to": "12:15",
+       "driver_id": "P07-D0846"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD11-S2",
+     "drivers": [
+      {
+       "from": "12:15",
+       "to": "18:50",
+       "driver_id": "P07-D0848"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD11-S3",
+     "drivers": [
+      {
+       "from": "18:50",
+       "to": "25:35",
+       "driver_id": "P07-D1071"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD12-S1",
+     "drivers": [
+      {
+       "from": "05:30",
+       "to": "12:15",
+       "driver_id": "P07-D1256"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD12-S2",
+     "drivers": [
+      {
+       "from": "12:15",
+       "to": "19:00",
+       "driver_id": "P07-D0370"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD12-S3",
+     "drivers": [
+      {
+       "from": "19:00",
+       "to": "25:55",
+       "driver_id": "P07-D1096"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD13-S1",
+     "drivers": [
+      {
+       "from": "05:25",
+       "to": "13:10",
+       "driver_id": "P07-D0082"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD13-S2",
+     "drivers": [
+      {
+       "from": "13:10",
+       "to": "20:55",
+       "driver_id": "P07-D0408"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD14-S1",
+     "drivers": [
+      {
+       "from": "05:35",
+       "to": "12:15",
+       "driver_id": "P07-D0980"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD14-S2",
+     "drivers": [
+      {
+       "from": "12:15",
+       "to": "18:55",
+       "driver_id": "P07-D0374"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD14-S3",
+     "drivers": [
+      {
+       "from": "18:55",
+       "to": "25:35",
+       "driver_id": "P07-D0898"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD15-S1",
+     "drivers": [
+      {
+       "from": "06:35",
+       "to": "16:00",
+       "driver_id": "P07-D0893"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD16-S1",
+     "drivers": [
+      {
+       "from": "05:25",
+       "to": "11:50",
+       "driver_id": "P07-D1066"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD16-S2",
+     "drivers": [
+      {
+       "from": "11:50",
+       "to": "18:15",
+       "driver_id": "P07-D0323"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD16-S3",
+     "drivers": [
+      {
+       "from": "18:15",
+       "to": "24:40",
+       "driver_id": "P07-D0683"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD17-S1",
+     "drivers": [
+      {
+       "from": "04:55",
+       "to": "11:45",
+       "driver_id": "P07-D1076"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD17-S2",
+     "drivers": [
+      {
+       "from": "11:45",
+       "to": "18:35",
+       "driver_id": "P07-D0293"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD17-S3",
+     "drivers": [
+      {
+       "from": "18:35",
+       "to": "25:25",
+       "driver_id": "P07-D0833"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD18-S1",
+     "drivers": [
+      {
+       "from": "05:40",
+       "to": "13:20",
+       "driver_id": "P07-D0878"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD18-S2",
+     "drivers": [
+      {
+       "from": "13:20",
+       "to": "21:00",
+       "driver_id": "P07-D0884"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD19-S1",
+     "drivers": [
+      {
+       "from": "05:20",
+       "to": "11:55",
+       "driver_id": "P07-D0911"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD19-S2",
+     "drivers": [
+      {
+       "from": "11:55",
+       "to": "18:30",
+       "driver_id": "P07-D0917"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD19-S3",
+     "drivers": [
+      {
+       "from": "18:30",
+       "to": "25:15",
+       "driver_id": "P07-D0768"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD20-S1",
+     "drivers": [
+      {
+       "from": "05:30",
+       "to": "13:50",
+       "driver_id": "P07-D0944"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD20-S2",
+     "drivers": [
+      {
+       "from": "13:50",
+       "to": "22:10",
+       "driver_id": "P07-D0441"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD21-S1",
+     "drivers": [
+      {
+       "from": "07:55",
+       "to": "16:10",
+       "driver_id": "P07-D1220"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD22-S1",
+     "drivers": [
+      {
+       "from": "05:15",
+       "to": "11:35",
+       "driver_id": "P07-D1030"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD22-S2",
+     "drivers": [
+      {
+       "from": "11:35",
+       "to": "17:55",
+       "driver_id": "P07-D0268"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD22-S3",
+     "drivers": [
+      {
+       "from": "17:55",
+       "to": "24:15",
+       "driver_id": "P07-D0565"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD23-S1",
+     "drivers": [
+      {
+       "from": "06:40",
+       "to": "14:30",
+       "driver_id": "P07-D1274"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD23-S2",
+     "drivers": [
+      {
+       "from": "14:30",
+       "to": "22:25",
+       "driver_id": "P07-D1276"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD24-S1",
+     "drivers": [
+      {
+       "from": "05:15",
+       "to": "11:50",
+       "driver_id": "P07-D1059"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD24-S2",
+     "drivers": [
+      {
+       "from": "11:50",
+       "to": "18:25",
+       "driver_id": "P07-D0326"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD24-S3",
+     "drivers": [
+      {
+       "from": "18:25",
+       "to": "25:05",
+       "driver_id": "P07-D0745"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD25-S1",
+     "drivers": [
+      {
+       "from": "05:40",
+       "to": "13:25",
+       "driver_id": "P07-D1040"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD25-S2",
+     "drivers": [
+      {
+       "from": "13:25",
+       "to": "21:15",
+       "driver_id": "P07-D0412"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD26-S1",
+     "drivers": [
+      {
+       "from": "05:10",
+       "to": "13:00",
+       "driver_id": "P07-D0887"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD26-S2",
+     "drivers": [
+      {
+       "from": "13:00",
+       "to": "20:50",
+       "driver_id": "P07-D0889"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD27-S1",
+     "drivers": [
+      {
+       "from": "05:25",
+       "to": "12:55",
+       "driver_id": "P07-D1000"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD27-S2",
+     "drivers": [
+      {
+       "from": "12:55",
+       "to": "20:25",
+       "driver_id": "P07-D0396"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD28-S1",
+     "drivers": [
+      {
+       "from": "05:40",
+       "to": "12:05",
+       "driver_id": "P07-D0853"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD28-S2",
+     "drivers": [
+      {
+       "from": "12:05",
+       "to": "18:30",
+       "driver_id": "P07-D0353"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD28-S3",
+     "drivers": [
+      {
+       "from": "18:30",
+       "to": "25:00",
+       "driver_id": "P07-D0769"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD29-S1",
+     "drivers": [
+      {
+       "from": "06:35",
+       "to": "15:05",
+       "driver_id": "P07-D1212"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD29-S2",
+     "drivers": [
+      {
+       "from": "15:05",
+       "to": "23:35",
+       "driver_id": "P07-D0526"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD30-S1",
+     "drivers": [
+      {
+       "from": "05:00",
+       "to": "12:35",
+       "driver_id": "P07-D0041"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD30-S2",
+     "drivers": [
+      {
+       "from": "12:35",
+       "to": "20:15",
+       "driver_id": "P07-D0384"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD31-S1",
+     "drivers": [
+      {
+       "from": "04:50",
+       "to": "11:10",
+       "driver_id": "P07-D0011"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD31-S2",
+     "drivers": [
+      {
+       "from": "11:10",
+       "to": "17:30",
+       "driver_id": "P07-D0216"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R11-WD31-S3",
+     "drivers": [
+      {
+       "from": "17:30",
+       "to": "23:55",
+       "driver_id": "P07-D0527"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R12-WD01-S1",
+     "drivers": [
+      {
+       "from": "05:55",
+       "to": "14:15",
+       "driver_id": "P07-D0117"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R12-WD01-S2",
+     "drivers": [
+      {
+       "from": "14:15",
+       "to": "22:40",
+       "driver_id": "P07-D0451"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R12-WD02-S1",
+     "drivers": [
+      {
+       "from": "05:10",
+       "to": "12:45",
+       "driver_id": "P07-D1148"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R12-WD02-S2",
+     "drivers": [
+      {
+       "from": "12:45",
+       "to": "20:25",
+       "driver_id": "P07-D0388"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R12-WD03-S1",
+     "drivers": [
+      {
+       "from": "05:00",
+       "to": "11:35",
+       "driver_id": "P07-D0653"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R12-WD03-S2",
+     "drivers": [
+      {
+       "from": "11:35",
+       "to": "18:10",
+       "driver_id": "P07-D0253"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R12-WD03-S3",
+     "drivers": [
+      {
+       "from": "18:10",
+       "to": "24:50",
+       "driver_id": "P07-D0658"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R12-WD04-S1",
+     "drivers": [
+      {
+       "from": "05:40",
+       "to": "12:15",
+       "driver_id": "P07-D0107"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R12-WD04-S2",
+     "drivers": [
+      {
+       "from": "12:15",
+       "to": "18:50",
+       "driver_id": "P07-D0366"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R12-WD04-S3",
+     "drivers": [
+      {
+       "from": "18:50",
+       "to": "25:25",
+       "driver_id": "P07-D1083"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R13-WD01-S1",
+     "drivers": [
+      {
+       "from": "05:20",
+       "to": "11:45",
+       "driver_id": "P07-D0601"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R13-WD01-S2",
+     "drivers": [
+      {
+       "from": "11:45",
+       "to": "18:10",
+       "driver_id": "P07-D0288"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R13-WD01-S3",
+     "drivers": [
+      {
+       "from": "18:10",
+       "to": "24:35",
+       "driver_id": "P07-D0666"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R13-WD02-S1",
+     "drivers": [
+      {
+       "from": "05:30",
+       "to": "13:05",
+       "driver_id": "P07-D0088"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R13-WD02-S2",
+     "drivers": [
+      {
+       "from": "13:05",
+       "to": "20:45",
+       "driver_id": "P07-D0397"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R13-WD03-S1",
+     "drivers": [
+      {
+       "from": "06:55",
+       "to": "15:05",
+       "driver_id": "P07-D0854"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R13-WD04-S1",
+     "drivers": [
+      {
+       "from": "06:10",
+       "to": "15:00",
+       "driver_id": "P07-D1206"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R13-WD05-S1",
+     "drivers": [
+      {
+       "from": "06:30",
+       "to": "14:40",
+       "driver_id": "P07-D0931"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R13-WD05-S2",
+     "drivers": [
+      {
+       "from": "14:40",
+       "to": "22:55",
+       "driver_id": "P07-D0494"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R13-WD06-S1",
+     "drivers": [
+      {
+       "from": "05:00",
+       "to": "13:25",
+       "driver_id": "P07-D0871"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R13-WD06-S2",
+     "drivers": [
+      {
+       "from": "13:25",
+       "to": "21:55",
+       "driver_id": "P07-D0872"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R13-WD07-S1",
+     "drivers": [
+      {
+       "from": "05:15",
+       "to": "11:45",
+       "driver_id": "P07-D1189"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R13-WD07-S2",
+     "drivers": [
+      {
+       "from": "11:45",
+       "to": "18:15",
+       "driver_id": "P07-D0290"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R13-WD07-S3",
+     "drivers": [
+      {
+       "from": "18:15",
+       "to": "24:55",
+       "driver_id": "P07-D0686"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R13-WD08-S1",
+     "drivers": [
+      {
+       "from": "05:15",
+       "to": "11:55",
+       "driver_id": "P07-D0593"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R13-WD08-S2",
+     "drivers": [
+      {
+       "from": "11:55",
+       "to": "18:35",
+       "driver_id": "P07-D0596"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R13-WD08-S3",
+     "drivers": [
+      {
+       "from": "18:35",
+       "to": "25:25",
+       "driver_id": "P07-D0864"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R13-WD09-S1",
+     "drivers": [
+      {
+       "from": "05:20",
+       "to": "13:40",
+       "driver_id": "P07-D0069"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R13-WD09-S2",
+     "drivers": [
+      {
+       "from": "13:40",
+       "to": "22:05",
+       "driver_id": "P07-D0419"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R14-WD01-S1",
+     "drivers": [
+      {
+       "from": "05:10",
+       "to": "12:40",
+       "driver_id": "P07-D0058"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R14-WD01-S2",
+     "drivers": [
+      {
+       "from": "12:40",
+       "to": "20:10",
+       "driver_id": "P07-D0385"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R14-WD02-S1",
+     "drivers": [
+      {
+       "from": "04:50",
+       "to": "11:15",
+       "driver_id": "P07-D0643"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R14-WD02-S2",
+     "drivers": [
+      {
+       "from": "11:15",
+       "to": "17:40",
+       "driver_id": "P07-D0222"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R14-WD02-S3",
+     "drivers": [
+      {
+       "from": "17:40",
+       "to": "24:10",
+       "driver_id": "P07-D0515"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R14-WD03-S1",
+     "drivers": [
+      {
+       "from": "05:00",
+       "to": "13:15",
+       "driver_id": "P07-D0695"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R14-WD03-S2",
+     "drivers": [
+      {
+       "from": "13:15",
+       "to": "21:30",
+       "driver_id": "P07-D0402"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R14-WD04-S1",
+     "drivers": [
+      {
+       "from": "05:40",
+       "to": "12:25",
+       "driver_id": "P07-D1022"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R14-WD04-S2",
+     "drivers": [
+      {
+       "from": "12:25",
+       "to": "19:10",
+       "driver_id": "P07-D0380"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R14-WD04-S3",
+     "drivers": [
+      {
+       "from": "19:10",
+       "to": "25:55",
+       "driver_id": "P07-D0563"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R14-WD05-S1",
+     "drivers": [
+      {
+       "from": "05:40",
+       "to": "14:25",
+       "driver_id": "P07-D0111"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R14-WD06-S1",
+     "drivers": [
+      {
+       "from": "08:50",
+       "to": "18:10",
+       "driver_id": "P07-D1282"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R14-WD07-S1",
+     "drivers": [
+      {
+       "from": "05:30",
+       "to": "12:05",
+       "driver_id": "P07-D0554"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R14-WD07-S2",
+     "drivers": [
+      {
+       "from": "12:05",
+       "to": "18:40",
+       "driver_id": "P07-D0349"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R14-WD07-S3",
+     "drivers": [
+      {
+       "from": "18:40",
+       "to": "25:20",
+       "driver_id": "P07-D0936"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R15-WD01-S1",
+     "drivers": [
+      {
+       "from": "05:10",
+       "to": "11:50",
+       "driver_id": "P07-D0775"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R15-WD01-S2",
+     "drivers": [
+      {
+       "from": "11:50",
+       "to": "18:30",
+       "driver_id": "P07-D0307"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R15-WD01-S3",
+     "drivers": [
+      {
+       "from": "18:30",
+       "to": "25:20",
+       "driver_id": "P07-D0770"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R15-WD02-S1",
+     "drivers": [
+      {
+       "from": "05:45",
+       "to": "13:45",
+       "driver_id": "P07-D1218"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R15-WD02-S2",
+     "drivers": [
+      {
+       "from": "13:45",
+       "to": "21:50",
+       "driver_id": "P07-D1222"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R15-WD03-S1",
+     "drivers": [
+      {
+       "from": "05:35",
+       "to": "13:35",
+       "driver_id": "P07-D1001"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R15-WD03-S2",
+     "drivers": [
+      {
+       "from": "13:35",
+       "to": "21:35",
+       "driver_id": "P07-D1004"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R15-WD04-S1",
+     "drivers": [
+      {
+       "from": "05:35",
+       "to": "12:15",
+       "driver_id": "P07-D1017"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R15-WD04-S2",
+     "drivers": [
+      {
+       "from": "12:15",
+       "to": "18:55",
+       "driver_id": "P07-D0367"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R15-WD04-S3",
+     "drivers": [
+      {
+       "from": "18:55",
+       "to": "25:40",
+       "driver_id": "P07-D1118"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R15-WD05-S1",
+     "drivers": [
+      {
+       "from": "05:40",
+       "to": "15:00",
+       "driver_id": "P07-D0684"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R15-WD06-S1",
+     "drivers": [
+      {
+       "from": "06:15",
+       "to": "14:20",
+       "driver_id": "P07-D0832"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R15-WD07-S1",
+     "drivers": [
+      {
+       "from": "06:00",
+       "to": "13:30",
+       "driver_id": "P07-D1172"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R15-WD07-S2",
+     "drivers": [
+      {
+       "from": "13:30",
+       "to": "21:05",
+       "driver_id": "P07-D1173"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R15-WD08-S1",
+     "drivers": [
+      {
+       "from": "07:15",
+       "to": "16:00",
+       "driver_id": "P07-D1041"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD01-S1",
+     "drivers": [
+      {
+       "from": "07:00",
+       "to": "15:05",
+       "driver_id": "P07-D1095"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD02-S1",
+     "drivers": [
+      {
+       "from": "05:25",
+       "to": "11:50",
+       "driver_id": "P07-D1084"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD02-S2",
+     "drivers": [
+      {
+       "from": "11:50",
+       "to": "18:15",
+       "driver_id": "P07-D1085"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD02-S3",
+     "drivers": [
+      {
+       "from": "18:15",
+       "to": "24:45",
+       "driver_id": "P07-D0687"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD03-S1",
+     "drivers": [
+      {
+       "from": "05:40",
+       "to": "12:15",
+       "driver_id": "P07-D1305"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD03-S2",
+     "drivers": [
+      {
+       "from": "12:15",
+       "to": "18:50",
+       "driver_id": "P07-D0376"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD03-S3",
+     "drivers": [
+      {
+       "from": "18:50",
+       "to": "25:30",
+       "driver_id": "P07-D1237"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD04-S1",
+     "drivers": [
+      {
+       "from": "06:25",
+       "to": "14:45",
+       "driver_id": "P07-D1309"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD04-S2",
+     "drivers": [
+      {
+       "from": "14:45",
+       "to": "23:05",
+       "driver_id": "P07-D0514"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD05-S1",
+     "drivers": [
+      {
+       "from": "06:00",
+       "to": "14:05",
+       "driver_id": "P07-D1279"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD05-S2",
+     "drivers": [
+      {
+       "from": "14:05",
+       "to": "22:15",
+       "driver_id": "P07-D0467"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD06-S1",
+     "drivers": [
+      {
+       "from": "08:35",
+       "to": "16:45",
+       "driver_id": "P07-D0975"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD07-S1",
+     "drivers": [
+      {
+       "from": "05:35",
+       "to": "12:15",
+       "driver_id": "P07-D0109"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD07-S2",
+     "drivers": [
+      {
+       "from": "12:15",
+       "to": "18:55",
+       "driver_id": "P07-D0378"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD07-S3",
+     "drivers": [
+      {
+       "from": "18:55",
+       "to": "25:40",
+       "driver_id": "P07-D0927"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD08-S1",
+     "drivers": [
+      {
+       "from": "05:40",
+       "to": "12:10",
+       "driver_id": "P07-D1152"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD08-S2",
+     "drivers": [
+      {
+       "from": "12:10",
+       "to": "18:40",
+       "driver_id": "P07-D1156"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD08-S3",
+     "drivers": [
+      {
+       "from": "18:40",
+       "to": "25:15",
+       "driver_id": "P07-D0983"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD09-S1",
+     "drivers": [
+      {
+       "from": "05:05",
+       "to": "11:40",
+       "driver_id": "P07-D0868"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD09-S2",
+     "drivers": [
+      {
+       "from": "11:40",
+       "to": "18:15",
+       "driver_id": "P07-D0875"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD09-S3",
+     "drivers": [
+      {
+       "from": "18:15",
+       "to": "24:55",
+       "driver_id": "P07-D0696"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD10-S1",
+     "drivers": [
+      {
+       "from": "06:50",
+       "to": "14:45",
+       "driver_id": "P07-D0971"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD10-S2",
+     "drivers": [
+      {
+       "from": "14:45",
+       "to": "22:40",
+       "driver_id": "P07-D0972"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD11-S1",
+     "drivers": [
+      {
+       "from": "05:20",
+       "to": "13:30",
+       "driver_id": "P07-D1086"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD11-S2",
+     "drivers": [
+      {
+       "from": "13:30",
+       "to": "21:40",
+       "driver_id": "P07-D0414"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD12-S1",
+     "drivers": [
+      {
+       "from": "05:50",
+       "to": "13:30",
+       "driver_id": "P07-D0813"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD12-S2",
+     "drivers": [
+      {
+       "from": "13:30",
+       "to": "21:10",
+       "driver_id": "P07-D0417"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD13-S1",
+     "drivers": [
+      {
+       "from": "07:10",
+       "to": "16:30",
+       "driver_id": "P07-D1294"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD14-S1",
+     "drivers": [
+      {
+       "from": "06:55",
+       "to": "14:40",
+       "driver_id": "P07-D0997"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD14-S2",
+     "drivers": [
+      {
+       "from": "14:40",
+       "to": "22:30",
+       "driver_id": "P07-D0504"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD15-S1",
+     "drivers": [
+      {
+       "from": "05:00",
+       "to": "11:30",
+       "driver_id": "P07-D1138"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD15-S2",
+     "drivers": [
+      {
+       "from": "11:30",
+       "to": "18:00",
+       "driver_id": "P07-D0259"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD15-S3",
+     "drivers": [
+      {
+       "from": "18:00",
+       "to": "24:35",
+       "driver_id": "P07-D0595"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD16-S1",
+     "drivers": [
+      {
+       "from": "05:25",
+       "to": "11:45",
+       "driver_id": "P07-D0083"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD16-S2",
+     "drivers": [
+      {
+       "from": "11:45",
+       "to": "18:05",
+       "driver_id": "P07-D0296"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD16-S3",
+     "drivers": [
+      {
+       "from": "18:05",
+       "to": "24:35",
+       "driver_id": "P07-D0637"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD17-S1",
+     "drivers": [
+      {
+       "from": "05:10",
+       "to": "11:55",
+       "driver_id": "P07-D1050"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD17-S2",
+     "drivers": [
+      {
+       "from": "11:55",
+       "to": "18:40",
+       "driver_id": "P07-D0340"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD17-S3",
+     "drivers": [
+      {
+       "from": "18:40",
+       "to": "25:25",
+       "driver_id": "P07-D1009"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD18-S1",
+     "drivers": [
+      {
+       "from": "05:20",
+       "to": "11:40",
+       "driver_id": "P07-D1047"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD18-S2",
+     "drivers": [
+      {
+       "from": "11:40",
+       "to": "18:00",
+       "driver_id": "P07-D0277"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD18-S3",
+     "drivers": [
+      {
+       "from": "18:00",
+       "to": "24:30",
+       "driver_id": "P07-D0605"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD19-S1",
+     "drivers": [
+      {
+       "from": "06:15",
+       "to": "15:45",
+       "driver_id": "P07-D1135"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD20-S1",
+     "drivers": [
+      {
+       "from": "05:25",
+       "to": "12:00",
+       "driver_id": "P07-D0839"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD20-S2",
+     "drivers": [
+      {
+       "from": "12:00",
+       "to": "18:35",
+       "driver_id": "P07-D0343"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD20-S3",
+     "drivers": [
+      {
+       "from": "18:35",
+       "to": "25:15",
+       "driver_id": "P07-D0891"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD21-S1",
+     "drivers": [
+      {
+       "from": "08:35",
+       "to": "16:40",
+       "driver_id": "P07-D1109"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD22-S1",
+     "drivers": [
+      {
+       "from": "07:50",
+       "to": "16:50",
+       "driver_id": "P07-D0199"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD23-S1",
+     "drivers": [
+      {
+       "from": "06:05",
+       "to": "14:25",
+       "driver_id": "P07-D0827"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD23-S2",
+     "drivers": [
+      {
+       "from": "14:25",
+       "to": "22:45",
+       "driver_id": "P07-D0477"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD24-S1",
+     "drivers": [
+      {
+       "from": "05:40",
+       "to": "12:10",
+       "driver_id": "P07-D0121"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD24-S2",
+     "drivers": [
+      {
+       "from": "12:10",
+       "to": "18:40",
+       "driver_id": "P07-D0357"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD24-S3",
+     "drivers": [
+      {
+       "from": "18:40",
+       "to": "25:15",
+       "driver_id": "P07-D1010"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD25-S1",
+     "drivers": [
+      {
+       "from": "05:40",
+       "to": "13:15",
+       "driver_id": "P07-D0945"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD25-S2",
+     "drivers": [
+      {
+       "from": "13:15",
+       "to": "20:55",
+       "driver_id": "P07-D0947"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD26-S1",
+     "drivers": [
+      {
+       "from": "08:40",
+       "to": "17:40",
+       "driver_id": "P07-D0925"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD27-S1",
+     "drivers": [
+      {
+       "from": "06:55",
+       "to": "14:40",
+       "driver_id": "P07-D0188"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD27-S2",
+     "drivers": [
+      {
+       "from": "14:40",
+       "to": "22:30",
+       "driver_id": "P07-D0511"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD28-S1",
+     "drivers": [
+      {
+       "from": "08:10",
+       "to": "16:35",
+       "driver_id": "P07-D0210"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD29-S1",
+     "drivers": [
+      {
+       "from": "04:50",
+       "to": "11:30",
+       "driver_id": "P07-D0023"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD29-S2",
+     "drivers": [
+      {
+       "from": "11:30",
+       "to": "18:10",
+       "driver_id": "P07-D0265"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD29-S3",
+     "drivers": [
+      {
+       "from": "18:10",
+       "to": "24:55",
+       "driver_id": "P07-D0667"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD30-S1",
+     "drivers": [
+      {
+       "from": "06:20",
+       "to": "14:30",
+       "driver_id": "P07-D0143"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R16-WD30-S2",
+     "drivers": [
+      {
+       "from": "14:30",
+       "to": "22:40",
+       "driver_id": "P07-D0478"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD01-S1",
+     "drivers": [
+      {
+       "from": "04:55",
+       "to": "11:40",
+       "driver_id": "P07-D1225"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD01-S2",
+     "drivers": [
+      {
+       "from": "11:40",
+       "to": "18:25",
+       "driver_id": "P07-D0272"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD01-S3",
+     "drivers": [
+      {
+       "from": "18:25",
+       "to": "25:15",
+       "driver_id": "P07-D0748"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD02-S1",
+     "drivers": [
+      {
+       "from": "04:50",
+       "to": "11:15",
+       "driver_id": "P07-D0861"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD02-S2",
+     "drivers": [
+      {
+       "from": "11:15",
+       "to": "17:40",
+       "driver_id": "P07-D0863"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD02-S3",
+     "drivers": [
+      {
+       "from": "17:40",
+       "to": "24:10",
+       "driver_id": "P07-D0530"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD03-S1",
+     "drivers": [
+      {
+       "from": "07:30",
+       "to": "16:00",
+       "driver_id": "P07-D0725"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD04-S1",
+     "drivers": [
+      {
+       "from": "05:20",
+       "to": "11:50",
+       "driver_id": "P07-D0071"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD04-S2",
+     "drivers": [
+      {
+       "from": "11:50",
+       "to": "18:20",
+       "driver_id": "P07-D0308"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD04-S3",
+     "drivers": [
+      {
+       "from": "18:20",
+       "to": "24:55",
+       "driver_id": "P07-D0711"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD05-S1",
+     "drivers": [
+      {
+       "from": "05:10",
+       "to": "13:35",
+       "driver_id": "P07-D0985"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD05-S2",
+     "drivers": [
+      {
+       "from": "13:35",
+       "to": "22:05",
+       "driver_id": "P07-D0986"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD06-S1",
+     "drivers": [
+      {
+       "from": "08:20",
+       "to": "17:05",
+       "driver_id": "P07-D0777"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD07-S1",
+     "drivers": [
+      {
+       "from": "05:40",
+       "to": "12:00",
+       "driver_id": "P07-D0831"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD07-S2",
+     "drivers": [
+      {
+       "from": "12:00",
+       "to": "18:20",
+       "driver_id": "P07-D0338"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD07-S3",
+     "drivers": [
+      {
+       "from": "18:20",
+       "to": "24:50",
+       "driver_id": "P07-D0718"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD08-S1",
+     "drivers": [
+      {
+       "from": "05:15",
+       "to": "12:00",
+       "driver_id": "P07-D0065"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD08-S2",
+     "drivers": [
+      {
+       "from": "12:00",
+       "to": "18:45",
+       "driver_id": "P07-D0341"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD08-S3",
+     "drivers": [
+      {
+       "from": "18:45",
+       "to": "25:30",
+       "driver_id": "P07-D0969"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD09-S1",
+     "drivers": [
+      {
+       "from": "05:15",
+       "to": "11:55",
+       "driver_id": "P07-D0066"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD09-S2",
+     "drivers": [
+      {
+       "from": "11:55",
+       "to": "18:35",
+       "driver_id": "P07-D0334"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD09-S3",
+     "drivers": [
+      {
+       "from": "18:35",
+       "to": "25:15",
+       "driver_id": "P07-D0879"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD10-S1",
+     "drivers": [
+      {
+       "from": "06:40",
+       "to": "14:35",
+       "driver_id": "P07-D0674"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD10-S2",
+     "drivers": [
+      {
+       "from": "14:35",
+       "to": "22:35",
+       "driver_id": "P07-D0488"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD11-S1",
+     "drivers": [
+      {
+       "from": "06:25",
+       "to": "15:50",
+       "driver_id": "P07-D0655"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD12-S1",
+     "drivers": [
+      {
+       "from": "06:05",
+       "to": "15:15",
+       "driver_id": "P07-D1239"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD13-S1",
+     "drivers": [
+      {
+       "from": "07:40",
+       "to": "16:15",
+       "driver_id": "P07-D0923"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD14-S1",
+     "drivers": [
+      {
+       "from": "05:45",
+       "to": "13:30",
+       "driver_id": "P07-D0112"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD14-S2",
+     "drivers": [
+      {
+       "from": "13:30",
+       "to": "21:15",
+       "driver_id": "P07-D0411"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD15-S1",
+     "drivers": [
+      {
+       "from": "05:35",
+       "to": "13:15",
+       "driver_id": "P07-D0840"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD15-S2",
+     "drivers": [
+      {
+       "from": "13:15",
+       "to": "20:55",
+       "driver_id": "P07-D0843"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD16-S1",
+     "drivers": [
+      {
+       "from": "05:40",
+       "to": "13:30",
+       "driver_id": "P07-D0614"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD16-S2",
+     "drivers": [
+      {
+       "from": "13:30",
+       "to": "21:25",
+       "driver_id": "P07-D0415"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD17-S1",
+     "drivers": [
+      {
+       "from": "05:25",
+       "to": "12:10",
+       "driver_id": "P07-D0079"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD17-S2",
+     "drivers": [
+      {
+       "from": "12:10",
+       "to": "18:55",
+       "driver_id": "P07-D0356"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD17-S3",
+     "drivers": [
+      {
+       "from": "18:55",
+       "to": "25:50",
+       "driver_id": "P07-D1119"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R17-WD18-S1",
+     "drivers": [
+      {
+       "from": "07:20",
+       "to": "15:45",
+       "driver_id": "P07-D0190"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R18-WD01-S1",
+     "drivers": [
+      {
+       "from": "06:40",
+       "to": "15:15",
+       "driver_id": "P07-D0581"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R18-WD02-S1",
+     "drivers": [
+      {
+       "from": "07:40",
+       "to": "16:05",
+       "driver_id": "P07-D0192"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R18-WD03-S1",
+     "drivers": [
+      {
+       "from": "05:45",
+       "to": "14:00",
+       "driver_id": "P07-D1275"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R18-WD03-S2",
+     "drivers": [
+      {
+       "from": "14:00",
+       "to": "22:20",
+       "driver_id": "P07-D1277"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R18-WD04-S1",
+     "drivers": [
+      {
+       "from": "08:40",
+       "to": "16:45",
+       "driver_id": "P07-D0213"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R18-WD05-S1",
+     "drivers": [
+      {
+       "from": "08:55",
+       "to": "17:35",
+       "driver_id": "P07-D0215"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R18-WD06-S1",
+     "drivers": [
+      {
+       "from": "05:35",
+       "to": "12:20",
+       "driver_id": "P07-D1142"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R18-WD06-S2",
+     "drivers": [
+      {
+       "from": "12:20",
+       "to": "19:05",
+       "driver_id": "P07-D0371"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R18-WD06-S3",
+     "drivers": [
+      {
+       "from": "19:05",
+       "to": "25:50",
+       "driver_id": "P07-D1183"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R18-WD07-S1",
+     "drivers": [
+      {
+       "from": "05:35",
+       "to": "12:05",
+       "driver_id": "P07-D1151"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R18-WD07-S2",
+     "drivers": [
+      {
+       "from": "12:05",
+       "to": "18:35",
+       "driver_id": "P07-D0350"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R18-WD07-S3",
+     "drivers": [
+      {
+       "from": "18:35",
+       "to": "25:15",
+       "driver_id": "P07-D0902"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R18-WD08-S1",
+     "drivers": [
+      {
+       "from": "05:35",
+       "to": "12:20",
+       "driver_id": "P07-D1054"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R18-WD08-S2",
+     "drivers": [
+      {
+       "from": "12:20",
+       "to": "19:05",
+       "driver_id": "P07-D0372"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R18-WD08-S3",
+     "drivers": [
+      {
+       "from": "19:05",
+       "to": "25:55",
+       "driver_id": "P07-D1184"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R18-WD09-S1",
+     "drivers": [
+      {
+       "from": "08:55",
+       "to": "17:35",
+       "driver_id": "P07-D1005"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R18-WD10-S1",
+     "drivers": [
+      {
+       "from": "04:50",
+       "to": "11:25",
+       "driver_id": "P07-D0003"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R18-WD10-S2",
+     "drivers": [
+      {
+       "from": "11:25",
+       "to": "18:00",
+       "driver_id": "P07-D0235"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R18-WD10-S3",
+     "drivers": [
+      {
+       "from": "18:00",
+       "to": "24:40",
+       "driver_id": "P07-D0616"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R18-WD11-S1",
+     "drivers": [
+      {
+       "from": "08:00",
+       "to": "17:20",
+       "driver_id": "P07-D1297"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R18-WD12-S1",
+     "drivers": [
+      {
+       "from": "05:30",
+       "to": "12:10",
+       "driver_id": "P07-D0089"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R18-WD12-S2",
+     "drivers": [
+      {
+       "from": "12:10",
+       "to": "18:50",
+       "driver_id": "P07-D0358"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R18-WD12-S3",
+     "drivers": [
+      {
+       "from": "18:50",
+       "to": "25:35",
+       "driver_id": "P07-D1090"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R18-WD13-S1",
+     "drivers": [
+      {
+       "from": "06:10",
+       "to": "15:20",
+       "driver_id": "P07-D0131"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R18-WD14-S1",
+     "drivers": [
+      {
+       "from": "05:00",
+       "to": "13:00",
+       "driver_id": "P07-D0033"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R18-WD14-S2",
+     "drivers": [
+      {
+       "from": "13:00",
+       "to": "21:00",
+       "driver_id": "P07-D0393"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R19-WD01-S1",
+     "drivers": [
+      {
+       "from": "05:35",
+       "to": "13:40",
+       "driver_id": "P07-D0587"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R19-WD01-S2",
+     "drivers": [
+      {
+       "from": "13:40",
+       "to": "21:50",
+       "driver_id": "P07-D0423"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R19-WD02-S1",
+     "drivers": [
+      {
+       "from": "06:25",
+       "to": "15:35",
+       "driver_id": "P07-D1028"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R19-WD03-S1",
+     "drivers": [
+      {
+       "from": "05:35",
+       "to": "14:50",
+       "driver_id": "P07-D0579"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R19-WD04-S1",
+     "drivers": [
+      {
+       "from": "08:50",
+       "to": "17:35",
+       "driver_id": "P07-D0539"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R19-WD05-S1",
+     "drivers": [
+      {
+       "from": "05:15",
+       "to": "11:35",
+       "driver_id": "P07-D0609"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R19-WD05-S2",
+     "drivers": [
+      {
+       "from": "11:35",
+       "to": "17:55",
+       "driver_id": "P07-D0254"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R19-WD05-S3",
+     "drivers": [
+      {
+       "from": "17:55",
+       "to": "24:15",
+       "driver_id": "P07-D0567"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R19-WD06-S1",
+     "drivers": [
+      {
+       "from": "08:40",
+       "to": "17:15",
+       "driver_id": "P07-D0850"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R19-WD07-S1",
+     "drivers": [
+      {
+       "from": "08:05",
+       "to": "16:20",
+       "driver_id": "P07-D0939"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R19-WD08-S1",
+     "drivers": [
+      {
+       "from": "05:35",
+       "to": "15:05",
+       "driver_id": "P07-D0562"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R19-WD09-S1",
+     "drivers": [
+      {
+       "from": "04:55",
+       "to": "11:20",
+       "driver_id": "P07-D0690"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R19-WD09-S2",
+     "drivers": [
+      {
+       "from": "11:20",
+       "to": "17:45",
+       "driver_id": "P07-D0691"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R19-WD09-S3",
+     "drivers": [
+      {
+       "from": "17:45",
+       "to": "24:15",
+       "driver_id": "P07-D0534"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R19-WD10-S1",
+     "drivers": [
+      {
+       "from": "06:15",
+       "to": "15:25",
+       "driver_id": "P07-D0751"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R19-WD11-S1",
+     "drivers": [
+      {
+       "from": "05:35",
+       "to": "14:00",
+       "driver_id": "P07-D0926"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R19-WD11-S2",
+     "drivers": [
+      {
+       "from": "14:00",
+       "to": "22:30",
+       "driver_id": "P07-D0443"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R19-WD12-S1",
+     "drivers": [
+      {
+       "from": "08:05",
+       "to": "16:15",
+       "driver_id": "P07-D0195"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R24-WD01-S1",
+     "drivers": [
+      {
+       "from": "05:15",
+       "to": "12:00",
+       "driver_id": "P07-D1139"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R24-WD01-S2",
+     "drivers": [
+      {
+       "from": "12:00",
+       "to": "18:45",
+       "driver_id": "P07-D0342"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R24-WD01-S3",
+     "drivers": [
+      {
+       "from": "18:45",
+       "to": "25:35",
+       "driver_id": "P07-D0973"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R24-WD02-S1",
+     "drivers": [
+      {
+       "from": "06:15",
+       "to": "13:50",
+       "driver_id": "P07-D0950"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R24-WD02-S2",
+     "drivers": [
+      {
+       "from": "13:50",
+       "to": "21:30",
+       "driver_id": "P07-D0429"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R24-WD03-S1",
+     "drivers": [
+      {
+       "from": "05:20",
+       "to": "12:05",
+       "driver_id": "P07-D1304"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R24-WD03-S2",
+     "drivers": [
+      {
+       "from": "12:05",
+       "to": "18:50",
+       "driver_id": "P07-D1308"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-R24-WD03-S3",
+     "drivers": [
+      {
+       "from": "18:50",
+       "to": "25:35",
+       "driver_id": "P07-D1092"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD01-S1",
+     "drivers": [
+      {
+       "from": "06:25",
+       "to": "15:35",
+       "driver_id": "P07-D0153"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD02-S1",
+     "drivers": [
+      {
+       "from": "08:35",
+       "to": "17:40",
+       "driver_id": "P07-D0212"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD03-S1",
+     "drivers": [
+      {
+       "from": "05:15",
+       "to": "11:50",
+       "driver_id": "P07-D0067"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD03-S2",
+     "drivers": [
+      {
+       "from": "11:50",
+       "to": "18:25",
+       "driver_id": "P07-D0312"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD03-S3",
+     "drivers": [
+      {
+       "from": "18:25",
+       "to": "25:05",
+       "driver_id": "P07-D0749"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD04-S1",
+     "drivers": [
+      {
+       "from": "06:55",
+       "to": "15:25",
+       "driver_id": "P07-D0182"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD04-S2",
+     "drivers": [
+      {
+       "from": "15:25",
+       "to": "23:55",
+       "driver_id": "P07-D0509"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD05-S1",
+     "drivers": [
+      {
+       "from": "06:20",
+       "to": "14:15",
+       "driver_id": "P07-D0144"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD05-S2",
+     "drivers": [
+      {
+       "from": "14:15",
+       "to": "22:15",
+       "driver_id": "P07-D0454"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD06-S1",
+     "drivers": [
+      {
+       "from": "05:05",
+       "to": "11:50",
+       "driver_id": "P07-D0046"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD06-S2",
+     "drivers": [
+      {
+       "from": "11:50",
+       "to": "18:35",
+       "driver_id": "P07-D0313"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD06-S3",
+     "drivers": [
+      {
+       "from": "18:35",
+       "to": "25:25",
+       "driver_id": "P07-D0914"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD07-S1",
+     "drivers": [
+      {
+       "from": "05:30",
+       "to": "12:05",
+       "driver_id": "P07-D0092"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD07-S2",
+     "drivers": [
+      {
+       "from": "12:05",
+       "to": "18:40",
+       "driver_id": "P07-D0352"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD07-S3",
+     "drivers": [
+      {
+       "from": "18:40",
+       "to": "25:15",
+       "driver_id": "P07-D0967"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD08-S1",
+     "drivers": [
+      {
+       "from": "06:45",
+       "to": "15:10",
+       "driver_id": "P07-D0173"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD08-S2",
+     "drivers": [
+      {
+       "from": "15:10",
+       "to": "23:40",
+       "driver_id": "P07-D0505"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD09-S1",
+     "drivers": [
+      {
+       "from": "06:00",
+       "to": "13:35",
+       "driver_id": "P07-D0118"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD09-S2",
+     "drivers": [
+      {
+       "from": "13:35",
+       "to": "21:10",
+       "driver_id": "P07-D0416"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD10-S1",
+     "drivers": [
+      {
+       "from": "08:30",
+       "to": "17:55",
+       "driver_id": "P07-D0208"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD11-S1",
+     "drivers": [
+      {
+       "from": "06:05",
+       "to": "13:45",
+       "driver_id": "P07-D0130"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD11-S2",
+     "drivers": [
+      {
+       "from": "13:45",
+       "to": "21:25",
+       "driver_id": "P07-D0424"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD12-S1",
+     "drivers": [
+      {
+       "from": "06:55",
+       "to": "15:00",
+       "driver_id": "P07-D0184"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD13-S1",
+     "drivers": [
+      {
+       "from": "04:50",
+       "to": "11:35",
+       "driver_id": "P07-D0025"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD13-S2",
+     "drivers": [
+      {
+       "from": "11:35",
+       "to": "18:20",
+       "driver_id": "P07-D0269"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD13-S3",
+     "drivers": [
+      {
+       "from": "18:20",
+       "to": "25:15",
+       "driver_id": "P07-D0732"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD14-S1",
+     "drivers": [
+      {
+       "from": "04:55",
+       "to": "11:40",
+       "driver_id": "P07-D0029"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD14-S2",
+     "drivers": [
+      {
+       "from": "11:40",
+       "to": "18:25",
+       "driver_id": "P07-D0280"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD14-S3",
+     "drivers": [
+      {
+       "from": "18:25",
+       "to": "25:15",
+       "driver_id": "P07-D0755"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD15-S1",
+     "drivers": [
+      {
+       "from": "06:30",
+       "to": "15:40",
+       "driver_id": "P07-D0164"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD16-S1",
+     "drivers": [
+      {
+       "from": "06:10",
+       "to": "14:10",
+       "driver_id": "P07-D0133"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD17-S1",
+     "drivers": [
+      {
+       "from": "07:00",
+       "to": "14:55",
+       "driver_id": "P07-D0196"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD17-S2",
+     "drivers": [
+      {
+       "from": "14:55",
+       "to": "22:50",
+       "driver_id": "P07-D0524"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD18-S1",
+     "drivers": [
+      {
+       "from": "05:30",
+       "to": "12:05",
+       "driver_id": "P07-D0093"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD18-S2",
+     "drivers": [
+      {
+       "from": "12:05",
+       "to": "18:40",
+       "driver_id": "P07-D0354"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD18-S3",
+     "drivers": [
+      {
+       "from": "18:40",
+       "to": "25:20",
+       "driver_id": "P07-D1024"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD19-S1",
+     "drivers": [
+      {
+       "from": "06:20",
+       "to": "14:55",
+       "driver_id": "P07-D0146"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD20-S1",
+     "drivers": [
+      {
+       "from": "06:15",
+       "to": "14:45",
+       "driver_id": "P07-D0138"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD20-S2",
+     "drivers": [
+      {
+       "from": "14:45",
+       "to": "23:15",
+       "driver_id": "P07-D0516"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD21-S1",
+     "drivers": [
+      {
+       "from": "05:30",
+       "to": "12:10",
+       "driver_id": "P07-D0098"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD21-S2",
+     "drivers": [
+      {
+       "from": "12:10",
+       "to": "18:50",
+       "driver_id": "P07-D0359"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD21-S3",
+     "drivers": [
+      {
+       "from": "18:50",
+       "to": "25:35",
+       "driver_id": "P07-D0842"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD22-S1",
+     "drivers": [
+      {
+       "from": "05:40",
+       "to": "12:15",
+       "driver_id": "P07-D0125"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD22-S2",
+     "drivers": [
+      {
+       "from": "12:15",
+       "to": "18:50",
+       "driver_id": "P07-D0379"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD22-S3",
+     "drivers": [
+      {
+       "from": "18:50",
+       "to": "25:30",
+       "driver_id": "P07-D0877"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD23-S1",
+     "drivers": [
+      {
+       "from": "05:20",
+       "to": "11:50",
+       "driver_id": "P07-D0074"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD23-S2",
+     "drivers": [
+      {
+       "from": "11:50",
+       "to": "18:20",
+       "driver_id": "P07-D0329"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD23-S3",
+     "drivers": [
+      {
+       "from": "18:20",
+       "to": "25:00",
+       "driver_id": "P07-D0735"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD24-S1",
+     "drivers": [
+      {
+       "from": "05:55",
+       "to": "13:30",
+       "driver_id": "P07-D0127"
+      }
+     ]
+    },
+    {
+     "shift_id": "P07-RES-WD24-S2",
+     "drivers": [
+      {
+       "from": "13:30",
+       "to": "21:10",
+       "driver_id": "P07-D0418"
+      }
+     ]
+    }
+   ],
+   "unfilled": [],
+   "transfers": [],
+   "down_vehicles": [],
+   "down_drivers": [],
+   "repairs": [],
+   "late_drivers": [
+    {
+     "driver_id": "P07-D0199",
+     "since": "07:20",
+     "comes": "07:50"
+    }
+   ],
+   "log": [
+    {
+     "kind": "event",
+     "type": "late",
+     "driver_id": "P07-D0199",
+     "at": "07:20",
+     "delay_min": 30,
+     "option": 1,
+     "title": "Обмен сменами с водителем 070202"
+    }
+   ],
+   "violations": []
+  }
+ },
+ "GET /api/days/day-3/log": {
+  "_note": "запись опоздания: delay_min и выбранный вариант",
+  "response": {
+   "log": [
+    {
+     "kind": "event",
+     "type": "late",
+     "driver_id": "P07-D0199",
+     "at": "07:20",
+     "delay_min": 30,
+     "option": 1,
+     "title": "Обмен сменами с водителем 070202"
+    }
+   ]
   }
  },
  "POST /api/days/import": {
@@ -37477,7 +48305,7 @@
    "error": "Нет дня day-9"
   },
   "409": {
-   "error": "Сначала постройте план: POST /api/days/day-3/plan"
+   "error": "Сначала постройте план: POST /api/days/day-4/plan"
   },
   "400 реестр с непонятым значением": {
    "error": "реестр прочитан с ошибками, день не принят",

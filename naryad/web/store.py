@@ -94,6 +94,7 @@ def state_to_dict(state: OpsState) -> dict:
             "down_vehicles": state.down_vehicles, "down_drivers": state.down_drivers,
             "repairs": {vehicle: [[a, b] for a, b in windows] for vehicle, windows in state.repairs.items()},
             "transfers": state.transfers, "history": history_to_dict(state.history),
+            "late": {driver: [since, comes] for driver, (since, comes) in state.late.items()},
             "log": list(state.log)}
 
 
@@ -107,6 +108,9 @@ def state_from_dict(data: dict, day: Day) -> OpsState:
                              for vehicle, windows in (data.get("repairs") or {}).items()},
                     history=history_from_dict(data.get("history")),
                     transfers=dict(data.get("transfers") or {}),
+                    # дни, записанные до появления поля, читаются как без опозданий
+                    late={driver: (int(since), int(comes))
+                          for driver, (since, comes) in (data.get("late") or {}).items()},
                     log=list(data.get("log") or []))
 
 

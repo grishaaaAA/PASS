@@ -186,7 +186,7 @@ def intervals(day: Day, state, t: int | None = None) -> dict:
         worst = None        # роста нет, называть «худший» маршрут не за что
 
     if worst is None and stopped:
-        answer = "Без единого автобуса на маршрутах: " + ", ".join(r["number"] for r in stopped[:5])
+        answer = "Без единого автобуса на маршрутах: " + _names(stopped)
     elif worst is None:
         answer = "Интервалы как по плану"
     else:
@@ -195,11 +195,9 @@ def intervals(day: Day, state, t: int | None = None) -> dict:
                   + (f", в {worst['at']}" if worst["at"] else ""))
     reasons = []
     if stopped:
-        reasons.append("маршруты, где не осталось ни одного автобуса: "
-                       + ", ".join(r["number"] for r in stopped[:5]))
+        reasons.append("маршруты, где не осталось ни одного автобуса: " + _names(stopped))
     if over:
-        reasons.append("интервал вырос больше чем на четверть на маршрутах: "
-                       + ", ".join(r["number"] for r in over[:5]))
+        reasons.append("интервал вырос больше чем на четверть на маршрутах: " + _names(over))
     if not reasons:
         reasons.append(f"на всех {len(working)} маршрутах интервал в пределах плана")
 
@@ -211,6 +209,12 @@ def intervals(day: Day, state, t: int | None = None) -> dict:
                     "over_25_percent": len(over), "stopped_routes": len(stopped),
                     "routes_total": len(working)})
     return {**head, "routes": rows}
+
+
+def _names(rows: list, n: int = 5) -> str:
+    """Номера первых n маршрутов и хвост «и ещё N», чтобы по тексту было видно, сколько их."""
+    names = ", ".join(r["number"] for r in rows[:n])
+    return names + (f" и ещё {len(rows) - n}" if len(rows) > n else "")
 
 
 # --- почему этот автобус -------------------------------------------------------
@@ -400,6 +404,68 @@ def why_unfilled(day: Day, plan: Plan, item_id: str, history: History | None = N
                                                "reason_text": REASONS.get(reason, "")})
 
 
+# причины пустого наряда (смены) в состоянии дня: их нет в утреннем плане, только внутри дня
+STATE_REASONS = {
+    "removed_by_dispatcher": "диспетчер снял вручную",
+    "after_event": "утром был закрыт, после событий дня остался пустым",
+}
+
+
+EVENT_NAMES = {"breakdown": "сход", "accident": "ДТП", "no_show": "неявка", "late": "опоздание"}
+
+
+def _log_line(entry: dict) -> str:
+    """Запись журнала одной строкой: «09:00 ДТП, решение: Не заменять» или заголовок правки."""
+    if entry.get("kind", "event") == "edit":
+        return f"{entry.get('from', '')}-{entry.get('to', '')} {entry.get('title', '')}"
+    name = EVENT_NAMES.get(entry.get("type"), "событие")
+    return f"{entry.get('at', '')} {name}, решение: {entry.get('title', '')}"
+
+
+def why_emptied(day: Day, plan: Plan, state, item_id: str, reason: str, log: list) -> dict:
+    """Почему наряд или смена, закрытые утром, сейчас пустые.
+
+    Утреннее объяснение тут не годится: утром на наряде был автобус, и
+    explain/vehicle назвал бы его, хотя он уже сошёл. Здесь сказано, кто был
+    утром, что с ним стало и какие записи журнала его касаются.
+    """
+    if item_id in day.shifts:
+        shift = day.shifts[item_id]
+        question = f"Почему смена {item_id} ({_clock(shift.start)}-{_clock(shift.end)}) без водителя?"
+        morning = plan.drivers.get(item_id)
+        name = f"водитель {day.drivers[morning].tab_number}" if morning else "водитель"
+        if morning in state.down_drivers:
+            fate = f"{name} выбыл в {_at(state.down_drivers[morning])}"
+        elif morning in state.late:
+            fate = f"{name} опаздывает и придёт в {_at(state.late[morning][1])}"
+        else:
+            fate = f"{name} снят со смены"
+        emptied = "Утром была закрыта, после событий дня осталась без водителя"
+    else:
+        duty = day.duties[item_id]
+        question = f"Почему {_duty_name(day, duty)} не закрыт?"
+        morning = plan.vehicles.get(item_id)
+        name = f"автобус {day.vehicles[morning].board_number}" if morning else "автобус"
+        repairs = state.repairs.get(morning, [])
+        if morning in state.down_vehicles:
+            fate = f"{name} выбыл в {_at(state.down_vehicles[morning])}"
+        elif repairs:
+            fate = f"{name} в ремонте " + ", ".join(f"с {_at(a)} до {_at(b)}" for a, b in sorted(repairs))
+        else:
+            fate = f"{name} снят с наряда"
+        emptied = "Утром был закрыт, после событий дня остался без автобуса"
+    answer = "Диспетчер снял ресурс вручную" if reason == "removed_by_dispatcher" else emptied
+    related = [entry for entry in log
+               if item_id in (entry.get("duty_id"), entry.get("shift_id"))
+               or (morning and morning in (entry.get("vehicle_id"), entry.get("driver_id")))]
+    reasons = [f"Утром: {name}", fate[0].upper() + fate[1:]]
+    reasons += [_log_line(entry) for entry in related]
+    reasons.append("Закрыть можно правкой: кого законно поставить, подскажет edits/options")
+    return _answer(question, answer, reasons,
+                   {"reason": reason, "reason_text": STATE_REASONS.get(reason, ""),
+                    "morning": morning})
+
+
 def _why_shift_unfilled(day: Day, plan: Plan, shift_id: str, history: History, labor: dict) -> dict:
     shift = day.shifts[shift_id]
     duty = day.duties[shift.duty_id]
@@ -449,7 +515,9 @@ def explain_option(state, event, options: list, index: int = 0) -> dict:
     """Что даст вариант замены и чем он лучше следующего."""
     option = options[index]
     duties = len(state.vehicles)
-    touched = len({key for kind, key, _ in option.changes if kind.startswith("vehicle") and key})
+    # наряд меняется и тогда, когда на его смене меняется только водитель (обмен, замена водителя)
+    touched = len({key if kind.startswith("vehicle") else state.day.shifts[key].duty_id
+                   for kind, key, _ in option.changes if key})
     reasons = [option.note,
                f"Без работы на линии всего (на всех затронутых маршрутах): {_hm(option.lost_minutes)}",
                f"Меняется нарядов: {touched}, остальные {duties - touched} без изменений"]

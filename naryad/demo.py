@@ -60,6 +60,7 @@ class Demo:
         self.day = Day.from_dict(self.raw)
         self.day_id = ""
         self.step = 0
+        self.last_at = 0   # время последнего события: API принимает события только по порядку
 
     @staticmethod
     def _read(path: Path) -> dict:
@@ -107,12 +108,20 @@ class Demo:
               + ("" if not violations else f", первое: {violations[0]['text']}"))
         return planned
 
+    def _no_show_shift(self):
+        return min((s for s in self.day.shifts.values()
+                    if self.day.duties[s.duty_id].type == "line" and s.start >= 5 * 60),
+                   key=lambda s: (s.start, s.id), default=None)
+
+    def no_show_time(self) -> int:
+        """Когда случится недопуск: за 20 минут до первой утренней смены."""
+        shift = self._no_show_shift()
+        return max(0, shift.start - 20) if shift else 0
+
     def no_show(self) -> None:
         """Недопуск водителя на медосмотре: самая частая утренняя неприятность."""
         self.next_step("Событие: водителя не допустил медосмотр")
-        shift = min((s for s in self.day.shifts.values()
-                     if self.day.duties[s.duty_id].type == "line" and s.start >= 5 * 60),
-                    key=lambda s: (s.start, s.id), default=None)
+        shift = self._no_show_shift()
         if shift is None:
             raise DemoError("в дне нет утренней смены на линии")
         state = self.engine.days[self.day_id].state
@@ -134,18 +143,27 @@ class Demo:
         выходит чуть позже и уже пришёл.
         """
         self.next_step(f"Событие: водитель опаздывает на {delay} мин")
-        state = self.engine.days[self.day_id].state
-        shifts = [s for s in self.day.shifts.values()
-                  if self.day.duties[s.duty_id].type == "line" and s.start >= 7 * 60 + 20
-                  and state.driver_at(s.id, s.start)]
-        if not shifts:
+        shift = self._late_shift()
+        if shift is None:
             raise DemoError("в дне нет утренней смены на линии с водителем")
-        shift = min(shifts, key=lambda s: (s.start, s.id))
+        state = self.engine.days[self.day_id].state
         driver = self.day.drivers[state.driver_at(shift.id, shift.start)]
         route = self.day.routes[self.day.duties[shift.duty_id].route_id]
         print(f"  {hm(shift.start)}: водитель {driver.tab_number} должен выехать на маршрут {route.number} "
               f"и опаздывает на {delay} мин")
         self.event({"type": "late", "driver_id": driver.id, "at": hm(shift.start), "delay_min": delay})
+
+    def _late_shift(self):
+        """Первая смена на линии с водителем с 07:20 и не раньше последнего события."""
+        state = self.engine.days[self.day_id].state
+        shifts = [s for s in self.day.shifts.values()
+                  if self.day.duties[s.duty_id].type == "line"
+                  and s.start >= max(7 * 60 + 20, self.last_at) and state.driver_at(s.id, s.start)]
+        return min(shifts, key=lambda s: (s.start, s.id), default=None)
+
+    def late_time(self) -> int:
+        shift = self._late_shift()
+        return shift.start if shift else 7 * 60 + 20
 
     def breakdown(self, at: int, duration: int | None) -> None:
         """Сход автобуса с важного маршрута: то, из-за чего срываются рейсы."""
@@ -171,6 +189,7 @@ class Demo:
 
     def event(self, event: dict) -> None:
         """Варианты на событие, объяснение лучшего, применение и проверка."""
+        self.last_at = parse_time(event["at"])
         before = self.call("GET", f"/api/days/{self.day_id}/state")
         options = self.call("POST", f"/api/days/{self.day_id}/events/options", event)["options"]
         if not options:
@@ -300,11 +319,14 @@ def run(path: Path, at: int, duration: int | None, with_no_show: bool, late: int
     print("=" * WIDTH)
     demo.load(path)
     demo.plan()
+    # события идут по времени, как их примет API: сход в 07:00 раньше опоздания на 07:20
+    steps = [(at, 2, lambda: demo.breakdown(at, duration))]
     if with_no_show:
-        demo.no_show()
+        steps.append((demo.no_show_time(), 0, demo.no_show))
     if late:
-        demo.late(late)
-    demo.breakdown(at, duration)
+        steps.append((demo.late_time(), 1, lambda: demo.late(late)))
+    for _, _, step in sorted(steps, key=lambda item: item[:2]):
+        step()
     demo.dispatcher_edit()
     demo.journal()
     print()
