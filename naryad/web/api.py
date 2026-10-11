@@ -797,7 +797,7 @@ class Engine:
         buses = [b.who for b in sorted(state.vehicles.get(duty.id, []), key=lambda b: b.start)
                  if b.start < end and start < b.end]
         classes = sorted({day.vehicles[b].cls for b in buses}) or [duty.vehicle_class]
-        found = free_drivers(state, duty, start, end, load_labor(), classes=classes)
+        found = free_drivers(state, duty, start, end, load_labor(), classes=classes, vehicles=buses)
         shown = [{"driver_id": d, "tab_number": day.drivers[d].tab_number,
                   "own_vehicle": day.drivers[d].home_vehicle_id in buses} for d in found[:MAX_CANDIDATES]]
         return {**head, "for_vehicle": buses[0] if buses else None, "for_vehicles": buses,

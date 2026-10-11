@@ -35,7 +35,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date
 
-from naryad.core.invariants import load_labor, may_depart, rest_minutes, shift_limit, work_minutes
+from naryad.core.invariants import can_drive, load_labor, may_depart, rest_minutes, shift_limit, work_minutes
 from naryad.core.model import Day, Plan
 
 from .vehicles import PRIORITY_WEIGHT, RESERVE_VALUE
@@ -143,7 +143,7 @@ def solve_drivers(day: Day, vehicle_plan: Plan, history: History | None = None,
         options = []
         if work_minutes(shift.length, labor) <= limit:
             for d in available:
-                if d.park_id != duty.park_id or vehicle.cls not in d.classes:
+                if d.park_id != duty.park_id or not can_drive(d, vehicle, duty.route_id):
                     continue
                 state = history.get(d.id)
                 status = rest_status(state, base + shift.start, labor)

@@ -18,8 +18,8 @@ from __future__ import annotations
 
 from collections import Counter
 
-from naryad.core.invariants import (load_labor, may_depart, rest_minutes, shift_limit,
-                                    work_minutes)
+from naryad.core.invariants import (load_labor, may_depart, permit_problem, rest_minutes,
+                                    shift_limit, work_minutes)
 from naryad.core.model import REASONS, Day, Plan
 from naryad.solve.drivers import History, day_base, rest_status
 from naryad.solve.vehicles import allowed_classes, drop_costs, _groups
@@ -494,9 +494,15 @@ def _why_shift_unfilled(day: Day, plan: Plan, shift_id: str, history: History, l
     cls = vehicle.cls
     drivers = [d for d in day.drivers.values() if d.park_id == duty.park_id]
     blockers = Counter()
+    route = day.routes.get(duty.route_id) if duty.route_id else None
     for d in drivers:
-        if cls not in d.classes:
+        problem = permit_problem(d, vehicle, duty.route_id)
+        if problem and problem.startswith("нет допуска к классу"):
             blockers[f"нет допуска к классу «{CLASS_NAMES[cls]}»"] += 1
+        elif problem and problem.startswith("не обкатан"):
+            blockers[f"не обкатаны на марке {vehicle.make}"] += 1
+        elif problem:
+            blockers[f"нет допуска к маршруту {route.number if route else duty.route_id}"] += 1
         else:
             text = _driver_blocker(day, plan, d, shift, history, labor)
             key = ("работают на других сменах" if text.startswith("работает") else

@@ -12,10 +12,45 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 
 from naryad.data.check import check
+
+
+_LATIN = dict(zip("АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ",
+                  ["A", "B", "V", "G", "D", "E", "E", "ZH", "Z", "I", "I", "K", "L", "M", "N", "O", "P",
+                   "R", "S", "T", "U", "F", "H", "C", "CH", "SH", "SH", "", "Y", "", "E", "YU", "YA"]))
+
+
+# Написания, которые транслитерация не сводит: по-русски «ВолгаБас» через «а»,
+# «Мерседес-Бенц» целиком. Дополнять по живым реестрам.
+MAKE_ALIASES = {"VOLGABAS": "VOLGABUS", "MERSEDES": "MERCEDES", "MERSEDESBENC": "MERCEDES",
+                "MERCEDESBENZ": "MERCEDES", "LIAAZ": "LIAZ"}
+
+
+@lru_cache(maxsize=None)
+def normal_make(text) -> str:
+    """Марка автобуса к сравнимому виду: «ЛиАЗ», «LIAZ», «лиаз» -> «LIAZ».
+
+    В одной выгрузке марка бывает и по-русски, и латиницей: в допуске
+    водителя «НЕФАЗ», в карточке автобуса «NEFAZ 5299». Поэтому сравниваем
+    латиницей без пробелов и знаков.
+    """
+    upper = str(text or "").upper()
+    latin = re.sub(r"[^A-Z0-9]", "", "".join(_LATIN.get(ch, ch) for ch in upper))
+    return MAKE_ALIASES.get(latin, latin)
+
+
+def make_of(vehicle: dict) -> str:
+    """Марка автобуса: поле make, а если его нет - первое слово модели."""
+    make = vehicle.get("make")
+    if make:
+        return str(make).strip()
+    words = str(vehicle.get("model") or "").split()
+    return words[0] if words else ""
 
 
 def minutes(text: str) -> int:
@@ -81,6 +116,7 @@ class Vehicle:
     park_id: str
     condition: str
     home_route_id: str | None
+    make: str = ""          # марка как в данных; сравнивать через normal_make
 
 
 @dataclass(frozen=True)
@@ -92,6 +128,8 @@ class Driver:
     home_vehicle_id: str | None
     schedule: str
     medical: str | None
+    makes: tuple = ()       # марки, на которых обкатан, уже через normal_make; пусто - без ограничения
+    routes: tuple = ()      # маршруты, на которые допущен; пусто - без ограничения
 
 
 @dataclass
@@ -130,11 +168,13 @@ class Day:
             shifts={s["id"]: Shift(s["id"], s["duty_id"], s["order"], minutes(s["start"]),
                                    minutes(s["end"])) for s in data["shifts"]},
             vehicles={v["id"]: Vehicle(v["id"], v["board_number"], v["class"], v["fuel"],
-                                       v["park_id"], v["condition"], v["home_route_id"])
+                                       v["park_id"], v["condition"], v["home_route_id"], make_of(v))
                       for v in data["vehicles"]},
             drivers={d["id"]: Driver(d["id"], d["tab_number"], d["park_id"],
                                      tuple(d["classes"]), d["home_vehicle_id"],
-                                     d["schedule"], d["medical"]) for d in data["drivers"]},
+                                     d["schedule"], d["medical"],
+                                     tuple(normal_make(m) for m in d.get("makes") or ()),
+                                     tuple(d.get("routes") or ())) for d in data["drivers"]},
         )
         for shift in sorted(day.shifts.values(), key=lambda s: s.order):
             day.shifts_by_duty.setdefault(shift.duty_id, []).append(shift)

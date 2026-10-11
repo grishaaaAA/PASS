@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from naryad.core.invariants import load_labor, may_depart, rest_minutes, shift_limit, work_minutes
+from naryad.core.invariants import can_drive, load_labor, may_depart, rest_minutes, shift_limit, work_minutes
 from naryad.core.model import Day, Plan
 
 from .drivers import day_base
@@ -100,7 +100,7 @@ def baseline_drivers(day: Day, vehicle_plan: Plan, yesterday: dict | None = None
         duty = day.duties[shift.duty_id]
         vehicle = day.vehicles[vehicle_plan.vehicles[duty.id]]
         fits = [d for d in ready if d.id not in used and d.park_id == duty.park_id
-                and vehicle.cls in d.classes and rested(d.id, shift.start)]
+                and can_drive(d, vehicle, duty.route_id) and rested(d.id, shift.start)]
         driver = next((d for d in fits if d.home_vehicle_id == vehicle.id), fits[0] if fits else None)
         if driver is None:
             plan.unfilled[shift.id] = "no_driver"

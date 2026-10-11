@@ -109,8 +109,10 @@ class TestSynonyms(unittest.TestCase):
         """Поле, для которого нет синонимов, из реестра не прочитать никогда."""
         from naryad.data.check import SCHEMA
         for entity, fields in SCHEMA.items():
+            from naryad.data.check import OPTIONAL
             described = set(registry.COLUMNS[entity])
-            self.assertEqual({name for name, _, _ in fields}, described,
+            optional = {name for name, _ in OPTIONAL.get(entity, [])}
+            self.assertEqual({name for name, _, _ in fields} | optional, described,
                              f"{entity}: список полей и словарь синонимов разошлись")
 
     def test_engine_fields_are_really_used_by_the_engine(self):

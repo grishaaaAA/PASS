@@ -57,6 +57,17 @@ SCHEMA = {
     ],
 }
 
+# Необязательные поля: их может не быть вовсе. Нет поля - нет ограничения,
+# и данные без них работают как раньше (генератор их не пишет).
+# vehicles.make - марка автобуса; без неё марка берётся из первого слова model.
+# drivers.makes - марки, на которых водитель обкатан: у перевозчика допуск
+#   даётся на марку (МАЗ, НЕФАЗ, ЛиАЗ) на всех её модификациях.
+# drivers.routes - маршруты, на которые водитель допущен (номера маршрутов из routes.id).
+OPTIONAL = {
+    "vehicles": [("make", "str")],
+    "drivers": [("makes", "list"), ("routes", "list")],
+}
+
 # Обязательные поля meta: без даты и типа дня день нельзя ни спланировать,
 # ни показать. moment и format_version не обязательны, но если есть - проверяются.
 META_ENUMS = {
@@ -141,6 +152,31 @@ def _fields(data: dict, errors: list) -> None:
                                       f"допустимо {sorted(allowed)}")
 
 
+def _optional(data: dict, errors: list) -> None:
+    """Необязательные поля: если есть - нужного вида; пустой список - ошибка.
+
+    Пустой список допусков читался бы двояко: «ограничений нет» или «не
+    допущен никуда». Поэтому его не принимаем: нет ограничения - уберите поле.
+    """
+    for entity, fields in OPTIONAL.items():
+        for position, item in enumerate(data.get(entity, []), 1):
+            if not isinstance(item, dict):
+                continue
+            name = item.get("id", "?")
+            for field, kind in fields:
+                value = item.get(field)
+                if value is None:
+                    continue
+                if kind == "str" and not isinstance(value, str):
+                    errors.append(f"{entity} {name}: поле {field} должно быть str")
+                if kind == "list":
+                    if not isinstance(value, list) or not all(isinstance(v, str) and v.strip() for v in value):
+                        errors.append(f"{entity} {name}: поле {field} - список непустых строк")
+                    elif not value:
+                        errors.append(f"{entity} {name}: поле {field} пустое - нет ограничения, "
+                                      f"тогда уберите поле совсем")
+
+
 def check(data: dict) -> dict:
     errors: list = []
     warnings: list = []
@@ -153,6 +189,7 @@ def check(data: dict) -> dict:
         return {"errors": errors, "warnings": warnings}
 
     _fields(data, errors)
+    _optional(data, errors)
     if errors:
         return {"errors": errors, "warnings": warnings}
 
@@ -189,6 +226,15 @@ def check(data: dict) -> dict:
         if vehicle and vehicle["class"] not in driver["classes"]:
             errors.append(f"drivers {driver['id']}: закреплён за "
                           f"{vehicle['id']}, но нет допуска к классу {vehicle['class']}")
+        if vehicle and driver.get("makes"):
+            from naryad.core.model import make_of, normal_make  # model сама импортирует check
+            if normal_make(make_of(vehicle)) not in {normal_make(m) for m in driver["makes"]}:
+                errors.append(f"drivers {driver['id']}: закреплён за {vehicle['id']} марки "
+                              f"{make_of(vehicle) or 'без марки'}, но на этой марке не обкатан")
+        for route_id in driver.get("routes") or ():
+            if route_id not in routes:
+                warnings.append(f"drivers {driver['id']}: допуск к маршруту {route_id}, "
+                                f"такого маршрута в дне нет - этот допуск ничего не даёт")
         if driver["schedule"] != "work" and driver["medical"] is not None:
             errors.append(f"drivers {driver['id']}: не работает сегодня, но указан медосмотр")
         if (data.get("meta", {}).get("moment") == "morning" and driver["schedule"] == "work"

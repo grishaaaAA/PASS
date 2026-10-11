@@ -42,7 +42,7 @@ import zlib
 from pathlib import Path
 from xml.etree import ElementTree
 
-from .check import ENUMS, SCHEMA, check
+from .check import ENUMS, OPTIONAL, SCHEMA, check
 from .presets import CLASS_LABELS
 
 MAX_MESSAGES = 50          # длиннее список ошибок человеку не нужен
@@ -160,7 +160,8 @@ COLUMNS = {
         "id": ("id", "код", "код автобуса", "идентификатор"),
         "board_number": ("board number", "гаражный номер", "гаражный", "бортовой номер", "борт"),
         "plate": ("plate", "госномер", "гос номер", "регистрационный номер", "номер тс"),
-        "model": ("model", "модель", "марка", "марка модель"),
+        "model": ("model", "модель", "марка модель", "модель автобуса"),
+        "make": ("make", "марка", "марка автобуса", "производитель"),
         "class": ("class", "класс", "класс автобуса", "вместимость"),
         "fuel": ("fuel", "топливо", "вид топлива", "тип топлива"),
         "park_id": ("park id", "парк", "код парка", "парк приписки"),
@@ -177,6 +178,10 @@ COLUMNS = {
         "full_name": ("full name", "фио", "ф и о", "фамилия имя отчество", "водитель"),
         "park_id": ("park id", "парк", "код парка", "парк приписки"),
         "classes": ("classes", "классы", "допуск", "допуски", "допуск к классам", "категории"),
+        "makes": ("makes", "марки", "допуск по маркам", "допуск к маркам", "обкатан на", "обкатка",
+                  "обкатанные марки"),
+        "routes": ("routes", "маршруты", "допуск по маршрутам", "допуск к маршрутам",
+                   "маршруты водителя", "закрепление по маршрутам"),
         "home_vehicle_id": ("home vehicle id", "закрепленный автобус", "закрепление",
                             "свой автобус"),
         "schedule": ("schedule", "график", "график работы", "график на день"),
@@ -604,10 +609,21 @@ def build(tables: dict, meta: dict | None = None) -> tuple[dict, dict]:
                             f"а без этого значения нельзя")
                     continue
                 item[field] = _cell(entity, field, kind, raw, unmapped, (source, title, number))
+            # необязательные поля допуска: пустая ячейка - поля нет, то есть нет ограничения
+            for field, kind in OPTIONAL.get(entity, []):
+                if field not in found:
+                    continue
+                position, title = found[field]
+                raw = str(row[position]).strip() if position < len(row) else ""
+                if kind == "list" and not LIST_SEPARATORS.sub("", raw).strip():
+                    raw = ""
+                if raw:
+                    item[field] = _cell(entity, field, kind, raw, unmapped, (source, title, number))
             data[entity].append(item)
             line["rows"] += 1
 
     _fill_counts(data, report)
+    _route_numbers(data, report)
 
     for (entity, field, value), seen in sorted(unmapped.items(), key=lambda kv: -len(kv[1]["rows"])):
         report["unknown_values"].append({"entity": entity, "field": field, "value": value,
@@ -617,6 +633,31 @@ def build(tables: dict, meta: dict | None = None) -> tuple[dict, dict]:
             f"{seen['source']}, столбец «{seen['title']}», {_rows_text(seen['rows'])}: "
             f"значение «{value}» не понято. Допустимо: {_allowed(entity, field)}")
     return data, report
+
+
+def _route_numbers(data: dict, report: dict) -> None:
+    """Маршруты в допуске водителя: в реестре это номера («15», «181»), в дне - коды.
+
+    Номер переводится в код маршрута того же парка. Код, который уже есть
+    в маршрутах, остаётся как есть. Непонятное тоже остаётся: общая
+    проверка предупредит, что такого маршрута в дне нет.
+    """
+    ids = {r["id"] for r in data["routes"]}
+    by_number = {(r["park_id"], normal(r["number"])): r["id"] for r in data["routes"]}
+    turned = 0
+    for driver in data["drivers"]:
+        routes = driver.get("routes")
+        if not routes:
+            continue
+        mapped = []
+        for value in routes:
+            code = value if value in ids else by_number.get((driver.get("park_id"), normal(value)), value)
+            turned += code != value
+            mapped.append(code)
+        driver["routes"] = list(dict.fromkeys(mapped))
+    if turned:
+        report["warnings"].append(f"допуск водителей к маршрутам: номера маршрутов переведены в коды "
+                                  f"маршрутов своего парка ({turned})")
 
 
 def _fill_counts(data: dict, report: dict) -> None:

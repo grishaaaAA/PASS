@@ -48,8 +48,8 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass, field
 
-from naryad.core.invariants import (Violation, load_labor, may_depart, shift_limit,
-                                    work_minutes)
+from naryad.core.invariants import (Violation, can_drive, load_labor, may_depart, permit_problem,
+                                    shift_limit, work_minutes)
 from naryad.core.model import Day, Plan
 from naryad.solve.drivers import History, day_base, remember, rest_status
 from naryad.solve.vehicles import GROWTH_POWER, PRIORITY_WEIGHT, STOP_SHARE
@@ -302,8 +302,21 @@ def _busy_until(state: OpsState, kind: str, who: str, start: int, end: int,
     return end
 
 
+def _allowed_on(state: OpsState, driver_id: str, vehicle_ids, duty) -> bool:
+    """Водитель может вести каждый из этих автобусов на маршруте наряда (permit_problem).
+
+    Автобусов нет - проверяются класс наряда и маршрут.
+    """
+    driver = state.day.drivers[driver_id]
+    if driver.routes and duty.route_id and duty.route_id not in driver.routes:
+        return False
+    if not vehicle_ids:
+        return duty.vehicle_class in driver.classes
+    return all(can_drive(driver, state.day.vehicles[v], duty.route_id) for v in vehicle_ids)
+
+
 def free_drivers(state: OpsState, duty, start: int, end: int, labor: dict,
-                 cls: str | None = None, classes=None) -> list:
+                 cls: str | None = None, classes=None, vehicles=None) -> list:
     """Водители, которые законно могут работать на наряде с start до end.
 
     Не работали сегодня, работают по графику, медосмотр не провален, не
@@ -316,6 +329,8 @@ def free_drivers(state: OpsState, duty, start: int, end: int, labor: dict,
     classes - несколько классов сразу, когда в окне на наряде стоят разные
     автобусы: нужен допуск к каждому. Если не передано ни то, ни другое -
     класс наряда.
+    vehicles - сами автобусы: тогда допуск проверяется целиком, вместе с
+    маркой и маршрутом (permit_problem). Маршрут проверяется всегда.
     """
     if work_minutes(end - start, labor) > shift_limit(labor):
         return []
@@ -327,7 +342,8 @@ def free_drivers(state: OpsState, duty, start: int, end: int, labor: dict,
         if (d.id in worked or d.id in state.down_drivers
                 or state.late_in(d.id, start, end) is not None
                 or not may_depart(d, state.day.meta.get("moment"))
-                or d.park_id != duty.park_id or any(c not in d.classes for c in need)):
+                or d.park_id != duty.park_id or any(c not in d.classes for c in need)
+                or not _allowed_on(state, d.id, vehicles, duty)):
             continue
         status = rest_status(state.history.peek(d.id), base + start, labor)
         if status is not None:
@@ -347,6 +363,26 @@ def _day_fits(state: OpsState, driver_id: str, start: int, end: int, labor: dict
     first = min([s.start for s in worked] + [start])
     last = max([s.end for s in worked] + [end])
     return work_minutes(last - first, labor) <= shift_limit(labor)
+
+
+def _taken_over(state: OpsState, vehicle_id: str, duty, start: int, end: int,
+                shift_id: str | None, drive_end: int) -> bool:
+    """Водители, которые в окне [start, end) примут автобус замены после пересменки, к нему допущены.
+
+    Водителя текущей смены до drive_end задаёт сам вариант, а следующие
+    смены наряда садятся на автобус замены по плану. Раньше их допуск не
+    проверялся: при одних классах это почти не проявлялось, при допуске
+    по марке - сразу.
+    """
+    vehicle = state.day.vehicles[vehicle_id]
+    for shift in state.day.shifts_by_duty.get(duty.id, []):
+        for seg in state.drivers.get(shift.id, []):
+            if shift.id == shift_id and seg.start < drive_end:
+                continue
+            if (seg.start < end and start < seg.end
+                    and not can_drive(state.day.drivers[seg.who], vehicle, duty.route_id)):
+                return False
+    return True
 
 
 def _replacement_options(state: OpsState, duty_id: str, t: int, labor: dict,
@@ -384,6 +420,8 @@ def _replacement_options(state: OpsState, duty_id: str, t: int, labor: dict,
             continue
         if _busy_until(state, "vehicle", rv, arrive, gap_end, (reserve.id,)) < gap_end:
             continue  # резервный автобус уже обещан другому наряду
+        if not _taken_over(state, rv, duty, arrive, gap_end, shift_id, drive_end):
+            continue  # следующие смены наряда на этой марке или маршруте ездить не могут
         rv_cls = day.vehicles[rv].cls
         home = gap_end + SUPPLY_MIN  # когда автобус вернётся в резерв
         changes = [("vehicle_end", reserve.id, t), ("vehicle", duty_id, Segment(arrive, gap_end, rv)),
@@ -392,6 +430,7 @@ def _replacement_options(state: OpsState, duty_id: str, t: int, labor: dict,
         rd = state.driver_at(r_shift.id, t) if r_shift else None
         if (rd is not None and rd not in state.down_drivers
                 and rv_cls in day.drivers[rd].classes
+                and can_drive(day.drivers[rd], day.vehicles[rv], duty.route_id)
                 and _day_fits(state, rd, arrive, drive_end, labor)
                 and _busy_until(state, "driver", rd, arrive, drive_end, (r_shift.id,)) >= drive_end):
             back_to_reserve = _busy_until(state, "driver", rd, drive_end + SUPPLY_MIN,
@@ -400,7 +439,7 @@ def _replacement_options(state: OpsState, duty_id: str, t: int, labor: dict,
                         ("driver", r_shift.id, Segment(drive_end + SUPPLY_MIN, back_to_reserve, rd))]
             who = f"водитель резерва {day.drivers[rd].tab_number}"
         else:
-            free = free_drivers(state, duty, arrive, drive_end, labor, rv_cls)
+            free = free_drivers(state, duty, arrive, drive_end, labor, rv_cls, vehicles=[rv])
             if not free:
                 continue
             changes.append(("driver", shift_id, Segment(arrive, drive_end, free[0])))
@@ -418,8 +457,8 @@ def _replacement_options(state: OpsState, duty_id: str, t: int, labor: dict,
             if v.condition == "ok" and v.cls in classes
             and state.transfers.get(v.id, v.park_id) == duty.park_id  # отданный в другой парк - там и работает
             and v.id not in state.down_vehicles and not state.vehicle_busy_after(v.id, t)]
-    v = idle[0] if idle else None
-    free = (free_drivers(state, duty, arrive, drive_end, labor, v.cls)
+    v = next((x for x in idle if _taken_over(state, x.id, duty, arrive, gap_end, shift_id, drive_end)), None)
+    free = (free_drivers(state, duty, arrive, drive_end, labor, v.cls, vehicles=[v.id])
             if v is not None and arrive < gap_end else [])
     if free:
         options.append(Option(
@@ -441,10 +480,12 @@ def _replacement_options(state: OpsState, duty_id: str, t: int, labor: dict,
             continue
         d_shift = state.shift_at(donor.id, t)
         dd = state.driver_at(d_shift.id, t) if d_shift else None
-        if dd is None or day.vehicles[dv].cls not in day.drivers[dd].classes:
+        if dd is None or not can_drive(day.drivers[dd], day.vehicles[dv], duty.route_id):
             continue
         if _busy_until(state, "vehicle", dv, move_in, gap_end, (donor.id,)) < gap_end:
             continue  # автобус донора уже обещан другому наряду
+        if not _taken_over(state, dv, duty, move_in, gap_end, shift_id, drive_end):
+            continue  # следующие смены наряда на этом автобусе ездить не могут
         d_end = min(drive_end, d_shift.end)            # водитель донора - до конца своей смены
         d_end = min(d_end, _busy_until(state, "driver", dd, move_in, d_end, (d_shift.id,)))
         home = min(donor.end, gap_end + TRANSFER_MIN)  # когда автобус вернётся на свой маршрут
@@ -583,9 +624,10 @@ def _driver_options(state: OpsState, event, labor: dict) -> list:
             if swapped is not None:
                 options.append(swapped)
         # водителю замены нужен допуск к каждому автобусу, который будет на наряде в его окне
-        classes = sorted({day.vehicles[s.who].cls for s in trial.vehicles.get(duty.id, [])
-                          if s.start < until and arrive < s.end}) or [duty.vehicle_class]
-        free = free_drivers(trial, duty, arrive, until, labor, classes=classes) if arrive < until else []
+        buses = sorted({s.who for s in trial.vehicles.get(duty.id, []) if s.start < until and arrive < s.end})
+        classes = sorted({day.vehicles[b].cls for b in buses}) or [duty.vehicle_class]
+        free = (free_drivers(trial, duty, arrive, until, labor, classes=classes, vehicles=buses)
+                if arrive < until else [])
         free = [d for d in free if d != event.driver_id]  # опоздавший ещё не пришёл
         if free:
             options.append(Option("free_driver", f"Водитель {day.drivers[free[0]].tab_number}",
@@ -598,7 +640,8 @@ def _driver_options(state: OpsState, event, labor: dict) -> list:
             r_shift = trial.shift_at(reserve.id, arrive)
             rd = trial.driver_at(r_shift.id, arrive) if r_shift else None
             if (rd is None or rd in trial.down_drivers
-                    or any(c not in day.drivers[rd].classes for c in classes)):
+                    or any(c not in day.drivers[rd].classes for c in classes)
+                    or not _allowed_on(trial, rd, buses, duty)):
                 continue
             if not _day_fits(trial, rd, arrive, until, labor) or arrive >= until:
                 continue
@@ -837,13 +880,14 @@ def free_vehicles(state: OpsState, duty, start: int, end: int) -> list:
     check_state). Пара к free_drivers.
     """
     allowed = _classes(state, duty)
-    permits = [set(state.day.drivers[s.who].classes)
+    on_duty = [state.day.drivers[s.who]
                for shift in state.day.shifts_by_duty.get(duty.id, [])
                for s in state.drivers.get(shift.id, []) if s.start < end and start < s.end]
     out = []
     for vehicle in state.day.vehicles.values():
         if (vehicle.condition != "ok" or vehicle.id in state.down_vehicles
-                or vehicle.cls not in allowed or any(vehicle.cls not in p for p in permits)):
+                or vehicle.cls not in allowed
+                or any(not can_drive(d, vehicle, duty.route_id) for d in on_duty)):
             continue
         if state.transfers.get(vehicle.id, vehicle.park_id) != duty.park_id:
             continue
@@ -990,9 +1034,12 @@ def check_state(state: OpsState, labor: dict | None = None) -> list:
                 bad("driver_medical", f"смена {shift_id}: водитель {seg.who} не допущен "
                                       f"по медосмотру ({driver.medical})", shift_id, seg.who)
             for bus in state.vehicles.get(duty.id, []):
-                if bus.start < seg.end and seg.start < bus.end and day.vehicles[bus.who].cls not in driver.classes:
-                    bad("driver_permit", f"смена {shift_id}: у водителя {seg.who} нет допуска "
-                                         f"к автобусу {bus.who}", shift_id, seg.who, bus.who)
+                if not (bus.start < seg.end and seg.start < bus.end):
+                    continue
+                problem = permit_problem(driver, day.vehicles[bus.who], duty.route_id)
+                if problem:
+                    bad("driver_permit", f"смена {shift_id}: водитель {seg.who} на автобусе {bus.who}: "
+                                         f"{problem}", shift_id, seg.who, bus.who)
 
     busy = {}
     for table, kind in ((state.vehicles, "автобус"), (state.drivers, "водитель")):
