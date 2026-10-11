@@ -2,8 +2,9 @@
 Расстановка водителей по сменам (А4) с памятью о прошлых днях.
 
 Что гарантируется (жёстко):
-- допуск к классу автобуса, свой парк, по графику работает, медосмотр
-  не провален, одна смена в день, смена не длиннее дневной нормы;
+- допуск к автобусу (класс, марка и маршрут наряда, permit_problem), свой
+  парк, по графику работает, медосмотр не провален, одна смена в день,
+  смена не длиннее дневной нормы;
 - отдых после предыдущей смены по Приказу Минтранса № 160: не меньше
   11 ч (до 9 ч - не больше 3 раз между еженедельными отдыхами, п. 17) и
   не меньше двойного времени работы (п. 16);
@@ -17,7 +18,13 @@
    маршрута. Смены разбираются от ценных к дешёвым, и если свободного
    водителя нет, его ищут перестановкой уже назначенных (поиск
    увеличивающей цепочки). Такой порядок даёт лучший возможный набор
-   закрытых смен (жадный алгоритм на трансверсальном матроиде).
+   закрытых смен (жадный алгоритм на трансверсальном матроиде) - для
+   тех автобусов, что поставила расстановка автобусов. Она водителей не
+   знает, и при допуске по марке на наряде может оказаться автобус, на
+   который никто из свободных не обкатан: тогда его меняют на
+   простаивающий того же класса другой марки, если смен закрывается
+   больше (_swap_buses). Это улучшение, а не точный оптимум по паре
+   автобус-водитель.
 2. Кого ставить. Выбранные смены раздаются заново в порядке начала (так
    водитель держится своего времени суток изо дня в день). При выборе
    водителя порядок предпочтений: закреплённый
@@ -36,7 +43,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from naryad.core.invariants import can_drive, load_labor, may_depart, rest_minutes, shift_limit, work_minutes
-from naryad.core.model import Day, Plan
+from naryad.core.model import Day, Plan, normal_make
 
 from .vehicles import PRIORITY_WEIGHT, RESERVE_VALUE
 
@@ -138,8 +145,9 @@ def solve_drivers(day: Day, vehicle_plan: Plan, history: History | None = None,
     available = [d for d in day.drivers.values()
                  if may_depart(d, day.meta.get("moment"))]
     working_vehicles = set(vehicle_plan.vehicles.values())
-    candidates = {}
-    for shift, duty, vehicle in shifts:
+
+    def ranked(shift, duty, vehicle) -> list:
+        """Кто может выйти на смену с этим автобусом, от более желательного к менее."""
         options = []
         if work_minutes(shift.length, labor) <= limit:
             for d in available:
@@ -156,7 +164,9 @@ def solve_drivers(day: Day, vehicle_plan: Plan, history: History | None = None,
                 home_here = d.home_vehicle_id == vehicle.id
                 home_elsewhere = not home_here and d.home_vehicle_id in working_vehicles
                 options.append((not home_here, home_elsewhere, status == "reduced", hours, d.id))
-        candidates[shift.id] = [o[-1] for o in sorted(options)]
+        return [o[-1] for o in sorted(options)]
+
+    candidates = {shift.id: ranked(shift, duty, vehicle) for shift, duty, vehicle in shifts}
 
     sys.setrecursionlimit(max(sys.getrecursionlimit(), 4 * len(available) + 100))
     holder = {}   # водитель -> смена
@@ -180,6 +190,15 @@ def solve_drivers(day: Day, vehicle_plan: Plan, history: History | None = None,
             taken[shift.id] = free
         elif not augment(shift.id, set()):
             plan.unfilled[shift.id] = "no_driver"
+    if any(d.makes for d in available) and _swap_buses(day, plan, shifts, candidates, holder, taken,
+                                                       augment, ranked, working_vehicles):
+        # автобусы поменялись: порядок кандидатов (свой автобус работает или нет) - по новому плану
+        for shift, duty, _ in shifts:
+            candidates[shift.id] = ranked(shift, duty, day.vehicles[plan.vehicles[duty.id]])
+            if shift.id in taken:
+                plan.unfilled.pop(shift.id, None)
+            else:
+                plan.unfilled[shift.id] = "no_driver"
     # Второй проход: те же смены, но водители раздаются в порядке начала смен.
     # Так закреплённые водители держатся своего времени суток изо дня в день и
     # чаще попадают на свой автобус; набор закрытых смен не меняется.
@@ -193,13 +212,85 @@ def solve_drivers(day: Day, vehicle_plan: Plan, history: History | None = None,
             taken[shift_id] = free
         elif not augment(shift_id, set()):
             raise AssertionError(f"второй проход не закрыл смену {shift_id}")  # набор выполним - так не бывает
-    _keep_home(day, vehicle_plan, candidates, holder, taken)
+    _keep_home(day, plan, candidates, holder, taken)
     plan.drivers.update(taken)
 
     for shift_id, driver_id in taken.items():
         shift = day.shifts[shift_id]
         remember(history.get(driver_id), base + shift.start, base + shift.end, month, labor)
     return plan
+
+
+def _swap_buses(day: Day, plan: Plan, shifts: list, candidates: dict, holder: dict, taken: dict,
+                augment, ranked, working: set) -> bool:
+    """Автобус другой марки на наряд, где смена осталась без водителя. True - план поменялся.
+
+    Расстановка автобусов (А3) о водителях не знает и берёт автобус нужного
+    класса по бортовому номеру. С допуском по марке это важно: на наряде
+    может оказаться автобус марки, на которой никто из свободных водителей
+    не обкатан, а в парке простаивает исправный автобус того же класса
+    другой марки, на который водитель есть. Тогда автобусы меняются, если
+    смен наряда закрывается больше (с весом важности, как при выборе смен).
+    Остальные смены дня водителя не теряют: смены наряда закрываются
+    увеличивающими цепочками, а они только переставляют людей. Класс тот
+    же, автобусы, переброшенные утром между парками, не трогаются. Без
+    списков марок у водителей обмен ничего не даёт, и проход не зовут.
+    """
+    own, value = defaultdict(list), {}
+    for shift, duty, _ in shifts:
+        own[duty.id].append(shift)
+        value[shift.id] = _shift_value(day, duty, shift.length)
+    used = set(plan.vehicles.values())
+    spare = defaultdict(list)   # (парк, класс) -> исправные автобусы без наряда
+    for v in day.vehicles.values():
+        if v.condition == "ok" and v.id not in used and v.id not in plan.transfers:
+            spare[(v.park_id, v.cls)].append(v)
+    swapped, improved = False, True
+    while improved:   # каждый обмен строго добавляет закрытых смен, поэтому цикл конечен
+        improved = False
+        gaps = {}
+        for shift, duty, _ in shifts:
+            if shift.id not in taken:
+                gaps[duty.id] = max(gaps.get(duty.id, 0.0), value[shift.id])
+        for duty_id in sorted(gaps, key=lambda d: (-gaps[d], d)):
+            duty, current = day.duties[duty_id], day.vehicles[plan.vehicles[duty_id]]
+            if current.id in plan.transfers:
+                continue
+            before = sum(value[s.id] for s in own[duty_id] if s.id in taken)
+            pool = spare[(duty.park_id, current.cls)]
+            tried = {normal_make(current.make)}
+            # сначала закреплённый за этим маршрутом, потом ничей, чужой закреплённый - последним
+            for bus in sorted(pool, key=lambda v: (v.home_route_id != duty.route_id,
+                                                   v.home_route_id is not None, v.board_number)):
+                if normal_make(bus.make) in tried:
+                    continue
+                tried.add(normal_make(bus.make))
+                saved = dict(holder), dict(taken), {s.id: candidates[s.id] for s in own[duty_id]}
+                for s in own[duty_id]:
+                    candidates[s.id] = ranked(s, duty, bus)
+                    if s.id in taken and taken[s.id] not in candidates[s.id]:
+                        del holder[taken.pop(s.id)]
+                for s in sorted(own[duty_id], key=lambda s: (-value[s.id], s.id)):
+                    if s.id not in taken:
+                        free = next((d for d in candidates[s.id] if d not in holder), None)
+                        if free is not None:
+                            holder[free], taken[s.id] = s.id, free
+                        else:
+                            augment(s.id, set())
+                if sum(value[s.id] for s in own[duty_id] if s.id in taken) > before + 1e-9:
+                    plan.vehicles[duty_id] = bus.id
+                    pool.remove(bus)
+                    pool.append(current)
+                    working.discard(current.id)
+                    working.add(bus.id)
+                    swapped = improved = True
+                    break
+                holder.clear()
+                holder.update(saved[0])
+                taken.clear()
+                taken.update(saved[1])
+                candidates.update(saved[2])
+    return swapped
 
 
 def _keep_home(day: Day, vehicle_plan: Plan, candidates: dict, holder: dict, taken: dict) -> None:

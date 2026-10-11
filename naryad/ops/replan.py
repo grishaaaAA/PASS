@@ -23,8 +23,9 @@
 поверх существующего. Окно замены ограничивается началом ближайшего
 следующего отрезка наряда и смены, свобода автобуса и водителя проверяется
 на всём отрезке по всем нарядам, а выбывший ресурс снимается со всех
-нарядов и смен сразу. Допуск водителя проверяется по классу того автобуса,
-который он реально поведёт: на маршрут бывает допущено несколько классов.
+нарядов и смен сразу. Допуск водителя проверяется по тому автобусу, который
+он реально поведёт (на маршрут бывает допущено несколько классов), и по
+маршруту наряда: класс, марка и маршрут, правило permit_problem.
 
 Допущения (уточнить у перевозчика; пока координат парков и конечных
 нет, время подачи - постоянное):
@@ -50,7 +51,7 @@ from dataclasses import dataclass, field
 
 from naryad.core.invariants import (Violation, can_drive, load_labor, may_depart, permit_problem,
                                     shift_limit, work_minutes)
-from naryad.core.model import Day, Plan
+from naryad.core.model import Day, Plan, normal_make
 from naryad.solve.drivers import History, day_base, remember, rest_status
 from naryad.solve.vehicles import GROWTH_POWER, PRIORITY_WEIGHT, STOP_SHARE
 
@@ -321,8 +322,9 @@ def free_drivers(state: OpsState, duty, start: int, end: int, labor: dict,
 
     Не работали сегодня, работают по графику, медосмотр не провален, не
     выбыли, не опаздывают (опоздавший свободен только с момента, когда
-    придёт), допуск к классу, отдых после вчерашней смены по нормам,
-    смена не длиннее дневной нормы.
+    придёт), допуск к классу (и к марке и маршруту, если переданы
+    автобусы), отдых после вчерашней смены по нормам, смена не длиннее
+    дневной нормы.
 
     cls - класс автобуса, который водитель реально поведёт. Он может
     отличаться от класса наряда: на маршрут допущено несколько классов.
@@ -457,9 +459,21 @@ def _replacement_options(state: OpsState, duty_id: str, t: int, labor: dict,
             if v.condition == "ok" and v.cls in classes
             and state.transfers.get(v.id, v.park_id) == duty.park_id  # отданный в другой парк - там и работает
             and v.id not in state.down_vehicles and not state.vehicle_busy_after(v.id, t)]
-    v = next((x for x in idle if _taken_over(state, x.id, duty, arrive, gap_end, shift_id, drive_end)), None)
-    free = (free_drivers(state, duty, arrive, drive_end, labor, v.cls, vehicles=[v.id])
-            if v is not None and arrive < gap_end else [])
+    # Берётся первый автобус, к которому есть и свободный водитель, и допуск следующих
+    # смен наряда, а не просто первый по номеру: при допуске по марке на первую марку
+    # свободного водителя может не быть, а на другую - есть. Допуск зависит только от
+    # класса и марки, поэтому каждая пара проверяется один раз.
+    v, free, tried = None, [], set()
+    for x in idle if arrive < gap_end else ():
+        if (x.cls, normal_make(x.make)) in tried:
+            continue
+        tried.add((x.cls, normal_make(x.make)))
+        if not _taken_over(state, x.id, duty, arrive, gap_end, shift_id, drive_end):
+            continue
+        free = free_drivers(state, duty, arrive, drive_end, labor, x.cls, vehicles=[x.id])
+        if free:
+            v = x
+            break
     if free:
         options.append(Option(
             "idle", f"Автобус из парка {v.board_number} + водитель {day.drivers[free[0]].tab_number}",
@@ -875,9 +889,9 @@ def free_vehicles(state: OpsState, duty, start: int, end: int) -> list:
 
     Исправны, не выбыли, не в ремонте после схода на время, подходящего
     класса, из парка наряда (или переброшены в него утром), свободны на
-    всём окне, и к их классу допущены водители, которые уже стоят на
-    сменах наряда в этом окне (зеркало правила driver_permit в
-    check_state). Пара к free_drivers.
+    всём окне, и к ним допущены водители, которые уже стоят на сменах
+    наряда в этом окне: класс, марка и маршрут наряда, permit_problem
+    (зеркало правила driver_permit в check_state). Пара к free_drivers.
     """
     allowed = _classes(state, duty)
     on_duty = [state.day.drivers[s.who]

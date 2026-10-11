@@ -495,12 +495,15 @@ def _why_shift_unfilled(day: Day, plan: Plan, shift_id: str, history: History, l
     drivers = [d for d in day.drivers.values() if d.park_id == duty.park_id]
     blockers = Counter()
     route = day.routes.get(duty.route_id) if duty.route_id else None
+    make = vehicle.make or "без марки"   # как в permit_problem
+    permits = 0                          # сколько водителей не допущены к автобусу на этом наряде
     for d in drivers:
         problem = permit_problem(d, vehicle, duty.route_id)
+        permits += problem is not None
         if problem and problem.startswith("нет допуска к классу"):
             blockers[f"нет допуска к классу «{CLASS_NAMES[cls]}»"] += 1
         elif problem and problem.startswith("не обкатан"):
-            blockers[f"не обкатаны на марке {vehicle.make}"] += 1
+            blockers[f"не обкатаны на марке {make}"] += 1
         elif problem:
             blockers[f"нет допуска к маршруту {route.number if route else duty.route_id}"] += 1
         else:
@@ -510,7 +513,12 @@ def _why_shift_unfilled(day: Day, plan: Plan, shift_id: str, history: History, l
                    "положен еженедельный отдых" if "45 ч" in text else
                    "свободны, но нужны на другие смены" if text.startswith("свободен") else text)
             blockers[key] += 1
-    answer = f"Нет водителя, которому по графику и нормам можно выйти на эту смену"
+    if drivers and permits == len(drivers):
+        # дело не в графике и нормах, а в допуске: так и говорим, иначе ищут не там
+        answer = (f"Никто из водителей парка не допущен к автобусу {vehicle.board_number} ({make}) "
+                  f"на этом наряде: дело в допуске, а не в графике и нормах")
+    else:
+        answer = "Нет водителя, которому по графику и нормам можно выйти на эту смену"
     reasons = [f"Водителей парка: {len(drivers)}"] + [f"{k}: {n}" for k, n in blockers.most_common()]
     return _answer(question, answer, reasons, {"drivers": len(drivers), **dict(blockers)})
 

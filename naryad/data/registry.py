@@ -50,7 +50,19 @@ MAX_SHEET_ROWS = 200_000   # строк на листе; у реестра го�
 MAX_SHEET_COLUMNS = 1_024  # столбцов на листе; у реестра их десятки
 MAX_HOURS = 36             # время наряда: после полуночи часы идут дальше 24, но не через сутки с лишним
 TIME_FIELDS = {("duties", "start"), ("duties", "end"), ("shifts", "start"), ("shifts", "end")}
-LIST_SEPARATORS = re.compile(r"[|,;/]")
+LIST_SEPARATORS = re.compile(r"[|,;/\r\n]")   # перенос строки - список внутри ячейки Excel
+
+# Необязательные поля допуска и марки (check.OPTIONAL): что в них можно написать.
+# Прочерк, «?» или «нет» в такой ячейке читаются двояко - «ограничения нет» или
+# «не допущен никуда» (у марки - «марки нет» или «не знаем»), поэтому не
+# угадываются (правило 2): нет ограничения - пустая ячейка.
+PERMIT_TEXT = {
+    ("vehicles", "make"): "марка буквами («ЛиАЗ», «МАЗ»); марки нет - пустая ячейка",
+    ("drivers", "makes"): "марки через | или запятую («МАЗ, ЛиАЗ»); нет ограничения - пустая ячейка",
+    ("drivers", "routes"): "номера маршрутов через | или запятую («3, 13а»); нет ограничения - пустая ячейка",
+}
+NO_VALUE_WORDS = {"нет"}
+LETTER = re.compile(r"[^\W\d_]")
 
 # Поля, без которых движок не примет решение: их не выдумываем.
 ENGINE_FIELDS = {
@@ -478,6 +490,12 @@ def _single(entity: str, field: str, kind: str, raw: str):
     виде: в реестре, выгруженном из нашего же формата, стоят готовые коды
     и цифры, и их тоже надо принимать.
     """
+    if (entity, field) in PERMIT_TEXT:
+        # в марке нужна буква, в маршруте - буква или цифра; «нет» не толкуем
+        meaningful = LETTER.search(raw) if field in ("make", "makes") else normal(raw)
+        if not meaningful or normal(raw) in NO_VALUE_WORDS:
+            raise ValueError(raw)
+        return raw
     words = VALUE_INDEX.get((entity, field))
     if words is None:
         return _plain(entity, field, kind, raw)
@@ -524,6 +542,8 @@ def _allowed(entity: str, field: str) -> str:
         return ", ".join(f"{code}" + (f" ({w[0]})" if w else "") for code, w in words.items())
     if (entity, field) in TIME_FIELDS:
         return f"время в виде ЧЧ:ММ, часы после полуночи идут дальше 24, но не больше {MAX_HOURS - 1}:59"
+    if (entity, field) in PERMIT_TEXT:
+        return PERMIT_TEXT[(entity, field)]
     kinds = {"int": "целое число", "float": "число", "list": "список через | или запятую"}
     return kinds.get(dict((f, k) for f, k, _ in SCHEMA[entity])[field], "текст")
 
@@ -533,6 +553,7 @@ def build(tables: dict, meta: dict | None = None) -> tuple[dict, dict]:
     data: dict = {"meta": {"format_version": "0.2", "source": "реестр перевозчика", **(meta or {})}}
     report: dict = {"entities": [], "errors": [], "warnings": [], "unknown_values": []}
     unmapped: dict = {}
+    places: dict = {}   # (сущность, поле, id записи) -> (таблица, столбец, строка): для ошибок после чтения
 
     for entity, fields in SCHEMA.items():
         data[entity] = []
@@ -551,6 +572,12 @@ def build(tables: dict, meta: dict | None = None) -> tuple[dict, dict]:
             report["errors"].append(f"{source}: таблица пустая, нет даже заголовка")
             continue
         found, unknown = match_headers(entity, rows[head])
+        if entity == "vehicles" and "make" in found and "model" not in found:
+            # Одна «Марка» без «Модели» - это марка вместе с моделью («ЛиАЗ-529267»), так
+            # она и читалась до допуска по марке: кладём её в model, а марку для допуска
+            # движок возьмёт из её начала (naryad.core.model.make_of). В make «Марка»
+            # идёт, только когда рядом есть и «Модель».
+            found["model"] = found.pop("make")
         line["unknown_columns"] = unknown
         line["matched"] = {name: title for name, (_, title) in sorted(found.items())}
         key = NATURAL_KEY.get(entity)
@@ -619,11 +646,12 @@ def build(tables: dict, meta: dict | None = None) -> tuple[dict, dict]:
                     raw = ""
                 if raw:
                     item[field] = _cell(entity, field, kind, raw, unmapped, (source, title, number))
+                    places[(entity, field, id(item))] = (source, title, number)
             data[entity].append(item)
             line["rows"] += 1
 
     _fill_counts(data, report)
-    _route_numbers(data, report)
+    _route_numbers(data, report, places)
 
     for (entity, field, value), seen in sorted(unmapped.items(), key=lambda kv: -len(kv[1]["rows"])):
         report["unknown_values"].append({"entity": entity, "field": field, "value": value,
@@ -635,25 +663,62 @@ def build(tables: dict, meta: dict | None = None) -> tuple[dict, dict]:
     return data, report
 
 
-def _route_numbers(data: dict, report: dict) -> None:
+# Номер маршрута пишут то русскими буквами, то похожими латинскими («13а» и «13a»,
+# «114Х» и «114X»), а «Э» в номере экспресса - и как «E» («39Э», «39E»).
+_LOOKALIKE = str.maketrans("abcehkmoptxyэ", "авсенкмортхуе")
+
+
+def _route_key(text) -> str:
+    """Номер маршрута для сравнения: «13 а», «13a», «13А» -> «13а»; «39-Э», «39E» -> «39е»."""
+    return normal(text).replace(" ", "").translate(_LOOKALIKE)
+
+
+def _route_numbers(data: dict, report: dict, places: dict) -> None:
     """Маршруты в допуске водителя: в реестре это номера («15», «181»), в дне - коды.
 
-    Номер переводится в код маршрута того же парка. Код, который уже есть
-    в маршрутах, остаётся как есть. Непонятное тоже остаётся: общая
-    проверка предупредит, что такого маршрута в дне нет.
+    Номер переводится в код маршрута того же парка. Номер узнаётся и в
+    другом написании: латинская буква вместо русской, пробел или дефис
+    («13a», «39-Э»), часть составного номера («2М» из «2М,2МА,2МБ»: запятая
+    в ячейке допуска делит список). Код, который уже есть в маршрутах,
+    остаётся как есть. Два толкования не угадываются (правило 2): значение,
+    которое одновременно код одного маршрута и номер другого, - ошибка с
+    обоими; номер, который в парке у двух маршрутов, остаётся непереведённым.
+    Непонятное тоже остаётся как есть: общая проверка предупредит, что
+    такого маршрута в дне нет, и что водитель тогда на линию не попадёт.
     """
-    ids = {r["id"] for r in data["routes"]}
-    by_number = {(r["park_id"], normal(r["number"])): r["id"] for r in data["routes"]}
+    ids = {r.get("id"): r for r in data["routes"]}
+    exact, loose = {}, {}
+    for r in data["routes"]:
+        park, number = r.get("park_id"), r.get("number") or ""
+        exact.setdefault((park, normal(number)), set()).add(r.get("id"))
+        for part in [number] + LIST_SEPARATORS.split(number):
+            if _route_key(part):
+                loose.setdefault((park, _route_key(part)), set()).add(r.get("id"))
     turned = 0
     for driver in data["drivers"]:
         routes = driver.get("routes")
         if not routes:
             continue
+        park = driver.get("park_id")
         mapped = []
         for value in routes:
-            code = value if value in ids else by_number.get((driver.get("park_id"), normal(value)), value)
-            turned += code != value
-            mapped.append(code)
+            found = exact.get((park, normal(value))) or loose.get((park, _route_key(value))) or set()
+            others = sorted(found - {value})
+            if others and (value in ids or len(found) > 1):
+                source, title, row = places.get(("drivers", "routes", id(driver)), ("Водители", "?", "?"))
+                meaning = (f"это и код маршрута №{ids[value].get('number')}, и номер маршрута с кодом "
+                           f"{', '.join(others)}. Не угадываем: пусть коды маршрутов не совпадают с "
+                           f"номерами (например, «М3»)" if value in ids else
+                           f"такой номер у нескольких маршрутов парка, коды {', '.join(others)}. "
+                           f"Не угадываем: напишите в допуске код маршрута")
+                report["errors"].append(f"{source}, строка {row}, столбец «{title}»: маршрут «{value}» - "
+                                        f"{meaning}")
+                mapped.append(value)
+            elif value not in ids and len(found) == 1:
+                turned += 1
+                mapped.append(next(iter(found)))
+            else:
+                mapped.append(value)
         driver["routes"] = list(dict.fromkeys(mapped))
     if turned:
         report["warnings"].append(f"допуск водителей к маршрутам: номера маршрутов переведены в коды "

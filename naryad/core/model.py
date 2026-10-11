@@ -25,32 +25,54 @@ _LATIN = dict(zip("АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬ�
                    "R", "S", "T", "U", "F", "H", "C", "CH", "SH", "SH", "", "Y", "", "E", "YU", "YA"]))
 
 
-# Написания, которые транслитерация не сводит: по-русски «ВолгаБас» через «а»,
-# «Мерседес-Бенц» целиком. Дополнять по живым реестрам.
-MAKE_ALIASES = {"VOLGABAS": "VOLGABUS", "MERSEDES": "MERCEDES", "MERSEDESBENC": "MERCEDES",
-                "MERCEDESBENZ": "MERCEDES", "LIAAZ": "LIAZ"}
+# Написания, которые транслитерация не сводит: по-русски «ВолгаБас» через «а»
+# (и «Волга Бас» через пробел, от неё остаётся первое слово), «Мерседес-Бенц»
+# целиком, «Скания», «Ивеко», «Хайгер», «Хендай». Дополнять по живым реестрам.
+MAKE_ALIASES = {"VOLGABAS": "VOLGABUS", "VOLGA": "VOLGABUS", "MERSEDES": "MERCEDES",
+                "MERSEDESBENC": "MERCEDES", "MERCEDESBENZ": "MERCEDES", "LIAAZ": "LIAZ",
+                "SKANIYA": "SCANIA", "IVEKO": "IVECO", "HAIGER": "HIGER",
+                "HENDAI": "HYUNDAI", "HENDE": "HYUNDAI", "HUNDAI": "HYUNDAI"}
+
+# Марка - буквы в начале первого слова: за ними идёт модель, через пробел или
+# дефис («ЛиАЗ-5292.65», «МАЗ 203», «НефАЗ-5299-30-51»). Дефис между буквами -
+# часть марки («Mercedes-Benz», «Li-AZ»). Кавычки и скобки перед маркой не мешают.
+_MAKE = re.compile(r"[^\w]*([^\W\d_]+(?:-[^\W\d_]+)*)")
+
+
+def make_part(text) -> str:
+    """Марка из начала текста, где за ней может идти модель: «ЛиАЗ-5292.65» -> «ЛиАЗ».
+
+    Допуск у перевозчика даётся на марку, на всех её модификациях, поэтому
+    модель отрезается. Нет букв в начале («5292», «-») - марки нет, пустая строка.
+    """
+    words = str(text or "").split()
+    found = _MAKE.match(words[0]) if words else None
+    return found.group(1) if found else ""
 
 
 @lru_cache(maxsize=None)
 def normal_make(text) -> str:
-    """Марка автобуса к сравнимому виду: «ЛиАЗ», «LIAZ», «лиаз» -> «LIAZ».
+    """Марка автобуса к сравнимому виду: «ЛиАЗ», «LIAZ», «лиаз», «ЛиАЗ-5292.65» -> «LIAZ».
 
-    В одной выгрузке марка бывает и по-русски, и латиницей: в допуске
-    водителя «НЕФАЗ», в карточке автобуса «NEFAZ 5299». Поэтому сравниваем
-    латиницей без пробелов и знаков.
+    В одной выгрузке марка бывает и по-русски, и латиницей, и вместе с
+    моделью: в допуске водителя «НЕФАЗ», в карточке автобуса «NEFAZ-5299».
+    Поэтому сравниваем только марку (make_part), латиницей без знаков.
+    Одно правило для автобуса и для допуска водителя: иначе марка из двух
+    слов («Golden Dragon») с одной стороны была бы короче, чем с другой.
     """
-    upper = str(text or "").upper()
+    upper = make_part(text).upper()
     latin = re.sub(r"[^A-Z0-9]", "", "".join(_LATIN.get(ch, ch) for ch in upper))
     return MAKE_ALIASES.get(latin, latin)
 
 
 def make_of(vehicle: dict) -> str:
-    """Марка автобуса: поле make, а если его нет - первое слово модели."""
-    make = vehicle.get("make")
-    if make:
-        return str(make).strip()
-    words = str(vehicle.get("model") or "").split()
-    return words[0] if words else ""
+    """Марка автобуса: из поля make, а если его нет или оно пустое - из начала model.
+
+    В обоих полях за маркой может идти модель («ЛиАЗ-5292.65», «МАЗ 203»):
+    она отрезается (make_part).
+    """
+    make = str(vehicle.get("make") or "").strip()
+    return make_part(make or vehicle.get("model"))
 
 
 def minutes(text: str) -> int:
