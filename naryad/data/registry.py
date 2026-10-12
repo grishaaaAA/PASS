@@ -74,6 +74,22 @@ ENGINE_FIELDS = {
     "vehicles": ("id", "board_number", "class", "fuel", "park_id", "condition", "home_route_id"),
     "drivers": ("id", "tab_number", "park_id", "classes", "home_vehicle_id", "schedule", "medical"),
 }
+# Как эти поля назвать в тексте ошибки: отчёт читает диспетчер, имена полей ему ничего не скажут.
+LABELS = {
+    "parks": {"id": "код парка", "name": "название", "state": "состояние",
+              "release_weekday": "выпуск в будни", "release_weekend": "выпуск в выходные"},
+    "routes": {"id": "код маршрута", "park_id": "парк", "number": "номер", "allowed_classes": "допустимые классы",
+               "priority": "важность", "turnaround_min": "время оборота"},
+    "duties": {"id": "код наряда", "park_id": "парк", "type": "тип наряда", "route_id": "маршрут",
+               "vehicle_class": "класс автобуса", "day_type": "тип дня", "start": "начало", "end": "окончание",
+               "shift_count": "количество смен"},
+    "shifts": {"id": "код смены", "duty_id": "наряд", "order": "номер смены", "start": "начало", "end": "окончание"},
+    "vehicles": {"id": "код автобуса", "board_number": "гаражный номер", "class": "класс", "fuel": "топливо",
+                 "park_id": "парк", "condition": "состояние", "home_route_id": "закреплённый маршрут"},
+    "drivers": {"id": "код водителя", "tab_number": "табельный номер", "park_id": "парк", "classes": "допуск к классам",
+                "home_vehicle_id": "закреплённый автобус", "schedule": "график", "medical": "медосмотр"},
+}
+assert all(set(LABELS[e]) == set(f) for e, f in ENGINE_FIELDS.items()), "подписи и обязательные поля разошлись"
 
 # Поля, без которых движок решит, но хуже: закрепление своего автобуса за
 # маршрутом и своего водителя за автобусом. Их отсутствие - предупреждение.
@@ -84,9 +100,9 @@ SOFT_FIELDS = {("vehicles", "home_route_id"), ("drivers", "home_vehicle_id"),
 NATURAL_KEY = {"vehicles": "board_number", "drivers": "tab_number"}
 
 SOFT_NOTES = {
-    ("vehicles", "home_route_id"): "закрепление автобусов за маршрутами не передано: движок "
+    ("vehicles", "home_route_id"): "закрепление автобусов за маршрутами не передано: расчёт "
                                    "не сможет ставить свой автобус на свой маршрут",
-    ("drivers", "home_vehicle_id"): "закрепление водителей за автобусами не передано: движок "
+    ("drivers", "home_vehicle_id"): "закрепление водителей за автобусами не передано: расчёт "
                                     "не сможет ставить своего водителя на свой автобус",
     ("drivers", "medical"): "отметки о медосмотре нет",
 }
@@ -536,10 +552,11 @@ def _rows_text(numbers: list) -> str:
 
 
 def _allowed(entity: str, field: str) -> str:
-    """Что можно написать в этом столбце - для текста ошибки."""
+    """Что можно написать в этом столбце - для текста ошибки. Словами, как в реестре, без наших кодов."""
     words = VALUES.get((entity, field))
     if words:
-        return ", ".join(f"{code}" + (f" ({w[0]})" if w else "") for code, w in words.items())
+        # короткие слова - сокращения: «то», «дтп», «чп» пишем как «ТО», «ДТП», «ЧП»
+        return ", ".join((w[0].upper() if len(w[0]) <= 3 else w[0]) if w else str(code) for code, w in words.items())
     if (entity, field) in TIME_FIELDS:
         return f"время в виде ЧЧ:ММ, часы после полуночи идут дальше 24, но не больше {MAX_HOURS - 1}:59"
     if (entity, field) in PERMIT_TEXT:
@@ -607,8 +624,8 @@ def build(tables: dict, meta: dict | None = None) -> tuple[dict, dict]:
                 line["defaulted"].append(field)
         if line["missing"]:
             report["errors"].append(
-                f"{source}: нет столбцов, без которых движок не решит: "
-                f"{', '.join(line['missing'])}. Понятые столбцы: "
+                f"{source}: нет обязательных столбцов: "
+                f"{', '.join(LABELS[entity][f] for f in line['missing'])}. Понятые столбцы: "
                 f"{', '.join(line['matched'].values()) or 'ни одного'}")
             continue
 

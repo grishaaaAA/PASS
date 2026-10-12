@@ -373,9 +373,13 @@ def check(data: dict) -> dict:
             errors.append(f"парк {pid}: по документам {park['list_count']} автобусов, "
                           f"в списке {len(own_vehicles)}")
         own_duties = [d for d in data["duties"] if d["park_id"] == pid]
-        if park["state"] != "working" and own_duties:
-            warnings.append(f"парк {pid}: состояние {park['state']}, но нарядов "
-                            f"{len(own_duties)} - движок их не закроет")
+        # парк останавливает только down; ЧП (emergency) пока считается рабочим (docs/CONTRACT.md, parks.state)
+        if park["state"] == "down" and own_duties:
+            warnings.append(f"парк {pid} остановлен, а нарядов у него "
+                            f"{len(own_duties)} - расчёт их не закроет")
+        elif park["state"] == "emergency":
+            warnings.append(f"парк {pid} в режиме ЧП: пока он считается рабочим, "
+                            f"наряды закрываются как обычно")
         if day_type in ("weekday", "weekend"):
             line = sum(d["type"] == "line" for d in own_duties)
             reserve = len(own_duties) - line
