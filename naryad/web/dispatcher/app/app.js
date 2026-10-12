@@ -322,7 +322,9 @@
     var side = $("#drSide"), m = S.m, day = S.info.day_id;
     side.innerHTML = '<div class="label">' + esc(D.dutyLabel(m, duty)) + '</div><div class="caption muted">' + D.hm(duty.start) + "-" + D.hm(duty.end) + ", класс " + (D.CLASSES[duty.cls] || duty.cls) +
       ", смен " + duty.shiftCount + '</div><div id="xpV"><span class="spinner"></span></div><div id="xpD"></div>' +
-      (duty.segs.length ? '<button class="ad-btn ad-btn--outline ad-btn--sm" id="btnEv"><i class="ad-icon ad-icon--warning ad-icon--sm"></i>Сход, неявка, опоздание…</button>' : "");
+      '<div class="drawer__acts">' +
+      (duty.segs.length ? '<button class="ad-btn ad-btn--outline ad-btn--sm" id="btnEv"><i class="ad-icon ad-icon--warning ad-icon--sm"></i>Сход, неявка, опоздание…</button>' : "") +
+      '<button class="ad-btn ad-btn--outline ad-btn--sm" id="btnEdit"><i class="ad-icon ad-icon--pencil-simple ad-icon--sm"></i>Изменить…</button></div>';
     var vReq = duty.segs.length ? D.explain(day, "vehicle", duty.id) : D.explain(day, "unfilled", duty.id);
     M.swap(side);
     vReq.then(function (x) { $("#xpV").innerHTML = D.explainHtml(x); M.swap($("#xpV")); }, function (e) { $("#xpV").innerHTML = '<p class="err">' + esc(e.message) + "</p>"; });
@@ -333,6 +335,9 @@
     var be = $("#btnEv");
     be && be.addEventListener("click", function () {
       D.events.open(m, day, duty, t, function (state) { apply(state); });
+    });
+    $("#btnEdit").addEventListener("click", function () {
+      D.edit.open(m, day, duty, t, function (state) { apply(state); });
     });
   }
 

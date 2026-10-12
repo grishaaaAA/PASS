@@ -63,6 +63,8 @@
           if (!r.ok) {
             var e = new Error(data.error || ("ошибка " + r.status));
             e.details = data.errors || [];
+            e.status = r.status;
+            e.body = data;  // у отказа 409 в теле список нарушений, окно правки показывает его
             throw e;
           }
           return data;
@@ -105,6 +107,12 @@
   }
   function eventOptions(dayId, event) { return api("POST", "/api/days/" + dayId + "/events/options", event); }
   function eventApply(dayId, event, option) { return api("POST", "/api/days/" + dayId + "/events/apply", { event: event, option: option }); }
+  // Правка диспетчера: кого законно можно поставить (query: duty_id или shift_id, from, to) и сама правка.
+  function editOptions(dayId, query) {
+    var q = Object.keys(query).map(function (k) { return k + "=" + encodeURIComponent(query[k]); }).join("&");
+    return api("GET", "/api/days/" + dayId + "/edits/options?" + q);
+  }
+  function editApply(dayId, edit) { return api("POST", "/api/days/" + dayId + "/edits", edit); }
 
   // ---------- модель для экрана ----------
   function build(day, plan, state, iv) {
@@ -281,6 +289,19 @@
     return (r ? "Маршрут " + r.number : "Резерв") + ", наряд " + d.id.split("-").pop();
   }
   function parkShort(m, id) { var p = m.parks[id]; return p ? p.name.replace("Автобусный парк ", "Парк ") : id; }
+  // Служебные номера в тексте движка (нарушение, запись журнала) - в то, что диспетчер видит на экране:
+  // автобус 7262, водитель Иванов И.И., наряд WD11 маршрута 11, смена 1 наряда WD11.
+  function plain(m, text) {
+    return String(text == null ? "" : text).replace(/\b[A-Z]\d{2}(?:-[A-Z0-9]+)+/g, function (id) {
+      var v = m.vehicles[id]; if (v) return v.board_number;
+      if (m.drivers[id]) return driverName(m, id);
+      var s = m.shifts[id];
+      if (s) return "смена " + s.order + (m.duties[s.duty] ? " наряда " + s.duty.split("-").pop() : "");
+      var d = m.duties[id];
+      if (d) return id.split("-").pop() + (d.route && m.routes[d.route] ? " маршрута " + m.routes[d.route].number : "");
+      return id;
+    });
+  }
 
   function explainHtml(x) {
     if (!x) return "";
@@ -719,9 +740,9 @@
     $: $, esc: esc, toMin: toMin, hm: hm, clock: clock, num: num, pct: pct, plural: plural,
     REASONS: REASONS, PRIORITY: PRIORITY, CLASSES: CLASSES, KINDS: KINDS,
     api: api, loadGeo: loadGeo, geoFor: geoFor, geoAll: function () { return GEO; }, loadParks: loadParks, loadRegistry: loadRegistry, loadMarks: loadMarks, saveMarks: saveMarks, submitDay: submitDay, calculate: calculate, explain: explain,
-    eventOptions: eventOptions, eventApply: eventApply, intervals: intervals,
+    eventOptions: eventOptions, eventApply: eventApply, editOptions: editOptions, editApply: editApply, intervals: intervals,
     build: build, intervalText: intervalText, worstText: worstText, worstShort: worstShort, coverage: coverage, lineDuties: lineDuties, running: running,
-    vehicleName: vehicleName, driverName: driverName, dutyLabel: dutyLabel, parkShort: parkShort,
+    vehicleName: vehicleName, driverName: driverName, dutyLabel: dutyLabel, parkShort: parkShort, plain: plain,
     explainHtml: explainHtml, gantt: gantt, makeMap: makeMap, flyBounds: flyBounds, flyTo: flyTo, coverageChart: coverageChart, parkMap: parkMap
   };
 })();
