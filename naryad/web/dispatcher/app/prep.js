@@ -680,10 +680,13 @@
   }
 
   $("#btnCalc").addEventListener("click", function () {
+    if (!P.base) return;  // реестр ещё грузится
     var c = counts();
     if (!c.lineDuties) return toast("Ни один маршрут не работает - считать нечего", true);
     $("#prepBusy").hidden = false; $("#prepBusyText").textContent = "Расчёт расстановки…";
-    save().then(function () { return window.App.run(buildDay(), function () { P.calculated = true; go("result"); }); }).then(function () {
+    // Не сохранились отметки - считаем всё равно, по тому, что отмечено на экране: сообщение
+    // «Не сохранилось» уже показано, а «Сохранить» осталась с числом, и сохранение можно повторить.
+    save().catch(function () {}).then(function () { return window.App.run(buildDay(), function () { P.calculated = true; go("result"); }); }).then(function () {
       $("#prepBusy").hidden = true;
     }, function (e) {
       $("#prepBusy").hidden = true;

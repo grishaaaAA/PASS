@@ -6,13 +6,16 @@
   "use strict";
   var D = window.Disp, esc = D.esc;
 
+  // Одно сообщение за раз: новое убирает прежнее, иначе они ложатся друг на друга и не читаются
   function toast(text, bad) {
+    var gone = function (x) { if (!x._gone) { x._gone = true; window.Motion.leave(x, "up"); } };
+    document.querySelectorAll(".toast").forEach(gone);
     var t = document.createElement("div");
     t.className = "toast" + (bad ? " toast--bad" : "");
     t.textContent = text;
     document.body.appendChild(t);
     window.Motion.enter(t, "up");
-    setTimeout(function () { window.Motion.leave(t, "up"); }, bad ? 6000 : 3500);
+    setTimeout(function () { gone(t); }, bad ? 6000 : 3500);
   }
 
   function eventTitle(m, ev) {
