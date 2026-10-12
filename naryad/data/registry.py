@@ -576,8 +576,8 @@ def build(tables: dict, meta: dict | None = None) -> tuple[dict, dict]:
         data[entity] = []
         if entity not in tables:
             report["errors"].append(
-                f"нет таблицы «{entity}»: ожидался лист или файл с названием "
-                f"{' или '.join(repr(n) for n in SHEETS[entity][:3])}")
+                f"нет таблицы «{SHEETS[entity][1].capitalize()}»: ожидался лист или файл с названием "
+                f"{' или '.join('«' + n.capitalize() + '»' for n in SHEETS[entity][1:4])}")
             continue
         source, rows = tables[entity]
         line = {"entity": entity, "source": source, "rows": 0, "matched": {},
@@ -602,7 +602,7 @@ def build(tables: dict, meta: dict | None = None) -> tuple[dict, dict]:
             line["derived"].append("id")
             report["warnings"].append(
                 f"{source}: нет столбца с кодом, код собран из столбца "
-                f"«{found[key][1]}». Если у перевозчика свой код - назовите столбец id")
+                f"«{found[key][1]}». Если у перевозчика свой код - назовите столбец «Код»")
         for field, kind, nullable in fields:
             if field in found or field in line["derived"]:
                 continue
@@ -612,10 +612,10 @@ def build(tables: dict, meta: dict | None = None) -> tuple[dict, dict]:
                 if (entity, field) == ("drivers", "medical") and \
                         (data["meta"].get("moment") or "plan") == "morning":
                     report["errors"].append(
-                        f"{source}: {note}, а день заявлен на утро (moment = morning). "
+                        f"{source}: {note}, а день заявлен на утро. "
                         "Утром на линию выпускается только водитель с пройденным медосмотром, "
                         "так что без этого столбца план будет пустым. Добавьте столбец "
-                        "«Медосмотр» или стройте план на завтра (moment = plan)")
+                        "«Медосмотр» или стройте план на завтра, а не на утро")
                 else:
                     report["warnings"].append(f"{source}: {note}")
             elif field in ENGINE_FIELDS[entity]:
@@ -781,7 +781,7 @@ def _fill_counts(data: dict, report: dict) -> None:
             (f"срока ремонта в реестре нет, неисправным автобусам поставлен 1 день (таких {len(broken)})"
              if ("vehicles", "repair_days_left") in missing else
              f"срок ремонта не заполнен у неисправных автобусов (таких {len(broken)}), им поставлен 1 день")
-            + ". Движок это поле не использует, оно нужно только прогнозу на несколько дней")
+            + ". Расчёт дня это поле не использует, оно нужно только прогнозу на несколько дней")
 
 
 # --- точки входа ---------------------------------------------------------------

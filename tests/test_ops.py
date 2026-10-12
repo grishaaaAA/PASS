@@ -310,7 +310,10 @@ class TestCheckState(unittest.TestCase):
                             (sick_driver, "не работает сегодня"), (no_permit, "нет допуска"),
                             (in_repair, "в ремонте"), (moved_away, "переброшен в парк P99")):
             with self.subTest(spoil.__name__):
-                self.assertIn(text, self.broken(spoil))
+                said = self.broken(spoil)
+                self.assertIn(text, said)
+                # нарушение видит диспетчер (список проблем, окно «Применить всё равно?»): без наших кодов
+                self.assertNotRegex(said, r"\b(medium|big|extra_big|sick|day_off|vacation|passed|pending|failed)\b")
 
 
 class TestFreeDrivers(unittest.TestCase):

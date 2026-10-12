@@ -51,6 +51,7 @@ from dataclasses import dataclass, field
 
 from naryad.core.invariants import (Violation, can_drive, load_labor, may_depart, permit_problem,
                                     shift_limit, work_minutes)
+from naryad.core import words
 from naryad.core.model import Day, Plan, normal_make
 from naryad.solve.drivers import History, day_base, remember, rest_status
 from naryad.solve.vehicles import GROWTH_POWER, PRIORITY_WEIGHT, STOP_SHARE
@@ -1018,7 +1019,7 @@ def check_state(state: OpsState, labor: dict | None = None) -> list:
         for seg in segments:
             vehicle = day.vehicles[seg.who]
             if vehicle.cls not in _classes(state, duty):
-                bad("vehicle_class", f"наряд {duty_id}: автобус {seg.who} класса {vehicle.cls} "
+                bad("vehicle_class", f"наряд {duty_id}: автобус {seg.who} класса {words.class_name(vehicle.cls)} "
                                      f"не подходит", duty_id, seg.who)
             today = state.transfers.get(vehicle.id, vehicle.park_id)  # где автобус сегодня
             if today != duty.park_id:
@@ -1039,14 +1040,14 @@ def check_state(state: OpsState, labor: dict | None = None) -> list:
                                    f"{driver.park_id}", shift_id, seg.who)
             if driver.schedule != "work":
                 bad("driver_not_working", f"смена {shift_id}: водитель {seg.who} не работает сегодня "
-                                          f"({driver.schedule})", shift_id, seg.who)
+                                          f"({words.word(words.SCHEDULE_NAMES, driver.schedule)})", shift_id, seg.who)
             window = state.late_in(seg.who, seg.start, seg.end)
             if window is not None:
                 bad("driver_late", f"смена {shift_id}: водитель {seg.who} опаздывает и придёт "
                                    f"в {_hm(window[1])}, а стоит с {_hm(seg.start)}", shift_id, seg.who)
             if driver.schedule == "work" and not may_depart(driver, day.meta.get("moment")):
-                bad("driver_medical", f"смена {shift_id}: водитель {seg.who} не допущен "
-                                      f"по медосмотру ({driver.medical})", shift_id, seg.who)
+                bad("driver_medical", f"смена {shift_id}: водитель {seg.who} не допущен: "
+                                      f"{words.word(words.MEDICAL_NAMES, driver.medical)}", shift_id, seg.who)
             for bus in state.vehicles.get(duty.id, []):
                 if not (bus.start < seg.end and seg.start < bus.end):
                     continue

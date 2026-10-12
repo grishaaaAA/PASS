@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
+from . import words
 from .model import REASONS, Day, Plan, normal_make
 
 LABOR_FILE = Path(__file__).with_name("labor.json")
@@ -83,7 +84,7 @@ def permit_problem(driver, vehicle, route_id: str | None) -> str | None:
     Нет списка - нет ограничения: данные без этих полей работают как раньше.
     """
     if vehicle.cls not in driver.classes:
-        return f"нет допуска к классу {vehicle.cls}"
+        return f"нет допуска к классу {words.class_name(vehicle.cls)}"
     if driver.makes and normal_make(vehicle.make) not in driver.makes:
         return f"не обкатан на марке {vehicle.make or 'без марки'}"
     if driver.routes and route_id and route_id not in driver.routes:
@@ -176,21 +177,21 @@ def _vehicle_fits(day: Day, plan: Plan) -> list:
         name = f"Автобус {vehicle.board_number} на наряде {duty_id}"
         if duty.day_type != day.day_type:
             out.append(Violation("wrong_day_type",
-                                 f"Наряд {duty_id} - для другого типа дня ({duty.day_type})",
+                                 f"Наряд {duty_id} - для другого типа дня ({words.word(words.DAY_TYPE_NAMES, duty.day_type)})",
                                  (duty_id,)))
         if duty.type == "line":
             allowed = day.routes[duty.route_id].allowed_classes
             if vehicle.cls not in allowed:
                 out.append(Violation("vehicle_class",
-                                     f"{name}: класс {vehicle.cls}, маршрут допускает "
-                                     f"{', '.join(allowed)}", (duty_id, vehicle_id)))
+                                     f"{name}: класс {words.class_name(vehicle.cls)}, маршрут допускает "
+                                     f"{words.class_names(allowed)}", (duty_id, vehicle_id)))
         elif vehicle.cls != duty.vehicle_class:
             out.append(Violation("vehicle_class",
-                                 f"{name}: класс {vehicle.cls}, резерв нужен класса "
-                                 f"{duty.vehicle_class}", (duty_id, vehicle_id)))
+                                 f"{name}: класс {words.class_name(vehicle.cls)}, резерв нужен класса "
+                                 f"{words.class_name(duty.vehicle_class)}", (duty_id, vehicle_id)))
         if vehicle.condition != "ok":
             out.append(Violation("vehicle_broken",
-                                 f"{name}: автобус неисправен ({vehicle.condition})",
+                                 f"{name}: автобус неисправен ({words.word(words.CONDITION_NAMES, vehicle.condition)})",
                                  (duty_id, vehicle_id)))
         if vehicle.park_id != duty.park_id and plan.transfers.get(vehicle.id) != duty.park_id:
             out.append(Violation("vehicle_park",
@@ -232,7 +233,7 @@ def _driver_fits(day: Day, plan: Plan) -> list:
             problem = permit_problem(driver, day.vehicles[vehicle_id], duty.route_id)
         else:
             problem = (None if duty.vehicle_class in driver.classes
-                       else f"нет допуска к классу {duty.vehicle_class}")
+                       else f"нет допуска к классу {words.class_name(duty.vehicle_class)}")
         if problem:
             out.append(Violation("driver_permit", f"{name}: {problem}", (shift_id, driver_id)))
         if driver.park_id != duty.park_id:
@@ -241,11 +242,10 @@ def _driver_fits(day: Day, plan: Plan) -> list:
                                  f"{duty.park_id}", (shift_id, driver_id)))
         if driver.schedule != "work":
             out.append(Violation("driver_not_working",
-                                 f"{name}: по графику не работает ({driver.schedule})",
+                                 f"{name}: по графику не работает ({words.word(words.SCHEDULE_NAMES, driver.schedule)})",
                                  (shift_id, driver_id)))
         if not may_depart(driver, day.meta.get("moment")) and driver.schedule == "work":
-            mark = {"failed": "не прошёл медосмотр", "pending": "медосмотр ещё не проходил",
-                    None: "нет отметки о медосмотре"}.get(driver.medical, f"медосмотр {driver.medical}")
+            mark = words.word(words.MEDICAL_NAMES, driver.medical)
             out.append(Violation("driver_medical", f"{name}: {mark}", (shift_id, driver_id)))
     return out
 
