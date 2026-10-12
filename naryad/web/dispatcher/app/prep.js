@@ -9,7 +9,8 @@
   "use strict";
   var D = window.Disp, $ = D.$, esc = D.esc, toast = D.events.toast;
   var M = window.Motion;
-  var P = { parks: [], sel: [], ids: [], park: null, date: null, base: null, ov: null, open: {}, tab: null, filter: { veh: "all", drv: "all" }, st: null, saved: null,
+  // file - название реестра, загруженного файлом (иначе null: реестр парка с сервера), fileParks - его парки
+  var P = { parks: [], sel: [], ids: [], park: null, date: null, base: null, file: null, fileParks: {}, ov: null, open: {}, tab: null, filter: { veh: "all", drv: "all" }, st: null, saved: null,
     sort: { veh: { key: "route", dir: 1 }, drv: { key: "name", dir: 1 } }, q: { veh: "", drv: "" } };
 
   function today() { var d = new Date(); return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
@@ -28,7 +29,7 @@
     document.body.classList.toggle("is-result", name === "result");
     renderCrumbs(name);
     if (!silent) {
-      var hash = name === "parks" ? "#parks" : name === "welcome" ? "#" : "#" + name + "/" + P.ids.join(",");
+      var hash = name === "parks" ? "#parks" : name === "welcome" ? "#" : "#" + name + "/" + key();
       if (location.hash !== hash) history.pushState(null, "", hash);
     }
     if (name === "result") window.App.resize();
@@ -55,16 +56,19 @@
   window.addEventListener("popstate", function () {
     if (current === "prep" && pending().length && location.hash.indexOf("#prep/") !== 0) {
       var back = location.hash;
-      history.pushState(null, "", "#prep/" + P.ids.join(","));  // остаёмся, пока не ответит
+      history.pushState(null, "", "#prep/" + key());  // остаёмся, пока не ответит
       confirmLeave().then(function (ok) { if (ok) { history.replaceState(null, "", back || location.pathname); route(); } });
       return;
     }
     route();
   });
+  // Адрес экрана: парки через запятую, а у реестра из файла - «file». После перезагрузки файла в памяти нет,
+  // и «file» ведёт на выбор парков, а не подменяет загруженное реестром парка с сервера.
+  function key() { return P.file ? "file" : P.ids.join(","); }
   function route() {
     var h = location.hash.slice(1).split("/");
     if ((h[0] === "prep" || h[0] === "result") && h[1]) {
-      if (P.ids.join(",") === h[1] && P.base) return go(h[0] === "result" && P.calculated ? "result" : "prep", true);
+      if (key() === h[1] && P.base) return go(h[0] === "result" && P.calculated ? "result" : "prep", true);
       return openParks(h[1].split(","), true);
     }
     go(h[0] === "welcome" || !h[0] ? "welcome" : "parks", true);
@@ -134,7 +138,7 @@
 
   // ---------- 1. Выбор парков ----------
   // Клик по карточке отмечает парк; можно выбрать несколько и рассчитать их одним днём.
-  function parkById(id) { return P.parks.filter(function (p) { return p.id === id; })[0]; }
+  function parkById(id) { return P.parks.filter(function (p) { return p.id === id; })[0] || (P.file && P.fileParks[id]) || undefined; }
   function selTitle(short) {
     var ps = P.ids.map(parkById).filter(Boolean);
     if (ps.length === 1) return short ? shortName(ps[0]) : ps[0].name;
@@ -208,6 +212,7 @@
   }
   $("#btnPickAll").addEventListener("click", function () { P.sel = P.parks.filter(function (p) { return p.available; }).map(function (p) { return p.id; }); saveSel(); renderParks(); });
 
+  $("#btnUpload").addEventListener("click", function () { D.upload.open(openFile); });
   $("#btnWork").addEventListener("click", function () {
     if (!P.sel.length) return;
     // порядок - как на экране
@@ -217,25 +222,40 @@
   // ---------- 2. Подготовка ----------
   // Реестры выбранных парков складываются в один день: движок сам решит переброски между ними.
   function openParks(ids, silent) {
+    P.file = null;
     ids = ids.filter(function (id) { var p = parkById(id); return p && p.available; });
     if (!ids.length) return go("parks", silent);
-    P.ids = ids; P.date = today(); P.calculated = false; P.base = null; P.tab = null;
-    $("#prepTitle").textContent = selTitle(false);
+    begin(ids, today(), silent);
+    Promise.all(ids.map(function (id) { return D.loadRegistry(id, P.date); }).concat([D.loadGeo(), D.loadMarks(ids, P.date)])).then(function (r) {
+      ready(merge(r.slice(0, ids.length)), r[ids.length + 1]);
+    }, failed);
+  }
+  // Реестр, загруженный файлом (окно «Загрузить реестр»): тот же экран подготовки, данные - из файла.
+  // Парки файла могут не совпадать со списком главного экрана, поэтому их названия берутся из файла.
+  function openFile(day, name) {
+    P.file = name; P.fileParks = {};
+    day.parks.forEach(function (p) { P.fileParks[p.id] = p; });
+    begin(day.parks.map(function (p) { return p.id; }), day.meta.date, false);
+    Promise.all([D.loadGeo(), D.loadMarks(P.ids, P.date)]).then(function (r) { ready(day, r[1]); }, failed);
+  }
+  function begin(ids, date, silent) {
+    P.ids = ids; P.date = date; P.calculated = false; P.base = null; P.tab = null;
+    $("#prepTitle").innerHTML = esc(selTitle(false)) + (P.file ? ' <span class="ad-badge ad-badge--neutral prep-src" title="' + esc(P.file) + '">из файла</span>' : "");
     $("#btnGeo").href = "/routes#park=" + ids[0];
     go("prep", silent);
     $("#ready").innerHTML = ""; $("#sections").innerHTML = '<div class="lp__load"><span class="spinner"></span> Загружаю ' + (ids.length > 1 ? "реестры парков" : "реестр парка") + "…</div>";
-    Promise.all(ids.map(function (id) { return D.loadRegistry(id, P.date); }).concat([D.loadGeo(), D.loadMarks(ids, P.date)])).then(function (r) {
-      P.base = merge(r.slice(0, ids.length));
-      P.st = initState();
-      // отметки, сделанные сегодня раньше, - поверх реестра
-      var saved = r[ids.length + 1];
-      ["route", "veh", "drv"].forEach(function (k) { Object.keys(saved[k] || {}).forEach(function (id) { if (id in P.st[k]) P.st[k][id] = saved[k][id]; }); });
-      P.saved = clone(P.st);
-      updateSave();
-      $("#sections").innerHTML = "";
-      refresh(); renderPanel();
-    }, function (e) { $("#sections").innerHTML = '<p class="err">' + esc(e.message) + "</p>"; });
   }
+  function ready(base, saved) {
+    P.base = base;
+    P.st = initState();
+    // отметки, сделанные в этот день раньше, - поверх реестра
+    ["route", "veh", "drv"].forEach(function (k) { Object.keys(saved[k] || {}).forEach(function (id) { if (id in P.st[k]) P.st[k][id] = saved[k][id]; }); });
+    P.saved = clone(P.st);
+    updateSave();
+    $("#sections").innerHTML = "";
+    refresh(); renderPanel();
+  }
+  function failed(e) { $("#sections").innerHTML = '<p class="err">' + esc(e.message) + "</p>"; }
   function merge(days) {
     var out = JSON.parse(JSON.stringify(days[0]));
     days.slice(1).forEach(function (d) {
@@ -649,7 +669,7 @@
       if (st.drv[x.id]) { x.schedule = "work"; x.medical = "passed"; }
       else if (x.schedule === "work" && x.medical === "passed") x.medical = "failed";  // в графике, но на линию не выходит
     });
-    d.meta.source = "реестр " + P.ids.join(", ") + " на " + P.date + " с отметками диспетчера";
+    d.meta.source = (P.file ? "реестр из файла «" + P.file + "»" : "реестр " + P.ids.join(", ")) + " на " + P.date + " с отметками диспетчера";
     return d;
   }
 

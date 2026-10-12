@@ -119,6 +119,37 @@ body { display: grid; grid-template-rows: 60px 1fr; height: 100vh; overflow: hid
 .cand:active { transform: scale(0.97); }
 .cand.is-selected { border-color: var(--accent-deep); box-shadow: 0 0 0 1px var(--accent-deep); }
 .ed__viol { margin: 0; padding-left: 18px; display: grid; gap: var(--space-2); font: var(--text-caption); color: var(--ink); }
+/* окно «Загрузить реестр»: файлы, дата и тип дня, отчёт о том, что понято */
+.up__drop { position: relative; display: grid; justify-items: center; gap: var(--space-2); padding: var(--space-5) var(--space-4); text-align: center; cursor: pointer;
+  background: var(--surface); border: 1px dashed var(--border-strong); border-radius: var(--radius-md);
+  transition: border-color 220ms var(--easing-standard), box-shadow 320ms var(--easing-standard), transform 220ms var(--easing-standard); }
+.up__drop:hover, .up__drop.is-over { border-color: var(--accent-deep); box-shadow: 0 0 0 1px var(--accent-deep); }
+.up__drop:active { transform: scale(0.97); }
+.up__drop:focus-within { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
+.up__in { display: block; position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.up__ic { width: 40px; height: 40px; display: grid; place-items: center; border-radius: var(--radius-pill); background: var(--accent-deep); color: var(--on-fill); }
+.up__t { font: var(--text-body); }
+.up__t b { font-weight: 500; color: var(--accent-text); }
+.up__s { font: var(--text-caption); color: var(--ink-muted); }
+.up__files { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.up__file { display: inline-flex; align-items: center; gap: var(--space-2); padding: 4px var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-pill); font: var(--text-caption); }
+.up__form { grid-template-columns: 1fr 1fr; }
+.up__report { display: grid; gap: var(--space-3); align-content: start; }
+.up__report:empty { display: none; }
+.up__verdict { display: flex; gap: var(--space-2); align-items: center; font: var(--text-body); }
+.up__verdict .ad-icon { color: var(--success-text); }
+.up__verdict--bad .ad-icon { color: var(--danger-text); }
+.up__ents { display: grid; gap: var(--space-2); }
+/* .grp здесь - раскрывающийся список как на подготовке дня; app.css задаёт .grp ещё и как заголовок в строку */
+.grp.up__grp { display: block; margin: 0; font: inherit; color: inherit; }
+.up__src { font: var(--text-caption); font-style: normal; color: var(--ink-muted); }
+.up__dl { margin: 0; padding: 0 14px 12px; display: grid; grid-template-columns: max-content 1fr; gap: 4px var(--space-3); font: var(--text-caption); }
+.up__dl dt { color: var(--ink-muted); }
+.up__dl dd { margin: 0; overflow-wrap: anywhere; }
+.up__bad { color: var(--danger-text); }
+.up__list { margin: 0; padding-left: 18px; display: grid; gap: var(--space-2); font: var(--text-caption); }
+.up__list--in { padding: 0 14px 12px 32px; }
+.prep-src { vertical-align: middle; }
 
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; grid-template-rows: 45vh 1fr; }
@@ -128,6 +159,8 @@ body { display: grid; grid-template-rows: 60px 1fr; height: 100vh; overflow: hid
   .ed__form { grid-template-columns: 1fr 1fr; }
   .ed__form > :first-child { grid-column: 1 / -1; }
   .ed__more { grid-template-columns: 1fr; }
+  .up__dl { grid-template-columns: 1fr; }
+  .up__dl dd + dt { margin-top: 4px; }
   .bar__variant { display: none; }
 }
 .ln--route { border-top: 3px solid #7c3aed; opacity: 1; }
