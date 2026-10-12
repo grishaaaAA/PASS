@@ -45,7 +45,7 @@ from datetime import date as Date
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from naryad import explain
 from naryad.core.invariants import (LABOR_FILE, check_plan, check_rest, labor_preset_name,
@@ -233,7 +233,10 @@ class Engine:
                     allowed.add(verb)
                     if verb == method:
                         handler = getattr(self, name)
-                        return OK, handler(*found.groups(), query=query or {},
+                        # номер из адреса приходит закодированным: русский код из реестра
+                        # перевозчика («Н1») браузер шлёт как %D0%9D1, косую черту - как %2F
+                        ids = [unquote(part) for part in found.groups()]
+                        return OK, handler(*ids, query=query or {},
                                            body=body if body is not None else {})
                 if allowed:
                     raise ApiError(HTTPStatus.METHOD_NOT_ALLOWED,
