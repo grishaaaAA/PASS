@@ -47,6 +47,7 @@
   document.addEventListener("click", function (e) {
     var b = e.target.closest("[data-go]"); if (!b) return;
     var to = b.getAttribute("data-go");
+    if (["parks", "prep", "result", "welcome"].indexOf(to) < 0) return;  // только переходы между экранами
     if (to === "result" && !P.calculated) return;
     if (to === current) return;
     confirmLeave().then(function (ok) { if (ok) go(to); });

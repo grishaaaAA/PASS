@@ -42,7 +42,7 @@
       '</select></label>' +
       '<label class="ad-field"><span class="ad-field__label">Время</span><input class="ad-input" name="at" value="' + D.hm(Math.max(duty.start + 10, Math.min(t, duty.end - 30))) + '" pattern="\\d{1,2}:\\d{2}"></label>' +
       '<label class="ad-field" data-dur><span class="ad-field__label">Сход на, мин</span><input class="ad-input" name="dur" type="number" min="0" step="5" placeholder="до конца дня"></label>' +
-      '<button class="ad-btn ad-btn--primary" data-go><i class="ad-icon ad-icon--lightning ad-icon--sm"></i>Найти замену</button></div>' +
+      '<button class="ad-btn ad-btn--primary" data-find><i class="ad-icon ad-icon--lightning ad-icon--sm"></i>Найти замену</button></div>' +
       '<div class="ev__opts"></div></div>';
     document.body.appendChild(box);
     window.Motion.enter(box, "fade"); window.Motion.enter(box.firstChild, "scale");
@@ -50,11 +50,11 @@
     var onKey = function (e) { if (e.key === "Escape") close(); };
     document.addEventListener("keydown", onKey);
     box.addEventListener("click", function (e) { if (e.target === box || e.target.closest("[data-close]")) close(); });
-    if (!seg && !drv) { box.querySelector(".ev__opts").innerHTML = '<p class="muted">На этом наряде нет ни автобуса, ни водителя - событию не к чему относиться.</p>'; box.querySelector("[data-go]").disabled = true; }
+    if (!seg && !drv) { box.querySelector(".ev__opts").innerHTML = '<p class="muted">На этом наряде нет ни автобуса, ни водителя - событию не к чему относиться.</p>'; box.querySelector("[data-find]").disabled = true; }
     var typeSel = box.querySelector("[name=type]");
     var syncDur = function () { box.querySelector("[data-dur]").hidden = typeSel.value !== "breakdown"; };
     typeSel.addEventListener("change", syncDur); syncDur();
-    box.querySelector("[data-go]").addEventListener("click", function () {
+    box.querySelector("[data-find]").addEventListener("click", function () {
       var ev = { type: typeSel.value, at: box.querySelector("[name=at]").value.trim() };
       if (ev.type === "no_show") ev.driver_id = drv.id; else ev.vehicle_id = seg.id;
       var dur = box.querySelector("[name=dur]").value;
