@@ -57,6 +57,19 @@ SCHEMA = {
     ],
 }
 
+# Необязательные поля: их может не быть вовсе. Нет поля - нет ограничения,
+# и данные без них работают как раньше (генератор их не пишет).
+# vehicles.make - марка автобуса; без неё марка берётся из начала model (модель
+#   после марки отрезается: «ЛиАЗ-5292.65» - это ЛиАЗ, naryad.core.model.make_of).
+# drivers.makes - марки, на которых водитель обкатан: у перевозчика допуск
+#   даётся на марку (МАЗ, НЕФАЗ, ЛиАЗ) на всех её модификациях.
+# drivers.routes - маршруты, на которые водитель допущен (коды маршрутов из routes.id).
+OPTIONAL = {
+    "vehicles": [("make", "str")],
+    "drivers": [("makes", "list"), ("routes", "list")],
+}
+MAKE_FIELDS = {"make", "makes"}  # в них марка: сравнивается через naryad.core.model.normal_make
+
 # Обязательные поля meta: без даты и типа дня день нельзя ни спланировать,
 # ни показать. moment и format_version не обязательны, но если есть - проверяются.
 META_ENUMS = {
@@ -141,6 +154,109 @@ def _fields(data: dict, errors: list) -> None:
                                       f"допустимо {sorted(allowed)}")
 
 
+def _optional(data: dict, errors: list) -> None:
+    """Необязательные поля: если есть - нужного вида; пустой список - ошибка.
+
+    Пустой список допусков читался бы двояко: «ограничений нет» или «не
+    допущен никуда». Поэтому его не принимаем: нет ограничения - уберите поле.
+    По той же причине марка без единой буквы («-», «?», «5292») - ошибка, а
+    не марка: водитель с такой «маркой» молча не попал бы ни на один автобус.
+    """
+    from naryad.core.model import normal_make  # model сама импортирует check
+    for entity, fields in OPTIONAL.items():
+        for position, item in enumerate(data.get(entity, []), 1):
+            if not isinstance(item, dict):
+                continue
+            name = item.get("id", "?")
+            for field, kind in fields:
+                value = item.get(field)
+                if value is None:
+                    continue
+                if kind == "str" and not isinstance(value, str):
+                    errors.append(f"{entity} {name}: поле {field} должно быть str")
+                    continue
+                if kind == "list":
+                    if not isinstance(value, list) or not all(isinstance(v, str) and v.strip() for v in value):
+                        errors.append(f"{entity} {name}: поле {field} - список непустых строк")
+                        continue
+                    if not value:
+                        errors.append(f"{entity} {name}: поле {field} пустое - нет ограничения, "
+                                      f"тогда уберите поле совсем")
+                        continue
+                if field in MAKE_FIELDS:
+                    for text in value if kind == "list" else [value]:
+                        if not normal_make(text):
+                            errors.append(f"{entity} {name}: в поле {field} {text!r} - нет марки. Марка "
+                                          f"пишется буквами («ЛиАЗ», «МАЗ»), нет марки - уберите поле совсем")
+
+
+def _some(ids: list, shown: int = 5) -> str:
+    """«P07-D0001, P07-D0002 и ещё 12»: длинный список людей в сообщении не нужен."""
+    head = ", ".join(ids[:shown])
+    return head + (f" и ещё {len(ids) - shown}" if len(ids) > shown else "")
+
+
+def _permits(data: dict, vehicles: dict, routes: dict, errors: list, warnings: list) -> None:
+    """Допуск водителей по марке и маршрутам против того, что есть в дне.
+
+    Закреплённый автобус марки, на которой водитель не обкатан, - ошибка:
+    данные противоречат сами себе. Марка или маршрут, которых в дне нет, -
+    предупреждение: такой пункт допуска не действует. Если у водителя не
+    нашлось ни одного пункта, он не попадёт ни на один автобус (марки) или
+    ни на один линейный наряд (маршруты) - это говорится прямо, а не «допуск
+    ничего не даёт»: чаще всего дело в написании. Сообщения собраны по марке
+    и маршруту, а не по водителю: опечатка в реестре задевает сотни человек,
+    и список из сотни одинаковых строк вытеснил бы остальные предупреждения.
+    """
+    from naryad.core.model import make_of, make_part, normal_make  # model сама импортирует check
+    day_makes = {normal_make(make_of(v)) for v in data["vehicles"]}
+    unknown_make, unknown_route, several = {}, {}, {}
+    no_make, no_route = [], []
+    for driver in data["drivers"]:
+        name, makes, own_routes = driver["id"], driver.get("makes") or [], driver.get("routes") or []
+        vehicle = vehicles.get(driver["home_vehicle_id"])
+        if vehicle and makes and normal_make(make_of(vehicle)) not in {normal_make(m) for m in makes}:
+            errors.append(f"drivers {name}: закреплён за {vehicle['id']} марки "
+                          f"{make_of(vehicle) or 'без марки'}, но на этой марке не обкатан")
+        for text in dict.fromkeys(makes):
+            if normal_make(text) not in day_makes:  # «Скания» и «скания» - одна строка сообщения
+                unknown_make.setdefault(normal_make(text), (text, []))[1].append(name)
+            others = {normal_make(w) for w in text.split()[1:]} - {"", normal_make(text)}
+            if others & day_makes:   # «МАЗ ЛиАЗ»: вторая марка через пробел пропала бы молча
+                several.setdefault(text, []).append(name)
+        if makes and not {normal_make(m) for m in makes} & day_makes:
+            no_make.append(name)
+        for route_id in dict.fromkeys(own_routes):
+            if route_id not in routes:
+                unknown_route.setdefault(route_id, []).append(name)
+        if own_routes and not set(own_routes) & set(routes):
+            no_route.append(name)
+        home_route = routes.get(vehicle["home_route_id"]) if vehicle and vehicle["home_route_id"] else None
+        if own_routes and home_route and home_route["id"] not in own_routes:
+            warnings.append(f"drivers {name}: закреплён за {vehicle['id']}, а этот автобус закреплён за "
+                            f"маршрутом {home_route['number']}, к которому водитель не допущен")
+    nameless = [v["id"] for v in data["vehicles"] if not normal_make(make_of(v))]
+    if nameless and any(d.get("makes") for d in data["drivers"]):
+        warnings.append(f"vehicles: у автобусов не указана марка (нет ни make, ни марки в начале model), "
+                        f"а у водителей есть допуск по марке - водители со списком марок на эти автобусы "
+                        f"не попадут: {_some(nameless)}")
+    for text, names in unknown_make.values():
+        warnings.append(f"drivers: в допуске марка «{text}», а автобусов этой марки в дне нет "
+                        f"(водители {_some(names)})")
+    for text, names in several.items():
+        warnings.append(f"drivers: в допуске «{text}» - несколько марок через пробел? Учтена только "
+                        f"первая, {make_part(text)}: марки разделяются запятой или | (водители {_some(names)})")
+    if no_make:
+        warnings.append(f"drivers: ни одной марки из допуска нет у автобусов дня, эти водители не попадут "
+                        f"ни на один автобус: {_some(no_make)}")
+    for route_id, names in unknown_route.items():
+        warnings.append(f"drivers: в допуске маршрут {route_id}, а такого маршрута в дне нет "
+                        f"(водители {_some(names)})")
+    if no_route:
+        warnings.append(f"drivers: ни одного маршрута из допуска нет в дне, эти водители на линию не "
+                        f"попадут, только в резерв: {_some(no_route)}")
+
+
 def check(data: dict) -> dict:
     errors: list = []
     warnings: list = []
@@ -153,6 +269,7 @@ def check(data: dict) -> dict:
         return {"errors": errors, "warnings": warnings}
 
     _fields(data, errors)
+    _optional(data, errors)
     if errors:
         return {"errors": errors, "warnings": warnings}
 
@@ -195,6 +312,7 @@ def check(data: dict) -> dict:
                 and driver["medical"] is None):
             errors.append(f"drivers {driver['id']}: утро дня, водитель работает, "
                           f"но отметки о медосмотре нет")
+    _permits(data, vehicles, routes, errors, warnings)
 
     shifts_of: dict = {}
     for shift in data["shifts"]:

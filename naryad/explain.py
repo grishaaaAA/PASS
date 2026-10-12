@@ -18,8 +18,8 @@ from __future__ import annotations
 
 from collections import Counter
 
-from naryad.core.invariants import (load_labor, may_depart, rest_minutes, shift_limit,
-                                    work_minutes)
+from naryad.core.invariants import (load_labor, may_depart, permit_problem, rest_minutes,
+                                    shift_limit, work_minutes)
 from naryad.core.model import REASONS, Day, Plan
 from naryad.solve.drivers import History, day_base, rest_status
 from naryad.solve.vehicles import allowed_classes, drop_costs, _groups
@@ -64,6 +64,157 @@ def interval(day: Day, plan: Plan, route_id: str, t: int) -> dict:
     actual = round(route.turnaround_min / len(running)) if running else None
     return {"planned_min": planned, "actual_min": actual, "planned_buses": len(active),
             "running_buses": len(running)}
+
+
+def _at(t: int) -> str:
+    """Время как в остальном API: часы после полуночи идут дальше 24 (25:15).
+
+    Не _clock: тот переводит за полночь (01:15), и интерфейс не смог бы
+    сопоставить этот момент с отрезками состояния дня.
+    """
+    return f"{t // 60:02d}:{t % 60:02d}"
+
+
+def _line_duties(day: Day) -> dict:
+    """Наряды на линии по маршрутам, только на тип дня этого дня."""
+    out: dict = {}
+    for duty in day.duties.values():
+        if duty.type == "line" and duty.route_id and duty.day_type == day.day_type:
+            out.setdefault(duty.route_id, []).append(duty)
+    return out
+
+
+def route_interval(day: Day, state, route_id: str, duties: list | None = None) -> dict:
+    """Здоровье интервала маршрута за весь день, по состоянию дня.
+
+    Рост интервала считается так же, как в naryad.solve.compare: нарядов
+    маршрута по расписанию, делённое на сколько из них реально работает.
+    Иначе цифра на экране диспетчера разошлась бы с цифрой, которую мы
+    называем заказчику.
+
+    Работающим считается наряд, у которого есть и автобус, и водитель:
+    автобус без водителя стоит и пассажиров не везёт. Этим расчёт
+    отличается от compare, который сравнивает только расстановку автобусов.
+
+    Интервал меняется только на границах: начало и конец наряда, начало и
+    конец каждого отрезка. Между границами он постоянен, поэтому хватает
+    проверки в самих границах.
+    """
+    route = day.routes[route_id]
+    duties = duties if duties is not None else _line_duties(day).get(route_id, [])
+    spans = {duty.id: state.running(duty.id) for duty in duties}
+    moments = {duty.start for duty in duties} | {duty.end for duty in duties}
+    for runs in spans.values():
+        for begins, ends in runs:
+            moments.update((begins, ends))
+    ordered = sorted(moments)
+
+    worst, worst_at, worst_running, worst_active = 1.0, None, 0, 0
+    stopped_min, stopped_at, stopped_active, peak = 0, None, 0, 0
+    for position, moment in enumerate(ordered):
+        active = [d for d in duties if d.start <= moment < d.end]
+        if not active:
+            continue
+        peak = max(peak, len(active))
+        running = sum(any(a <= moment < b for a, b in spans[d.id]) for d in active)
+        if not running:
+            following = ordered[position + 1] if position + 1 < len(ordered) else moment
+            stopped_min += following - moment
+            if stopped_at is None:
+                stopped_at, stopped_active = moment, len(active)
+            continue
+        growth = len(active) / running
+        if growth > worst:
+            worst, worst_at, worst_running, worst_active = growth, moment, running, len(active)
+
+    turn = route.turnaround_min
+    if worst_at is None and stopped_at is not None:
+        # роста с конечным числом не было, зато маршрут стоял: строка про останов,
+        # как в срезе на момент - работает 0, интервала нет, рост не число
+        planned, running_then, growth, at = stopped_active, 0, None, stopped_at
+    else:
+        planned = worst_active or peak      # в худший момент, а без роста - при полном выпуске
+        running_then = worst_running or peak
+        growth, at = round(worst, 2), worst_at
+    return {"route_id": route_id, "number": route.number, "priority": route.priority,
+            "duties": len(duties),
+            "growth": growth, "at": _at(at) if at is not None else None,
+            "planned_min": round(turn / planned) if planned else None,
+            "actual_min": round(turn / running_then) if running_then else None,
+            "planned_buses": planned, "running_buses": running_then,
+            "stopped_min": stopped_min,
+            "stopped_at": _at(stopped_at) if stopped_at is not None else None}
+
+
+def route_interval_at(day: Day, state, route_id: str, t: int, duties: list | None = None) -> dict:
+    """То же на один момент времени."""
+    route = day.routes[route_id]
+    duties = duties if duties is not None else _line_duties(day).get(route_id, [])
+    active = [d for d in duties if d.start <= t < d.end]
+    running = sum(any(a <= t < b for a, b in state.running(d.id)) for d in active)
+    turn = route.turnaround_min
+    return {"route_id": route_id, "number": route.number, "priority": route.priority,
+            "duties": len(duties),
+            "growth": round(len(active) / running, 2) if running else None,
+            "at": _at(t),
+            "planned_min": round(turn / len(active)) if active else None,
+            "actual_min": round(turn / running) if running else None,
+            "planned_buses": len(active), "running_buses": running,
+            "stopped_min": 0, "stopped_at": _at(t) if active and not running else None}
+
+
+def intervals(day: Day, state, t: int | None = None) -> dict:
+    """Интервалы по всем маршрутам: за день целиком или на один момент.
+
+    Собрано одним ответом нарочно: показателю «худший рост интервала по
+    парку» иначе пришлось бы спрашивать каждый маршрут отдельно, а за день
+    это почти тысяча запросов.
+    """
+    by_route = _line_duties(day)
+    rows = [route_interval_at(day, state, route_id, t, duties) if t is not None
+            else route_interval(day, state, route_id, duties)
+            for route_id, duties in sorted(by_route.items())]
+    working = [r for r in rows if r["duties"]]
+    grew = [r for r in working if r["growth"] is not None]
+    # остановлен - где были наряды по расписанию и ни один не работал (stopped_at);
+    # маршрут вне своих часов работы в срезе на момент не остановлен и не вырос
+    stopped = [r for r in working if r["stopped_at"] is not None]
+    over = [r for r in grew if r["growth"] > 1.25]
+    highest = round(max((r["growth"] for r in grew), default=1.0), 2)
+    worst = max(grew, key=lambda r: (r["growth"], r["route_id"]), default=None)
+    if worst is not None and worst["growth"] <= 1:
+        worst = None        # роста нет, называть «худший» маршрут не за что
+
+    if worst is None and stopped:
+        answer = "Без единого автобуса на маршрутах: " + _names(stopped)
+    elif worst is None:
+        answer = "Интервалы как по плану"
+    else:
+        answer = (f"Хуже всего на маршруте {worst['number']}: интервал вырос "
+                  f"в {worst['growth']} раза"
+                  + (f", в {worst['at']}" if worst["at"] else ""))
+    reasons = []
+    if stopped:
+        reasons.append("маршруты, где не осталось ни одного автобуса: " + _names(stopped))
+    if over:
+        reasons.append("интервал вырос больше чем на четверть на маршрутах: " + _names(over))
+    if not reasons:
+        reasons.append(f"на всех {len(working)} маршрутах интервал в пределах плана")
+
+    head = _answer("Что с интервалами" + (f" в {_at(t)}" if t is not None else " за день"),
+                   answer, reasons,
+                   {"worst_growth": highest,
+                    "worst_route": worst["route_id"] if worst else None,
+                    "worst_at": worst["at"] if worst else None,
+                    "over_25_percent": len(over), "stopped_routes": len(stopped),
+                    "routes_total": len(working)})
+    return {**head, "routes": rows}
+
+
+def _names(rows: list, n: int = 5) -> str:
+    """Номера первых n маршрутов и хвост «и ещё N», чтобы по тексту было видно, сколько их."""
+    names = ", ".join(r["number"] for r in rows[:n])
+    return names + (f" и ещё {len(rows) - n}" if len(rows) > n else "")
 
 
 # --- почему этот автобус -------------------------------------------------------
@@ -131,7 +282,7 @@ def why_driver(day: Day, plan: Plan, shift_id: str, history: History | None = No
         return why_unfilled(day, plan, shift_id, history, labor)
     driver = day.drivers[driver_id]
     vehicle_id = plan.vehicles[duty.id]
-    state = history.get(driver_id)
+    state = history.peek(driver_id)  # объяснение ничего не меняет, память не дописываем
     work, limit = work_minutes(shift.length, labor), shift_limit(labor)
     reasons = [f"Работает по графику, медосмотр {'пройден' if driver.medical == 'passed' else 'ещё не пройден'}, "
                f"допуск к классу «{CLASS_NAMES[day.vehicles[vehicle_id].cls]}»"]
@@ -166,7 +317,7 @@ def _driver_blocker(day: Day, plan: Plan, driver, shift, history: History, labor
     other = next((s for s, d in plan.drivers.items() if d == driver.id), None)
     if other is not None:
         return f"работает на смене {other}"
-    state = history.get(driver.id)
+    state = history.peek(driver.id)
     if rest_status(state, day_base(day) + shift.start, labor) is None:
         return _rest_missing(state, rest_minutes(state.last_end, day_base(day) + shift.start, labor), labor)
     return "свободен; не поставлен, чтобы закрыть другие смены"
@@ -253,6 +404,68 @@ def why_unfilled(day: Day, plan: Plan, item_id: str, history: History | None = N
                                                "reason_text": REASONS.get(reason, "")})
 
 
+# причины пустого наряда (смены) в состоянии дня: их нет в утреннем плане, только внутри дня
+STATE_REASONS = {
+    "removed_by_dispatcher": "диспетчер снял вручную",
+    "after_event": "утром был закрыт, после событий дня остался пустым",
+}
+
+
+EVENT_NAMES = {"breakdown": "сход", "accident": "ДТП", "no_show": "неявка", "late": "опоздание"}
+
+
+def _log_line(entry: dict) -> str:
+    """Запись журнала одной строкой: «09:00 ДТП, решение: Не заменять» или заголовок правки."""
+    if entry.get("kind", "event") == "edit":
+        return f"{entry.get('from', '')}-{entry.get('to', '')} {entry.get('title', '')}"
+    name = EVENT_NAMES.get(entry.get("type"), "событие")
+    return f"{entry.get('at', '')} {name}, решение: {entry.get('title', '')}"
+
+
+def why_emptied(day: Day, plan: Plan, state, item_id: str, reason: str, log: list) -> dict:
+    """Почему наряд или смена, закрытые утром, сейчас пустые.
+
+    Утреннее объяснение тут не годится: утром на наряде был автобус, и
+    explain/vehicle назвал бы его, хотя он уже сошёл. Здесь сказано, кто был
+    утром, что с ним стало и какие записи журнала его касаются.
+    """
+    if item_id in day.shifts:
+        shift = day.shifts[item_id]
+        question = f"Почему смена {item_id} ({_clock(shift.start)}-{_clock(shift.end)}) без водителя?"
+        morning = plan.drivers.get(item_id)
+        name = f"водитель {day.drivers[morning].tab_number}" if morning else "водитель"
+        if morning in state.down_drivers:
+            fate = f"{name} выбыл в {_at(state.down_drivers[morning])}"
+        elif morning in state.late:
+            fate = f"{name} опаздывает и придёт в {_at(state.late[morning][1])}"
+        else:
+            fate = f"{name} снят со смены"
+        emptied = "Утром была закрыта, после событий дня осталась без водителя"
+    else:
+        duty = day.duties[item_id]
+        question = f"Почему {_duty_name(day, duty)} не закрыт?"
+        morning = plan.vehicles.get(item_id)
+        name = f"автобус {day.vehicles[morning].board_number}" if morning else "автобус"
+        repairs = state.repairs.get(morning, [])
+        if morning in state.down_vehicles:
+            fate = f"{name} выбыл в {_at(state.down_vehicles[morning])}"
+        elif repairs:
+            fate = f"{name} в ремонте " + ", ".join(f"с {_at(a)} до {_at(b)}" for a, b in sorted(repairs))
+        else:
+            fate = f"{name} снят с наряда"
+        emptied = "Утром был закрыт, после событий дня остался без автобуса"
+    answer = "Диспетчер снял ресурс вручную" if reason == "removed_by_dispatcher" else emptied
+    related = [entry for entry in log
+               if item_id in (entry.get("duty_id"), entry.get("shift_id"))
+               or (morning and morning in (entry.get("vehicle_id"), entry.get("driver_id")))]
+    reasons = [f"Утром: {name}", fate[0].upper() + fate[1:]]
+    reasons += [_log_line(entry) for entry in related]
+    reasons.append("Закрыть можно правкой: кого законно поставить, подскажет edits/options")
+    return _answer(question, answer, reasons,
+                   {"reason": reason, "reason_text": STATE_REASONS.get(reason, ""),
+                    "morning": morning})
+
+
 def _why_shift_unfilled(day: Day, plan: Plan, shift_id: str, history: History, labor: dict) -> dict:
     shift = day.shifts[shift_id]
     duty = day.duties[shift.duty_id]
@@ -281,9 +494,18 @@ def _why_shift_unfilled(day: Day, plan: Plan, shift_id: str, history: History, l
     cls = vehicle.cls
     drivers = [d for d in day.drivers.values() if d.park_id == duty.park_id]
     blockers = Counter()
+    route = day.routes.get(duty.route_id) if duty.route_id else None
+    make = vehicle.make or "без марки"   # как в permit_problem
+    permits = 0                          # сколько водителей не допущены к автобусу на этом наряде
     for d in drivers:
-        if cls not in d.classes:
+        problem = permit_problem(d, vehicle, duty.route_id)
+        permits += problem is not None
+        if problem and problem.startswith("нет допуска к классу"):
             blockers[f"нет допуска к классу «{CLASS_NAMES[cls]}»"] += 1
+        elif problem and problem.startswith("не обкатан"):
+            blockers[f"не обкатаны на марке {make}"] += 1
+        elif problem:
+            blockers[f"нет допуска к маршруту {route.number if route else duty.route_id}"] += 1
         else:
             text = _driver_blocker(day, plan, d, shift, history, labor)
             key = ("работают на других сменах" if text.startswith("работает") else
@@ -291,7 +513,12 @@ def _why_shift_unfilled(day: Day, plan: Plan, shift_id: str, history: History, l
                    "положен еженедельный отдых" if "45 ч" in text else
                    "свободны, но нужны на другие смены" if text.startswith("свободен") else text)
             blockers[key] += 1
-    answer = f"Нет водителя, которому по графику и нормам можно выйти на эту смену"
+    if drivers and permits == len(drivers):
+        # дело не в графике и нормах, а в допуске: так и говорим, иначе ищут не там
+        answer = (f"Никто из водителей парка не допущен к автобусу {vehicle.board_number} ({make}) "
+                  f"на этом наряде: дело в допуске, а не в графике и нормах")
+    else:
+        answer = "Нет водителя, которому по графику и нормам можно выйти на эту смену"
     reasons = [f"Водителей парка: {len(drivers)}"] + [f"{k}: {n}" for k, n in blockers.most_common()]
     return _answer(question, answer, reasons, {"drivers": len(drivers), **dict(blockers)})
 
@@ -302,7 +529,9 @@ def explain_option(state, event, options: list, index: int = 0) -> dict:
     """Что даст вариант замены и чем он лучше следующего."""
     option = options[index]
     duties = len(state.vehicles)
-    touched = len({key for kind, key, _ in option.changes if kind.startswith("vehicle") and key})
+    # наряд меняется и тогда, когда на его смене меняется только водитель (обмен, замена водителя)
+    touched = len({key if kind.startswith("vehicle") else state.day.shifts[key].duty_id
+                   for kind, key, _ in option.changes if key})
     reasons = [option.note,
                f"Без работы на линии всего (на всех затронутых маршрутах): {_hm(option.lost_minutes)}",
                f"Меняется нарядов: {touched}, остальные {duties - touched} без изменений"]

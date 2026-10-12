@@ -1,5 +1,6 @@
 """
-API движка (Б5): день в памяти под номером, план, объяснения, события.
+API движка (Б5): день под номером, план, объяснения, интервалы по парку,
+события, ручная правка плана диспетчером, загрузка реестров перевозчика.
 
 Форматы - docs/CONTRACT.md, разделы «Состояние дня» и «API движка».
 План на день с несколькими парками строится с перебросками лишних
@@ -12,7 +13,15 @@ API движка (Б5): день в памяти под номером, план
     python -m naryad.web.api --labor likely    # набор норм на весь сервер
     python -m naryad.web.api --write-examples  # переписать образцы ответов
 
-Сервер ничего не пишет на диск: дни живут в памяти, перезапуск их стирает.
+Диспетчер главнее движка: правка, которая нарушает нормы, по умолчанию не
+применяется, но с force: true применяется и попадает в журнал вместе со
+списком того, что нарушено. Движок не отказывает молча и не меняет решение
+диспетчера молча.
+
+Дни лежат в папке на диске и переживают перезапуск сервера (naryad/web/store.py).
+Папка задаётся при запуске (--store, по умолчанию store/days), --store none
+выключает запись совсем. Внутри процесса Engine() без папки ничего не пишет.
+В папке лежит реестр перевозчика: её нет в репозитории и не должно быть.
 Объяснения относятся к утреннему плану, состояние дня после событий - отрезками.
 Единственная точка входа - Engine.handle(метод, адрес, параметры, тело):
 отдаёт код ответа и JSON, сервер страницы генератора может звать её напрямую.
@@ -21,7 +30,10 @@ API движка (Б5): день в памяти под номером, план
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import copy
+import dataclasses
 import json
 import re
 import sys
@@ -40,20 +52,29 @@ from naryad.core.invariants import (LABOR_FILE, check_plan, check_rest, labor_pr
                                     labor_presets, load_labor, use_labor_preset)
 from naryad.core.model import Day, Plan
 from naryad.data.check import check
+from naryad.data import registry
 from naryad.data.generate import generate
-from naryad.ops.replan import (Accident, Breakdown, NoShow, OpsState, apply, check_state,
-                               history_after, options_for)
+from naryad.ops.replan import (EDIT_TYPES, Accident, Breakdown, Edit, Late, NoShow, OpsState, apply,
+                               check_state, free_drivers, free_vehicles, history_after,
+                               late_shift, manual_edit, options_for)
 from naryad.solve.city import add_transfers
 from naryad.solve.drivers import History, solve_drivers
 from naryad.solve.vehicles import solve_vehicles
+from naryad.web.store import (LIVE_FILE, Store, history_from_dict, history_to_dict, plan_from_dict,
+                              plan_to_dict, state_from_dict, state_to_dict)
 
 EXAMPLES_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "samples" / "api_examples.json"
 TIME = re.compile(r"^(\d{1,2}):(\d{2})$")
 MAX_WARNINGS = 50
 OK, BAD, NOT_FOUND, TOO_EARLY = (HTTPStatus.OK, HTTPStatus.BAD_REQUEST, HTTPStatus.NOT_FOUND,
                                  HTTPStatus.CONFLICT)
+BLOCKED = HTTPStatus.CONFLICT  # тот же 409: запрос понятен, но в этом состоянии не выполняется
 SERVER_ERROR = HTTPStatus.INTERNAL_SERVER_ERROR
-EVENT_TYPES = ("breakdown", "accident", "no_show")
+EVENT_TYPES = ("breakdown", "accident", "no_show", "late")
+MAX_CANDIDATES = 50
+MAX_BODY = 64 * 1024 * 1024   # реестр целого города и то меньше
+MAX_FILES = 24                # по файлу на сущность с запасом
+DEFAULT_STORE = "store/days"  # дни на диске; в них реестр перевозчика, в репозиторий не кладём
 
 
 class ApiError(Exception):
@@ -93,6 +114,7 @@ ROUTES = [
     ("GET", r"/api/labor", "labor"),
     ("GET", r"/api/days", "list_days"),
     ("POST", r"/api/days", "add_day"),
+    ("POST", r"/api/days/import", "import_registry"),
     ("GET", r"/api/days/([^/]+)", "get_day"),
     ("POST", r"/api/days/([^/]+)/plan", "make_plan"),
     ("GET", r"/api/days/([^/]+)/state", "get_state"),
@@ -101,8 +123,11 @@ ROUTES = [
     ("GET", r"/api/days/([^/]+)/explain/unfilled/([^/]+)", "explain_unfilled"),
     ("GET", r"/api/days/([^/]+)/explain/summary", "explain_summary"),
     ("GET", r"/api/days/([^/]+)/explain/interval/([^/]+)", "explain_interval"),
+    ("GET", r"/api/days/([^/]+)/intervals", "intervals"),
     ("POST", r"/api/days/([^/]+)/events/options", "event_options"),
     ("POST", r"/api/days/([^/]+)/events/apply", "event_apply"),
+    ("GET", r"/api/days/([^/]+)/edits/options", "edit_options"),
+    ("POST", r"/api/days/([^/]+)/edits", "edit_plan"),
     ("GET", r"/api/days/([^/]+)/log", "get_log"),
 ]
 
@@ -110,10 +135,83 @@ ROUTES = [
 class Engine:
     """Дни в памяти и ответы на запросы."""
 
-    def __init__(self):
+    def __init__(self, store=None):
         self.days: dict[str, DayRecord] = {}
         self._next = 1
         self._lock = threading.Lock()
+        self.store = Store(store)
+        self._restore()
+
+    # --- хранение на диске --------------------------------------------------------
+
+    def _restore(self) -> None:
+        """Прочитать дни из папки. Испорченный день пропускается с сообщением.
+
+        Файл дня с испорченной внутренностью - день пропущен; испорченная
+        живая часть - день открыт без плана и журнала. Ни то, ни другое не
+        мешает открыть остальные дни и не роняет запуск. Номера дней идут
+        дальше наибольшего номера в папке, включая пропущенные: иначе новый
+        день лёг бы поверх файлов пропущенного.
+        """
+        highest = 0
+        for day_id, stored, live in self.store.read_all():
+            raw = stored.get("raw")
+            try:
+                if not isinstance(raw, dict):
+                    raise TypeError("в файле нет дня (поле raw)")
+                day = Day.from_dict(raw)
+            except Exception as error:  # данные другой версии или испорченный файл
+                print(f"День {day_id} пропущен: данные больше не читаются "
+                      f"({type(error).__name__} {error})", file=sys.stderr)
+                continue
+            record = DayRecord(id=day_id, raw=raw, day=day)
+            try:
+                self._restore_live(record, live)
+            except Exception as error:
+                record = DayRecord(id=day_id, raw=raw, day=day)
+                print(f"День {day_id} открыт без плана и журнала, {LIVE_FILE.format(day_id)} "
+                      f"не разобран ({type(error).__name__} {error})", file=sys.stderr)
+            self.days[day_id] = record
+            highest = max(highest, self._number(day_id))
+        self._next = max(highest, self.store.highest_number()) + 1
+
+    @staticmethod
+    def _restore_live(record: DayRecord, live) -> None:
+        """Живая часть дня из файла в запись. Сначала всё разбирается, потом присваивается."""
+        if not live:
+            return
+        plan, state = live.get("plan"), live.get("state")
+        if plan is None and state is None:
+            return   # день без плана: живая часть пустая
+        if plan is None or state is None:
+            raise ValueError("план без состояния дня или состояние без плана")
+        log = live.get("log") or []
+        if not isinstance(log, list) or not all(isinstance(entry, dict) for entry in log):
+            raise TypeError("журнал - не список записей")
+        parsed = dict(plan=plan_from_dict(plan), state=state_from_dict(state, record.day),
+                      history_before=history_from_dict(live.get("history_before")),
+                      history_after=history_from_dict(live.get("history_after")),
+                      log=list(log), seconds=float(live.get("seconds") or 0.0),
+                      source=live.get("source"))
+        for name, value in parsed.items():
+            setattr(record, name, value)
+
+    def _save(self, record: DayRecord, **changes) -> None:
+        """Записать живую часть дня на диск, потом применить изменения к записи.
+
+        Сначала диск, потом память. Если запись не удалась, день в памяти
+        остаётся прежним и ответ «не выполнен» правдив; иначе диспетчер
+        видел бы правку, которая исчезнет при перезапуске сервера.
+        """
+        trial = dataclasses.replace(record, **changes)
+        if self.store:
+            try:
+                self.store.save_live(record.id, _live_dict(trial))
+            except OSError as error:
+                raise ApiError(SERVER_ERROR, "изменение не записано на диск и не применено: "
+                                             f"{error}") from None
+        for name, value in changes.items():
+            setattr(record, name, value)
 
     def handle(self, method: str, path: str, query: dict | None = None,
                body: dict | None = None) -> tuple[int, dict]:
@@ -156,7 +254,8 @@ class Engine:
 
     def list_days(self, query, body):
         return {"days": [{"day_id": r.id, "date": r.day.meta["date"], "day_type": r.day.meta["day_type"],
-                          "planned": r.plan is not None, "events": len(r.log)}
+                          "planned": r.plan is not None, "events": _count(r.log, "event"),
+                          "edits": _count(r.log, "edit")}
                          for r in self.days.values()]}
 
     # --- день ---------------------------------------------------------------------
@@ -168,7 +267,16 @@ class Engine:
             raw = body
         else:
             raw = generate(**self._inputs(body))
-        checked = check(raw)
+        return self._register(raw)
+
+    def _register(self, raw: dict, checked: dict | None = None) -> dict:
+        """Проверить набор данных и положить день в память под новым номером.
+
+        checked - готовый результат общей проверки, если её уже делали:
+        загрузка реестра проверяет данные сама и кладёт предупреждения в
+        отчёт, второй раз считать и показывать их не надо.
+        """
+        checked = checked if checked is not None else check(raw)
         if checked["errors"]:
             raise ApiError(BAD, "данные с ошибками, день не принят", errors=checked["errors"][:MAX_WARNINGS])
         meta = raw.get("meta") if isinstance(raw.get("meta"), dict) else None
@@ -183,9 +291,78 @@ class Engine:
                    "moment": meta.get("moment"), "preset": meta.get("preset"),
                    "counts": {k: len(raw[k]) for k in ("parks", "routes", "duties", "shifts", "vehicles", "drivers")},
                    "warnings": checked["warnings"][:MAX_WARNINGS]}
-        self.days[day_id] = DayRecord(id=day_id, raw=raw, day=day)  # последним: ответ уже собран
+        record = DayRecord(id=day_id, raw=raw, day=day)
+        try:
+            self.store.save_day(day_id, raw)   # сначала диск: не записан - значит не создан
+        except OSError as error:
+            raise ApiError(SERVER_ERROR, f"день не записан на диск и не создан: {error}") from None
+        self.days[day_id] = record  # последним: ответ уже собран
         self._next += 1
         return payload
+
+    def import_registry(self, query, body):
+        """Загрузить день из реестра перевозчика: CSV в теле запроса или книга Excel.
+
+        Реестр не обязан совпадать с нашим форматом: столбцы узнаются по
+        синонимам, слова переводятся в коды, то, что движку не нужно,
+        заполняется само. Всё это попадает в report - отчёт о загрузке.
+        Он возвращается и при удаче, и при отказе: по нему видно, какой
+        столбец чем понят и что спросить у перевозчика.
+
+        dry_run: true читает реестр и отдаёт отчёт, но день не создаёт.
+        """
+        if not isinstance(body, dict):
+            raise ApiError(BAD, "тело запроса: объект JSON с полями files или workbook")
+        dry_run = body.get("dry_run", False)
+        if not isinstance(dry_run, bool):
+            raise ApiError(BAD, "dry_run: true или false")
+        files = self._files(body.get("files"))
+        workbook = self._workbook(body.get("workbook"))
+        if not files and workbook is None:
+            raise ApiError(BAD, "нужен хотя бы один файл: files с текстом CSV "
+                                "или workbook с книгой Excel в base64")
+        meta = body.get("meta") or {}
+        if not isinstance(meta, dict):
+            raise ApiError(BAD, "meta: объект с датой дня и типом дня")
+        if not meta.get("date") or not meta.get("day_type"):
+            raise ApiError(BAD, "meta: нужны дата дня (ГГГГ-ММ-ДД) и тип дня (weekday или weekend). "
+                                "В реестре их нет, поэтому их задаёт тот, кто его загружает")
+        try:
+            raw, report = registry.load(files=files, workbook=workbook, meta=meta)
+        except ValueError as error:
+            raise ApiError(BAD, f"реестр не прочитан: {error}") from None
+        if report["errors"]:
+            raise ApiError(BAD, "реестр прочитан с ошибками, день не принят", report=report)
+        counts = {line["entity"]: line["rows"] for line in report["entities"]}
+        if dry_run:
+            return {"day_id": None, "date": meta["date"], "day_type": meta["day_type"],
+                    "moment": meta.get("moment"), "preset": None, "counts": counts,
+                    "warnings": report["warnings"][:MAX_WARNINGS], "report": report}
+        # в report уже и предупреждения реестра, и общей проверки: она сделана в registry.load
+        payload = self._register(raw, checked={"errors": [], "warnings": report["warnings"]})
+        payload["report"] = report
+        return payload
+
+    @staticmethod
+    def _files(raw) -> dict:
+        if raw is None:
+            return {}
+        if not isinstance(raw, dict) or not all(isinstance(v, str) for v in raw.values()):
+            raise ApiError(BAD, "files: объект {название файла или листа: текст CSV}")
+        if len(raw) > MAX_FILES:
+            raise ApiError(BAD, f"files: не больше {MAX_FILES} файлов за раз")
+        return {str(k): v for k, v in raw.items()}
+
+    @staticmethod
+    def _workbook(raw):
+        if raw is None:
+            return None
+        if not isinstance(raw, str):
+            raise ApiError(BAD, "workbook: книга Excel (.xlsx) в base64 строкой")
+        try:
+            return base64.b64decode("".join(raw.split()), validate=True)  # переносы строк не мешают
+        except (ValueError, binascii.Error):
+            raise ApiError(BAD, "workbook: строка не читается как base64") from None
 
     @staticmethod
     def _inputs(body: dict) -> dict:
@@ -240,8 +417,9 @@ class Engine:
                 raise ApiError(BAD, f"history_from: день {source} должен быть раньше {record.day.meta['date']}")
             history = copy.deepcopy(previous.history_after)
             if previous.log:
-                notes.append(f"память водителей взята по факту дня {source}: "
-                             f"в нём применено событий {len(previous.log)}")
+                notes.append(f"память водителей взята по факту дня {source}: в нём применено "
+                             f"событий {_count(previous.log, 'event')} и ручных правок "
+                             f"{_count(previous.log, 'edit')}")
         earlier = self._earlier(record)
         if source is None and earlier:
             notes.append("history_from не передан: водители считаются полностью отдохнувшими. "
@@ -262,10 +440,9 @@ class Engine:
                   "summary": explain.day_summary(record.day, plan, before),
                   "notes": notes, "seconds": seconds}
 
-        record.history_before, record.source = before, source
-        record.plan, record.log, record.seconds = plan, [], seconds
-        record.state = OpsState.from_plan(record.day, plan, before)
-        record.history_after = history_after(record.state, labor)
+        state = OpsState.from_plan(record.day, plan, before)
+        self._save(record, history_before=before, source=source, plan=plan, log=[], seconds=seconds,
+                   state=state, history_after=history_after(state, labor))
         return answer
 
     def _earlier(self, record: DayRecord) -> list:
@@ -351,6 +528,8 @@ class Engine:
         return explain.why_driver(record.day, record.plan, shift_id, record.history_before)
 
     def explain_unfilled(self, day_id, item_id, query, body):
+        """Почему не закрыто. Утром не закрытое - по утреннему плану; закрытое
+        утром и опустевшее за день (событие или правка) - по состоянию дня."""
         record = self._planned(day_id)
         if item_id in record.day.duties:
             what, where = "наряд закрыт", "explain/vehicle"
@@ -358,9 +537,13 @@ class Engine:
             what, where = "смена закрыта", "explain/driver"
         else:
             raise ApiError(NOT_FOUND, f"Нет наряда или смены {item_id}")
-        if item_id not in record.plan.unfilled:
-            raise ApiError(NOT_FOUND, f"{what}, смотрите {where}")
-        return explain.why_unfilled(record.day, record.plan, item_id, record.history_before)
+        if item_id in record.plan.unfilled:
+            return explain.why_unfilled(record.day, record.plan, item_id, record.history_before)
+        now = _unfilled_now(record)
+        if item_id in now:
+            return explain.why_emptied(record.day, record.plan, record.state, item_id,
+                                       now[item_id], record.log)
+        raise ApiError(NOT_FOUND, f"{what}, смотрите {where}")
 
     def explain_summary(self, day_id, query, body):
         record = self._planned(day_id)
@@ -384,6 +567,17 @@ class Engine:
                             f"работает {numbers['running_buses']}"],
                 "numbers": numbers}
 
+    def intervals(self, day_id, query, body):
+        """Интервалы по всем маршрутам: за день целиком или на момент t.
+
+        Считается по состоянию дня, а не по утреннему плану: диспетчеру
+        нужно, что с интервалами сейчас, после сходов и правок. Этим ручка
+        отличается от explain/interval, который объясняет утренний план.
+        """
+        record = self._planned(day_id)
+        at = parse_time(query["t"], "t") if query.get("t") is not None else None
+        return explain.intervals(record.day, record.state, at)
+
     # --- события ------------------------------------------------------------------
 
     def _event(self, record: DayRecord, body: dict):
@@ -393,8 +587,9 @@ class Engine:
         if kind not in EVENT_TYPES:
             raise ApiError(BAD, f"type: {', '.join(EVENT_TYPES)}")
         at = parse_time(body.get("at"), "at")
-        if record.log and at < parse_time(record.log[-1]["at"]):
-            raise ApiError(BAD, f"событие в {hm(at)} раньше последнего в журнале ({record.log[-1]['at']}): "
+        last = next((e for e in reversed(record.log) if e.get("kind", "event") == "event"), None)
+        if last and at < parse_time(last["at"]):
+            raise ApiError(BAD, f"событие в {hm(at)} раньше последнего в журнале ({last['at']}): "
                                 "события применяются по порядку времени")
         state = record.state
         if kind == "no_show":
@@ -404,6 +599,24 @@ class Engine:
             if not any(s.who == driver_id and s.end > at for segs in state.drivers.values() for s in segs):
                 raise ApiError(BAD, f"Водитель {driver_id} после {hm(at)} не на смене")
             return NoShow(driver_id, at)
+        if kind == "late":
+            driver_id = body.get("driver_id")
+            if not isinstance(driver_id, str) or not driver_id:
+                raise ApiError(BAD, "нужно поле driver_id: номер водителя")
+            if driver_id not in record.day.drivers:
+                raise ApiError(NOT_FOUND, f"Нет водителя {driver_id}")
+            delay = body.get("delay_min")
+            if isinstance(delay, bool) or not isinstance(delay, int) or delay <= 0:
+                raise ApiError(BAD, "delay_min: на сколько минут опаздывает водитель, целое число больше нуля")
+            busy = next((key for key, segs in sorted(state.drivers.items())
+                         for s in segs if s.who == driver_id and s.start < at < s.end), None)
+            if busy is not None:
+                raise ApiError(BAD, f"Водитель {driver_id} в {hm(at)} уже на смене {busy}: "
+                                    "опоздать может только тот, кто ещё не вышел")
+            if late_shift(state, driver_id, at) is None:
+                raise ApiError(BAD, f"У водителя {driver_id} нет смены, которая начинается в {hm(at)} или позже: "
+                                    "опоздать можно только на смену, которая ещё не началась")
+            return Late(driver_id, at, delay)
         vehicle_id = body.get("vehicle_id")
         if vehicle_id not in record.day.vehicles:
             raise ApiError(NOT_FOUND, f"Нет автобуса {vehicle_id}")
@@ -443,16 +656,201 @@ class Engine:
         if not 0 <= index < len(options):
             raise ApiError(BAD, f"option: от 0 до {len(options) - 1}")
         after = apply(record.state, event, options[index])
-        entry = {**_event_dict(event), "option": index, "title": options[index].title}
+        entry = {"kind": "event", **_event_dict(event), "option": index,
+                 "title": options[index].title}
         violations = _violations(check_state(after))
-        record.state, record.log = after, record.log + [entry]
-        record.history_after = history_after(after)  # память по факту, а не по утреннему плану
+        # память по факту, а не по утреннему плану
+        self._save(record, state=after, log=record.log + [entry], history_after=history_after(after))
         out = _state_dict(record)
         out["violations"] = violations
         return out
 
 
+    # --- ручная правка плана диспетчером ------------------------------------------
+
+    def _edit(self, record: DayRecord, body: dict) -> Edit:
+        """Разобрать и проверить правку. Законность норм здесь не проверяется."""
+        kind = body.get("type")
+        if kind not in EDIT_TYPES:
+            raise ApiError(BAD, f"type: {', '.join(EDIT_TYPES)}")
+        key, item, what = self._edit_target(record, kind, body)
+        start, end = self._window(item, what, body)
+        day, who = record.day, None
+        if kind == "set_vehicle":
+            who = body.get("vehicle_id")
+            if not isinstance(who, str) or not who:
+                raise ApiError(BAD, "нужно поле vehicle_id: номер автобуса")
+            if who not in day.vehicles:
+                raise ApiError(NOT_FOUND, f"Нет автобуса {who}")
+        elif kind == "set_driver":
+            who = body.get("driver_id")
+            if not isinstance(who, str) or not who:
+                raise ApiError(BAD, "нужно поле driver_id: номер водителя")
+            if who not in day.drivers:
+                raise ApiError(NOT_FOUND, f"Нет водителя {who}")
+        whole = (start, end) == (item.start, item.end)
+        when = "" if whole else f" с {hm(start)} до {hm(end)}"
+        if kind == "set_vehicle":
+            title = f"Диспетчер поставил автобус {day.vehicles[who].board_number} на наряд {key}{when}"
+        elif kind == "clear_vehicle":
+            title = f"Диспетчер снял автобус с наряда {key}{when}"
+        elif kind == "set_driver":
+            title = f"Диспетчер поставил водителя {day.drivers[who].tab_number} на смену {key}{when}"
+        else:
+            title = f"Диспетчер снял водителя со смены {key}{when}"
+        return Edit(kind, key, who, start, end, title)
+
+    @staticmethod
+    def _edit_target(record: DayRecord, kind: str, body: dict) -> tuple:
+        if kind.endswith("vehicle"):
+            key, where, what = body.get("duty_id"), record.day.duties, "наряд"
+        else:
+            key, where, what = body.get("shift_id"), record.day.shifts, "смена"
+        field_name = "duty_id" if what == "наряд" else "shift_id"
+        if not isinstance(key, str) or not key:
+            raise ApiError(BAD, f"нужно поле {field_name}: номер {what}а"
+                                if what == "наряд" else f"нужно поле {field_name}: номер смены")
+        if key not in where:
+            raise ApiError(NOT_FOUND, f"Нет наряда {key}" if what == "наряд" else f"Нет смены {key}")
+        return key, where[key], what
+
+    @staticmethod
+    def _window(item, what: str, body: dict) -> tuple[int, int]:
+        """Окно правки. По умолчанию - всё время наряда или смены."""
+        start = parse_time(body["from"], "from") if body.get("from") is not None else item.start
+        end = parse_time(body["to"], "to") if body.get("to") is not None else item.end
+        if not item.start <= start < end <= item.end:
+            raise ApiError(BAD, f"окно {hm(start)}-{hm(end)} пустое или выходит за время "
+                                f"{'наряда' if what == 'наряд' else 'смены'} "
+                                f"({hm(item.start)}-{hm(item.end)})")
+        return start, end
+
+    def edit_plan(self, day_id, query, body):
+        """Поставить или снять автобус (водителя) вручную.
+
+        Правка, которая создаёт новые нарушения норм, по умолчанию не
+        применяется: ответ 409 со списком нарушений. С force: true она
+        применяется и записывается в журнал как решение диспетчера вместе
+        с тем, что именно нарушено. Нарушения, которые были в состоянии и
+        до правки, диспетчеру не приписываются, кроме нарушений по самому
+        ресурсу (автобус неисправен или выбыл): они приписываются каждой
+        его постановке, иначе вторая постановка прошла бы без force.
+
+        Состояние дня меняется только после успешной проверки: отклонённая
+        правка не портит того, что уже показано.
+        """
+        record = self._planned(day_id)
+        if not isinstance(body, dict):
+            raise ApiError(BAD, "тело запроса: объект JSON с полями правки")
+        force = body.get("force", False)
+        if not isinstance(force, bool):
+            raise ApiError(BAD, "force: true или false")
+        reason = body.get("reason")
+        if reason is not None and not isinstance(reason, str):
+            raise ApiError(BAD, "reason: текст причины или без него")
+        edit = self._edit(record, body)
+
+        was = {_mark(v) for v in check_state(record.state)}
+        after = manual_edit(record.state, edit)
+        violations = check_state(after)
+        added = [v for v in violations if _mark(v) not in was or _blamed(v, edit)]
+        if added and not force:
+            raise ApiError(BLOCKED, "Правка нарушает нормы и не применена",
+                           violations=_violations(added),
+                           hint="повторите запрос с force: true - правка будет применена "
+                                "и записана в журнал как решение диспетчера")
+
+        entry = {"kind": "edit", **_edit_dict(edit), "title": edit.title,
+                 "forced": bool(added), "violations": _violations(added)}
+        if reason:
+            entry["reason"] = reason
+        # память по факту, а не по утреннему плану
+        self._save(record, state=after, log=record.log + [entry], history_after=history_after(after))
+        out = _state_dict(record)
+        out["violations"] = _violations(violations)
+        out["new_violations"] = _violations(added)
+        return out
+
+    def edit_options(self, day_id, query, body):
+        """Кого законно можно поставить на наряд (смену) в окне времени.
+
+        Интерфейс берёт отсюда список для выбора, чтобы диспетчер не искал
+        подходящий автобус или водителя среди всех и не упирался в отказ.
+        """
+        record = self._planned(day_id)
+        day, state = record.day, record.state
+        duty_id, shift_id = query.get("duty_id"), query.get("shift_id")
+        if (duty_id is None) == (shift_id is None):
+            raise ApiError(BAD, "нужен ровно один параметр: duty_id или shift_id")
+        for_duty = duty_id is not None
+        kind = "set_vehicle" if for_duty else "set_driver"
+        key, item, what = self._edit_target(record, kind, {"duty_id": duty_id, "shift_id": shift_id})
+        start, end = self._window(item, what, query)
+        head = {("duty_id" if for_duty else "shift_id"): key, "from": hm(start), "to": hm(end)}
+        if for_duty:
+            found = free_vehicles(state, day.duties[key], start, end)
+            shown = [{"vehicle_id": v, "board_number": day.vehicles[v].board_number,
+                      "class": day.vehicles[v].cls} for v in found[:MAX_CANDIDATES]]
+            return {**head, "vehicles": shown, "total": len(found), "shown": len(shown)}
+        duty = day.duties[day.shifts[key].duty_id]
+        # все автобусы, которые стоят на наряде в окне смены: водителю нужен допуск к каждому
+        buses = [b.who for b in sorted(state.vehicles.get(duty.id, []), key=lambda b: b.start)
+                 if b.start < end and start < b.end]
+        classes = sorted({day.vehicles[b].cls for b in buses}) or [duty.vehicle_class]
+        found = free_drivers(state, duty, start, end, load_labor(), classes=classes, vehicles=buses)
+        shown = [{"driver_id": d, "tab_number": day.drivers[d].tab_number,
+                  "own_vehicle": day.drivers[d].home_vehicle_id in buses} for d in found[:MAX_CANDIDATES]]
+        return {**head, "for_vehicle": buses[0] if buses else None, "for_vehicles": buses,
+                "drivers": shown, "total": len(found), "shown": len(shown)}
+
+
 # --- сериализация -----------------------------------------------------------------
+
+def _count(log: list, kind: str) -> int:
+    """Сколько в журнале записей этого вида. Старые записи без вида - события."""
+    return sum(1 for entry in log if entry.get("kind", "event") == kind)
+
+
+def _mark(violation) -> tuple:
+    return (violation.code, violation.text, tuple(violation.ids))
+
+
+PER_RESOURCE = ("vehicle_broken", "down_but_working")  # check_state выдаёт их на ресурс, а не на место
+
+
+def _blamed(violation, edit: Edit) -> bool:
+    """Нарушение по самому ресурсу приписывается каждой его постановке.
+
+    vehicle_broken и down_but_working check_state выдаёт один раз на автобус
+    (водителя), без наряда в ids. Иначе вторая постановка того же неисправного
+    автобуса на другой наряд совпала бы меткой с первой, уже вынужденной, и
+    прошла бы без force как «старое нарушение».
+    """
+    return (edit.type.startswith("set") and edit.who is not None
+            and violation.code in PER_RESOURCE and edit.who in violation.ids)
+
+
+def _live_dict(record: DayRecord) -> dict:
+    """Живая часть дня для диска: план, состояние, память водителей, журнал."""
+    return {"plan": plan_to_dict(record.plan) if record.plan is not None else None,
+            "state": state_to_dict(record.state) if record.state is not None else None,
+            "history_before": history_to_dict(record.history_before),
+            "history_after": history_to_dict(record.history_after),
+            "log": record.log, "seconds": record.seconds, "source": record.source}
+
+
+def _edit_dict(edit: Edit) -> dict:
+    out = {"type": edit.type, "from": hm(edit.start), "to": hm(edit.end)}
+    if edit.type.endswith("vehicle"):
+        out["duty_id"] = edit.key
+        if edit.who:
+            out["vehicle_id"] = edit.who
+    else:
+        out["shift_id"] = edit.key
+        if edit.who:
+            out["driver_id"] = edit.who
+    return out
+
 
 def _violations(items: list) -> list:
     return [{"code": v.code, "text": v.text, "ids": list(v.ids)} for v in items]
@@ -461,6 +859,8 @@ def _violations(items: list) -> list:
 def _event_dict(event) -> dict:
     if isinstance(event, NoShow):
         return {"type": "no_show", "driver_id": event.driver_id, "at": hm(event.at)}
+    if isinstance(event, Late):
+        return {"type": "late", "driver_id": event.driver_id, "at": hm(event.at), "delay_min": event.delay}
     if isinstance(event, Accident):
         return {"type": "accident", "vehicle_id": event.vehicle_id, "at": hm(event.at)}
     return {"type": "breakdown", "vehicle_id": event.vehicle_id, "at": hm(event.at),
@@ -480,16 +880,50 @@ def _segments(items: dict, key: str, who: str) -> list:
             for item_id, segs in sorted(items.items()) if segs]
 
 
+def _unfilled_now(record: DayRecord) -> dict:
+    """Незакрытое на этот момент, а не утром: id -> причина.
+
+    Наряд, закрытый диспетчером вручную, из списка уходит, а наряд, с
+    которого он снял автобус, в список попадает с причиной
+    removed_by_dispatcher. Наряд или смена линии, закрытые утром, у которых
+    после событий дня не осталось ни одного отрезка (ДТП в начале наряда,
+    неявка без замены), попадают с причиной after_event. Иначе один и тот же
+    наряд был бы и с автобусом, и в незакрытых, а снятый автобус или
+    опустевшая смена пропадали бы из виду совсем.
+
+    Смены резервных нарядов, которым движок не ставил водителя, в список
+    не попадают: они не незакрыты, они не нужны. Опустевший резерв (его
+    автобус отдан на линию) - тоже: это расход резерва, а не дыра на линии.
+    """
+    state, plan, day = record.state, record.plan, record.day
+    filled = {k for k, segs in {**state.vehicles, **state.drivers}.items() if segs}
+    reasons = dict(plan.unfilled)
+    for entry in record.log:
+        if entry.get("kind") == "edit" and str(entry.get("type", "")).startswith("clear"):
+            reasons.setdefault(entry.get("duty_id") or entry.get("shift_id"), "removed_by_dispatcher")
+    for key in list(plan.vehicles) + list(plan.drivers):
+        duty = day.duties[key] if key in day.duties else day.duties[day.shifts[key].duty_id]
+        if duty.type == "line":
+            reasons.setdefault(key, "after_event")
+    return {k: r for k, r in reasons.items() if k and k not in filled}
+
+
 def _state_dict(record: DayRecord) -> dict:
-    state, plan = record.state, record.plan
-    return {"meta": {"day_id": record.id, "date": record.day.meta["date"], "events": len(record.log),
+    """Состояние дня для интерфейса. Что считается незакрытым - _unfilled_now."""
+    state = record.state
+    return {"meta": {"day_id": record.id, "date": record.day.meta["date"],
+                     "events": _count(record.log, "event"), "edits": _count(record.log, "edit"),
                      "labor": labor_preset_name()},
             "duties": _segments(state.vehicles, "duty_id", "vehicle"),
             "shifts": _segments(state.drivers, "shift_id", "driver"),
-            "unfilled": [{"id": k, "reason": r} for k, r in sorted(plan.unfilled.items())],
+            "unfilled": [{"id": k, "reason": r} for k, r in sorted(_unfilled_now(record).items())],
             "transfers": [{"vehicle_id": v, "to_park": p} for v, p in sorted(state.transfers.items())],
             "down_vehicles": [{"vehicle_id": v, "since": hm(t)} for v, t in sorted(state.down_vehicles.items())],
             "down_drivers": [{"driver_id": d, "since": hm(t)} for d, t in sorted(state.down_drivers.items())],
+            "repairs": [{"vehicle_id": v, "from": hm(a), "to": hm(b)}
+                        for v, windows in sorted(state.repairs.items()) for a, b in sorted(windows)],
+            "late_drivers": [{"driver_id": d, "since": hm(a), "comes": hm(b)}
+                             for d, (a, b) in sorted(state.late.items())],
             "log": list(record.log)}
 
 
@@ -498,7 +932,8 @@ def _state_dict(record: DayRecord) -> dict:
 def make_examples() -> dict:
     """Образцы для docs/CONTRACT.md: день парка №7, сход в 08:40 на P07-R01-WD01, вариант 1."""
     engine = Engine()
-    out = {"_about": "Образцы ответов API движка по docs/CONTRACT.md (раздел «API движка», версия 0.1), "
+    spare = "P07-R02-WD01"   # наряд, на котором показана ручная правка
+    out = {"_about": "Образцы ответов API движка по docs/CONTRACT.md (раздел «API движка»), "
                      "сняты через naryad.web.api.make_examples с дня парка №7 (preset park7, seed 1). "
                      "Ключ - метод и адрес, внутри request (если есть) и response. "
                      "day-2 - тот же день, где каждый седьмой автобус в ремонте: там есть незакрытые наряды."}
@@ -542,15 +977,77 @@ def make_examples() -> dict:
     event = {"type": "breakdown", "vehicle_id": vehicle, "at": "08:40"}
     call("POST", f"/api/days/{day_id}/events/options", event)
     call("POST", f"/api/days/{day_id}/events/apply", {"event": event, "option": 1})
+    call("GET", f"/api/days/{day_id}/intervals",
+         note="после применённого варианта: видно, во сколько раз и когда вырос интервал. "
+              "Без параметров - за весь день, с ?t=08:30 - срез на момент")
     call("GET", f"/api/days/{day_id}/state", note="после события совпадает с ответом events/apply без поля violations")
     call("GET", f"/api/days/{day_id}/log")
 
+    # ручная правка плана: сначала кого можно поставить, потом снятие и постановка
+    free = call("GET", f"/api/days/{day_id}/edits/options", query={"duty_id": spare},
+                note="кого законно можно поставить на наряд; окно по умолчанию - весь наряд")
+    call("POST", f"/api/days/{day_id}/edits",
+         {"type": "clear_vehicle", "duty_id": spare, "reason": "автобус нужен на важном маршруте"},
+         keep=False)
+    call("POST", f"/api/days/{day_id}/edits",
+         {"type": "set_vehicle", "duty_id": spare, "vehicle_id": free["vehicles"][0]["vehicle_id"]},
+         note=f"до этого с наряда {spare} сняли автобус тем же адресом с type: clear_vehicle - "
+              "тогда ответ такой же, но наряд стоит в unfilled с причиной removed_by_dispatcher. "
+              "Здесь на него поставлен свободный автобус: new_violations пуст, правка в журнале")
+
+    # опоздание водителя - на отдельном дне того же образца, чтобы журнал схода остался как есть
+    late_day = call("POST", "/api/days", {"preset": "park7", "date": "2026-10-05", "seed": 1,
+                                          "moment": "morning"}, keep=False)["day_id"]
+    call("POST", f"/api/days/{late_day}/plan", {}, keep=False)
+    late_record = engine.days[late_day]
+    late_shift_ = min((s for s in late_record.day.shifts.values()
+                       if late_record.day.duties[s.duty_id].type == "line" and s.start >= 7 * 60 + 20
+                       and late_record.state.driver_at(s.id, s.start)), key=lambda s: (s.start, s.id))
+    late = {"type": "late", "driver_id": late_record.state.driver_at(late_shift_.id, late_shift_.start),
+            "at": hm(late_shift_.start), "delay_min": 30}
+    late_options = call("POST", f"/api/days/{late_day}/events/options", late,
+                        note=f"{late_day} - тот же день, что day-1, без схода: водитель первой смены "
+                             "после 07:20 опаздывает на 30 минут")
+    swap = [o["kind"] for o in late_options["options"]].index("swap")
+    call("POST", f"/api/days/{late_day}/events/apply", {"event": late, "option": swap},
+         note="выбран обмен сменами (swap); late_drivers - кто опаздывает и когда придёт")
+    call("GET", f"/api/days/{late_day}/log", note="запись опоздания: delay_min и выбранный вариант")
+
+    # загрузка реестра перевозчика: нарочно маленький, с русскими заголовками
+    tiny = {
+        "Парки": "Код парка;Наименование;Состояние;Выпуск будни;Выпуск выходные\n"
+                 "П7;Автобусный парк №7;работает;1;1\n",
+        "Маршруты": "Код;Парк;Номер маршрута;Допустимые классы;Важность;Время оборота\n"
+                    "М3;П7;3;большой;высокая;160\n",
+        "Наряды": "Наряд;Парк;Тип;Маршрут;Класс автобуса;Тип дня;Выход;Заезд;Смен\n"
+                  "Н1;П7;линейный;М3;большой;будни;4:50;13:20;1\n",
+        "Смены": "Код смены;Номер наряда;Смена;Начало;Окончание\nС1;Н1;1;4:50;13:20\n",
+        "Автобусы": "Гаражный номер;Класс;Топливо;Парк;Тех. состояние\n"
+                    "7001;большой;газ;П7;исправен\n",
+        "Водители": "Табельный номер;ФИО;Парк;Допуск;График;Медосмотр\n"
+                    "070001;Макаров Д. В.;П7;большой;работает;прошел\n",
+    }
+    registry_meta = {"date": "2026-10-05", "day_type": "weekday", "moment": "morning"}
+    call("POST", "/api/days/import", {"files": tiny, "meta": registry_meta, "dry_run": True},
+         note="dry_run: реестр прочитан, отчёт отдан, день не создан. Без dry_run ответ тот же "
+              "плюс day_id и counts по созданному дню. Книга Excel передаётся полем workbook "
+              "в base64 вместо files")
+
     third = engine.handle("POST", "/api/days", None, {"preset": "park7"})[1]["day_id"]
+    busy = engine.handle("GET", f"/api/days/{day_id}/state")[1]["duties"][0]
     out["ошибки"] = {
         "400": engine.handle("POST", f"/api/days/{day_id}/events/options", None,
                              {"type": "breakdown", "vehicle_id": vehicle, "at": "09:00"})[1],
         "404": engine.handle("GET", "/api/days/day-9")[1],
         "409": engine.handle("GET", f"/api/days/{third}/explain/summary")[1],
+        "400 реестр с непонятым значением": engine.handle(
+            "POST", "/api/days/import", None,
+            {"files": dict(tiny, **{"Автобусы": tiny["Автобусы"].replace("исправен", "на ходу?")}),
+             "meta": registry_meta})[1],
+        "409 правка нарушает нормы": engine.handle(
+            "POST", f"/api/days/{day_id}/edits", None,
+            {"type": "set_vehicle", "duty_id": spare,
+             "vehicle_id": busy["vehicles"][0]["vehicle_id"]})[1],
     }
     return out
 
@@ -618,6 +1115,12 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         try:
             length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return self._json(BAD, {"error": "неверный заголовок Content-Length"})
+        if length > MAX_BODY:
+            return self._json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                              {"error": f"тело запроса больше {MAX_BODY // (1024 * 1024)} МБ"})
+        try:
             body = json.loads(self.rfile.read(length) or b"{}")
         except ValueError:
             return self._json(BAD, {"error": "тело запроса: неверный JSON"})
@@ -630,6 +1133,9 @@ def main(argv=None) -> int:
     parser.add_argument("--port", type=int, default=8001)
     parser.add_argument("--labor", default=None,
                         help="набор норм из naryad/core/labor_presets.json: current, likely, strict")
+    parser.add_argument("--store", default=DEFAULT_STORE,
+                        help=f"папка с днями, они переживают перезапуск (по умолчанию {DEFAULT_STORE}); "
+                             f"none - не писать на диск")
     parser.add_argument("--write-examples", action="store_true",
                         help="переписать data/samples/api_examples.json и выйти")
     args = parser.parse_args(argv)
@@ -637,9 +1143,19 @@ def main(argv=None) -> int:
     if args.write_examples:
         print(f"Образцы записаны: {write_examples()}")
         return 0
+    folder = None if str(args.store).lower() in ("none", "", "нет") else args.store
+    try:
+        Handler.engine = Engine(store=folder)
+    except ValueError as error:   # папка дней недоступна: это файл или нет прав
+        print(error, file=sys.stderr)
+        return 1
     server = ThreadingHTTPServer((args.host, args.port), Handler)
+    where = (f"дни в папке {Path(folder).expanduser().resolve()} (в ней реестр перевозчика, "
+             f"наружу не отдавать; второй сервер на эту же папку не запускать), "
+             f"загружено: {len(Handler.engine.days)}"
+             if folder else "дни только в памяти, перезапуск их сотрёт")
     print(f"API движка: http://{args.host}:{args.port}/api/labor  (нормы: {labor_preset_name()}, "
-          f"остановить - Ctrl+C)")
+          f"остановить - Ctrl+C)\n{where}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

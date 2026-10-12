@@ -39,6 +39,44 @@ class TestDemo(unittest.TestCase):
         self.assertEqual(text.count("нарушений 0"), 3)  # план и два события
         self.assertLess(text.index("медосмотр"), text.index("сошёл"))
 
+    def test_interval_line_after_the_replacement(self):
+        """Ровные интервалы - наш главный довод, он должен быть виден в показе."""
+        code, text = run([])
+        self.assertEqual(code, 0, text)
+        self.assertIn("Интервалы:", text)
+        self.assertIn("маршрутов с ростом больше четверти 0", text)
+        self.assertIn("без единого автобуса 0", text)
+        self.assertLess(text.index("Проверка дня после замены"), text.index("Интервалы:"))
+
+    def test_dispatcher_edit_step(self):
+        """Шаг правки показывает подсказку, отказ по нормам и запись в журнал."""
+        code, text = run([])
+        self.assertEqual(code, 0, text)
+        for word in ("Диспетчер правит план сам", "законно можно поставить автобусов",
+                     "Правка нарушает нормы и не применена", "одновременно на",
+                     "Правка не применена, день не изменился",
+                     "Применено, новых нарушений: 0", "правка  Диспетчер поставил автобус"):
+            self.assertIn(word, text)
+        self.assertLess(text.index("Журнал дня"), text.index("правка  Диспетчер"))
+        self.assertLess(text.index("Применяем лучший вариант"), text.index("Диспетчер правит план сам"))
+
+    def test_late_step(self):
+        code, text = run(["--late", "30"])
+        self.assertEqual(code, 0, text)
+        self.assertIn("опаздывает на 30 мин", text)
+        self.assertIn("Обмен сменами с водителем", text)
+        self.assertIn("Ждать водителя", text)
+        self.assertLess(text.index("опаздывает"), text.index("сошёл"))
+        code, text = run(["--late", "0"])
+        self.assertEqual(code, 1)
+
+    def test_late_with_an_earlier_breakdown_goes_by_time(self):
+        """Сход раньше опоздания: показ идёт по времени, а не падает на порядке событий."""
+        code, text = run(["--late", "30", "--at", "07:00"])
+        self.assertEqual(code, 0, text)
+        self.assertLess(text.index("сошёл"), text.index("опаздывает на 30 мин"))
+        self.assertIn("07:00", text)
+
     def test_temporary_breakdown(self):
         code, text = run(["--duration", "20"])
         self.assertEqual(code, 0, text)

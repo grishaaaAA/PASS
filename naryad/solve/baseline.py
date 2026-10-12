@@ -13,8 +13,8 @@ from __future__ import annotations
 
 from collections import Counter
 
-from naryad.core.invariants import load_labor, may_depart, rest_minutes, shift_limit, work_minutes
-from naryad.core.model import Day, Plan
+from naryad.core.invariants import can_drive, load_labor, may_depart, rest_minutes, shift_limit, work_minutes
+from naryad.core.model import Day, Plan, normal_make
 
 from .drivers import day_base
 from .vehicles import allowed_classes
@@ -93,14 +93,27 @@ def baseline_drivers(day: Day, vehicle_plan: Plan, yesterday: dict | None = None
     shifts = sorted((s for duty_id in vehicle_plan.vehicles for s in day.shifts_by_duty.get(duty_id, [])),
                     key=lambda s: (day.duties[s.duty_id].type != "line", s.start, s.id))
     limit = shift_limit(labor)
+    # Допуск по марке: если на автобус наряда никто не обкатан, аккуратный диспетчер
+    # берёт из парка другой исправный автобус того же класса (как и движок, solve_drivers)
+    spare = None
+    if any(d.makes for d in ready):
+        working = set(plan.vehicles.values())
+        spare = [v for v in sorted(day.vehicles.values(), key=lambda v: v.board_number)
+                 if v.condition == "ok" and v.id not in working and v.id not in plan.transfers]
+
+    def fitting(vehicle, duty, shift) -> list:
+        return [d for d in ready if d.id not in used and d.park_id == duty.park_id
+                and can_drive(d, vehicle, duty.route_id) and rested(d.id, shift.start)]
+
     for shift in shifts:
         if work_minutes(shift.length, labor) > limit:
             plan.unfilled[shift.id] = "no_driver"
             continue
         duty = day.duties[shift.duty_id]
-        vehicle = day.vehicles[vehicle_plan.vehicles[duty.id]]
-        fits = [d for d in ready if d.id not in used and d.park_id == duty.park_id
-                and vehicle.cls in d.classes and rested(d.id, shift.start)]
+        vehicle = day.vehicles[plan.vehicles[duty.id]]
+        fits = fitting(vehicle, duty, shift)
+        if not fits and spare is not None and vehicle.id not in plan.transfers:
+            fits, vehicle = _other_bus(day, plan, duty, vehicle, spare, lambda bus: fitting(bus, duty, shift))
         driver = next((d for d in fits if d.home_vehicle_id == vehicle.id), fits[0] if fits else None)
         if driver is None:
             plan.unfilled[shift.id] = "no_driver"
@@ -112,3 +125,27 @@ def baseline_drivers(day: Day, vehicle_plan: Plan, yesterday: dict | None = None
             shift = day.shifts[shift_id]
             yesterday[driver_id] = (base + shift.end, shift.length)
     return plan
+
+
+def _other_bus(day: Day, plan: Plan, duty, vehicle, spare: list, fitting) -> tuple:
+    """Свободный автобус того же класса другой марки, на который водитель есть: (водители, автобус).
+
+    Ставится, только если водители уже поставленных смен этого наряда к
+    нему тоже допущены: после пересменки они сядут на него же. Снятый
+    автобус возвращается в парк, его может взять следующий наряд.
+    """
+    on_duty = [day.drivers[plan.drivers[s.id]] for s in day.shifts_by_duty.get(duty.id, [])
+               if s.id in plan.drivers]
+    for bus in spare:
+        if (bus.park_id != duty.park_id or bus.cls != vehicle.cls
+                or normal_make(bus.make) == normal_make(vehicle.make)
+                or not all(can_drive(d, bus, duty.route_id) for d in on_duty)):
+            continue
+        fits = fitting(bus)
+        if fits:
+            spare.remove(bus)
+            spare.append(vehicle)
+            spare.sort(key=lambda v: v.board_number)
+            plan.vehicles[duty.id] = bus.id
+            return fits, bus
+    return [], vehicle

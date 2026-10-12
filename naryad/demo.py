@@ -4,6 +4,7 @@
 Запуск:
     python -m naryad.demo                                  # парк №7 из data/samples
     python -m naryad.demo --at 08:40 --no-show             # плюс недопуск водителя утром
+    python -m naryad.demo --late 30                        # плюс опоздание водителя на 30 минут
     python -m naryad.demo --day data/samples/park7_weekday.json
     python -m naryad.demo --labor likely                   # на другом наборе норм
 
@@ -14,7 +15,9 @@
 
 Что видит заказчик по шагам: какой это день, утренний план и его проверка,
 событие дня, до трёх вариантов замены с ценой, объяснение лучшего простыми
-словами, план после замены и проверка законности.
+словами, план после замены и проверка законности, и напоследок ручная правка
+плана диспетчером: движок подсказывает, кого можно поставить, не пропускает
+нарушение молча и записывает решение человека в журнал.
 """
 
 from __future__ import annotations
@@ -57,6 +60,7 @@ class Demo:
         self.day = Day.from_dict(self.raw)
         self.day_id = ""
         self.step = 0
+        self.last_at = 0   # время последнего события: API принимает события только по порядку
 
     @staticmethod
     def _read(path: Path) -> dict:
@@ -104,12 +108,20 @@ class Demo:
               + ("" if not violations else f", первое: {violations[0]['text']}"))
         return planned
 
+    def _no_show_shift(self):
+        return min((s for s in self.day.shifts.values()
+                    if self.day.duties[s.duty_id].type == "line" and s.start >= 5 * 60),
+                   key=lambda s: (s.start, s.id), default=None)
+
+    def no_show_time(self) -> int:
+        """Когда случится недопуск: за 20 минут до первой утренней смены."""
+        shift = self._no_show_shift()
+        return max(0, shift.start - 20) if shift else 0
+
     def no_show(self) -> None:
         """Недопуск водителя на медосмотре: самая частая утренняя неприятность."""
         self.next_step("Событие: водителя не допустил медосмотр")
-        shift = min((s for s in self.day.shifts.values()
-                     if self.day.duties[s.duty_id].type == "line" and s.start >= 5 * 60),
-                    key=lambda s: (s.start, s.id), default=None)
+        shift = self._no_show_shift()
         if shift is None:
             raise DemoError("в дне нет утренней смены на линии")
         state = self.engine.days[self.day_id].state
@@ -122,6 +134,36 @@ class Demo:
         print(f"  {hm(at)}: водитель {driver.tab_number} не допущен, "
               f"смена {hm(shift.start)}-{hm(shift.end)} на маршруте {route.number}")
         self.event({"type": "no_show", "driver_id": driver_id, "at": hm(at)})
+
+    def late(self, delay: int = 30) -> None:
+        """Водитель опаздывает на утреннюю смену: самая частая замена в парке.
+
+        Так, как описал директор парка: водитель должен выехать в 7:30 и
+        опаздывает. Его можно ждать, а можно поменять сменами с тем, кто
+        выходит чуть позже и уже пришёл.
+        """
+        self.next_step(f"Событие: водитель опаздывает на {delay} мин")
+        shift = self._late_shift()
+        if shift is None:
+            raise DemoError("в дне нет утренней смены на линии с водителем")
+        state = self.engine.days[self.day_id].state
+        driver = self.day.drivers[state.driver_at(shift.id, shift.start)]
+        route = self.day.routes[self.day.duties[shift.duty_id].route_id]
+        print(f"  {hm(shift.start)}: водитель {driver.tab_number} должен выехать на маршрут {route.number} "
+              f"и опаздывает на {delay} мин")
+        self.event({"type": "late", "driver_id": driver.id, "at": hm(shift.start), "delay_min": delay})
+
+    def _late_shift(self):
+        """Первая смена на линии с водителем с 07:20 и не раньше последнего события."""
+        state = self.engine.days[self.day_id].state
+        shifts = [s for s in self.day.shifts.values()
+                  if self.day.duties[s.duty_id].type == "line"
+                  and s.start >= max(7 * 60 + 20, self.last_at) and state.driver_at(s.id, s.start)]
+        return min(shifts, key=lambda s: (s.start, s.id), default=None)
+
+    def late_time(self) -> int:
+        shift = self._late_shift()
+        return shift.start if shift else 7 * 60 + 20
 
     def breakdown(self, at: int, duration: int | None) -> None:
         """Сход автобуса с важного маршрута: то, из-за чего срываются рейсы."""
@@ -147,6 +189,7 @@ class Demo:
 
     def event(self, event: dict) -> None:
         """Варианты на событие, объяснение лучшего, применение и проверка."""
+        self.last_at = parse_time(event["at"])
         before = self.call("GET", f"/api/days/{self.day_id}/state")
         options = self.call("POST", f"/api/days/{self.day_id}/events/options", event)["options"]
         if not options:
@@ -166,6 +209,15 @@ class Demo:
         print(f"  Проверка дня после замены: нарушений {len(violations)}"
               + ("" if not violations else f", первое: {violations[0]['text']}"))
         self.changes(before, after)
+        self.intervals()
+
+    def intervals(self) -> None:
+        """Что стало с интервалами для пассажира: одна строка, зато главная."""
+        answer = self.call("GET", f"/api/days/{self.day_id}/intervals")
+        numbers = answer["numbers"]
+        print(f"  Интервалы: {answer['answer'].lower()}; маршрутов с ростом больше четверти "
+              f"{numbers['over_25_percent']} из {numbers['routes_total']}, "
+              f"без единого автобуса {numbers['stopped_routes']}")
 
     def changes(self, before: dict, state: dict) -> None:
         """Что именно поменялось в дне: сравнение с состоянием до события.
@@ -199,24 +251,83 @@ class Demo:
             print(f"    Выбыл водитель {self.day.drivers[out['driver_id']].tab_number} "
                   f"с {out['since']}")
 
+    def dispatcher_edit(self) -> None:
+        """Диспетчер не согласен с движком и правит план сам.
+
+        Показывает три вещи подряд: движок подсказывает, кого законно можно
+        поставить; правку против норм он не пропускает молча; с явным
+        подтверждением пропускает и записывает в журнал.
+        """
+        state = self.call("GET", f"/api/days/{self.day_id}/state")
+        # наряды, которых события не касались: один отрезок на весь наряд.
+        # Иначе правка затёрла бы замену, только что показанную на шаге выше.
+        quiet = [d for d in state["duties"] if len(d["vehicles"]) == 1]
+        if len(quiet) < 2:
+            return
+        duty, donor = quiet[0]["duty_id"], quiet[1]
+        self.next_step("Диспетчер правит план сам")
+
+        free = self.call("GET", f"/api/days/{self.day_id}/edits/options", query={"duty_id": duty})
+        boards = ", ".join(v["board_number"] for v in free["vehicles"][:5])
+        print(f"  На наряд {duty} законно можно поставить автобусов: {free['total']}"
+              + (f" ({boards}...)" if boards else ""))
+
+        taken = donor["vehicles"][0]["vehicle_id"]
+        refused = self.refuse("POST", f"/api/days/{self.day_id}/edits",
+                              {"type": "set_vehicle", "duty_id": duty, "vehicle_id": taken})
+        print(f"\n  Диспетчер ставит автобус {self.day.vehicles[taken].board_number}, "
+              f"который уже занят на наряде {donor['duty_id']}:")
+        print(f"    Движок: {refused['error']}")
+        for violation in refused["violations"]:
+            print(f"    - {violation['text']}")
+        print("    Правка не применена, день не изменился. Движок не молчит и не решает за человека.")
+
+        if not free["vehicles"]:
+            return
+        good = free["vehicles"][0]
+        after = self.call("POST", f"/api/days/{self.day_id}/edits",
+                          {"type": "set_vehicle", "duty_id": duty, "vehicle_id": good["vehicle_id"],
+                           "reason": "решение диспетчера"})
+        print(f"\n  Диспетчер ставит свободный автобус {good['board_number']}:")
+        print(f"    Применено, новых нарушений: {len(after['new_violations'])}. "
+              "Правка записана в журнал дня.")
+        print("    Если бы диспетчер настоял на занятом автобусе, правка прошла бы с force,")
+        print("    и в журнале осталось бы, что именно он нарушил и почему.")
+
+    def refuse(self, method: str, path: str, body: dict) -> dict:
+        """Запрос, который движок обязан отклонить. Ответ 200 здесь - ошибка показа."""
+        status, payload = self.engine.handle(method, path, None, body)
+        if status != 409:
+            raise DemoError(f"{path}: ждали отказ 409, получили {status}")
+        return payload
+
     def journal(self) -> None:
         self.next_step("Журнал дня")
         for row in self.call("GET", f"/api/days/{self.day_id}/log")["log"]:
-            print(f"  {row['at']}  {row['title']}")
+            # у события есть время, у ручной правки - окно: журнал общий
+            when = row["at"] if row.get("kind", "event") == "event" else "правка"
+            mark = " (под ответственность диспетчера)" if row.get("forced") else ""
+            print(f"  {when:>6}  {row['title']}{mark}")
         print("\n  Весь разбор занял доли секунды на каждое событие. "
               "Диспетчер видит те же цифры и те же объяснения.")
 
 
-def run(path: Path, at: int, duration: int | None, with_no_show: bool) -> None:
+def run(path: Path, at: int, duration: int | None, with_no_show: bool, late: int | None = None) -> None:
     demo = Demo(path)
     print("=" * WIDTH)
     print("AUTODISP: нарядка автобусов и водителей, показ на одном парке".center(WIDTH))
     print("=" * WIDTH)
     demo.load(path)
     demo.plan()
+    # события идут по времени, как их примет API: сход в 07:00 раньше опоздания на 07:20
+    steps = [(at, 2, lambda: demo.breakdown(at, duration))]
     if with_no_show:
-        demo.no_show()
-    demo.breakdown(at, duration)
+        steps.append((demo.no_show_time(), 0, demo.no_show))
+    if late:
+        steps.append((demo.late_time(), 1, lambda: demo.late(late)))
+    for _, _, step in sorted(steps, key=lambda item: item[:2]):
+        step()
+    demo.dispatcher_edit()
     demo.journal()
     print()
 
@@ -229,12 +340,16 @@ def main(argv=None) -> int:
                         help="через сколько минут автобус вернётся; без него - выбыл на день")
     parser.add_argument("--no-show", action="store_true",
                         help="добавить шаг: водителя не допустил медосмотр утром")
+    parser.add_argument("--late", type=int, default=None, metavar="МИН",
+                        help="добавить шаг: водитель утренней смены опаздывает на столько минут")
     parser.add_argument("--labor", default=None,
                         help="набор норм из naryad/core/labor_presets.json: current, likely, strict")
     args = parser.parse_args(argv)
     try:
         use_labor_preset(args.labor)
-        run(Path(args.day), parse_time(args.at, "--at"), args.duration, args.no_show)
+        if args.late is not None and args.late <= 0:
+            raise ValueError("--late: на сколько минут опаздывает водитель, больше нуля")
+        run(Path(args.day), parse_time(args.at, "--at"), args.duration, args.no_show, args.late)
     except (ApiError, DemoError, ValueError) as error:
         print(f"Показ не удался: {error}", file=sys.stderr)
         return 1

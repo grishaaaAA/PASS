@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from .model import REASONS, Day, Plan
+from .model import REASONS, Day, Plan, normal_make
 
 LABOR_FILE = Path(__file__).with_name("labor.json")
 PRESETS_FILE = Path(__file__).with_name("labor_presets.json")
@@ -66,6 +66,33 @@ def load_labor(path: Path = LABOR_FILE, preset: str | None = None) -> dict:
             raise ValueError(f"неизвестный набор норм {name!r}, есть: {', '.join(presets)}")
         labor.update(presets[name])
     return labor
+
+
+def permit_problem(driver, vehicle, route_id: str | None) -> str | None:
+    """Почему водитель не может вести этот автобус на этом маршруте, или None.
+
+    Одно правило допуска на весь движок: утренняя расстановка, ручная
+    модель для сравнения, проверка плана и состояния дня, замены внутри
+    дня, подсказки и объяснения. Три условия:
+    - класс автобуса есть в допусках водителя (как раньше);
+    - если у водителя есть список марок, марка автобуса в нём: у
+      перевозчика водитель «обкатан» на МАЗ, НЕФАЗ, ЛиАЗ, на всех
+      модификациях марки;
+    - если у водителя есть список маршрутов, маршрут наряда в нём.
+      У резервного наряда маршрута нет, ограничение не действует.
+    Нет списка - нет ограничения: данные без этих полей работают как раньше.
+    """
+    if vehicle.cls not in driver.classes:
+        return f"нет допуска к классу {vehicle.cls}"
+    if driver.makes and normal_make(vehicle.make) not in driver.makes:
+        return f"не обкатан на марке {vehicle.make or 'без марки'}"
+    if driver.routes and route_id and route_id not in driver.routes:
+        return f"нет допуска к маршруту {route_id}"
+    return None
+
+
+def can_drive(driver, vehicle, route_id: str | None) -> bool:
+    return permit_problem(driver, vehicle, route_id) is None
 
 
 def may_depart(driver, moment: str | None) -> bool:
@@ -201,10 +228,13 @@ def _driver_fits(day: Day, plan: Plan) -> list:
         if vehicle_id is None:
             out.append(Violation("driver_without_vehicle",
                                  f"{name}: на наряде {duty.id} нет автобуса", (shift_id, driver_id)))
-        cls = day.vehicles[vehicle_id].cls if vehicle_id in day.vehicles else duty.vehicle_class
-        if cls not in driver.classes:
-            out.append(Violation("driver_permit",
-                                 f"{name}: нет допуска к классу {cls}", (shift_id, driver_id)))
+        if vehicle_id in day.vehicles:
+            problem = permit_problem(driver, day.vehicles[vehicle_id], duty.route_id)
+        else:
+            problem = (None if duty.vehicle_class in driver.classes
+                       else f"нет допуска к классу {duty.vehicle_class}")
+        if problem:
+            out.append(Violation("driver_permit", f"{name}: {problem}", (shift_id, driver_id)))
         if driver.park_id != duty.park_id:
             out.append(Violation("driver_park",
                                  f"{name}: водитель из парка {driver.park_id}, наряд парка "

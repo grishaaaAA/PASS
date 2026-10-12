@@ -4,6 +4,10 @@
 Движок читает только JSON. CSV сначала превращается в такой же набор,
 проходит ту же проверку, и только потом уходит в движок.
 
+Это строгое чтение: столбцы называются ровно как у нас. Для реестра
+перевозчика, где столбцы названы по-русски и часть их нет, есть терпимое
+чтение с отчётом - naryad.data.registry. Выгрузка (write_csv) только тут.
+
 Папка набора: по файлу на сущность (parks.csv, routes.csv, ...) плюс
 meta.json. Разделитель - точка с запятой, чтобы файл открывался в Excel
 без настройки. Списки внутри ячейки - через «|», пустая ячейка - нет значения.
@@ -15,7 +19,7 @@ import csv
 import json
 from pathlib import Path
 
-from .check import SCHEMA
+from .check import OPTIONAL, SCHEMA
 
 DELIMITER = ";"
 LIST_SEP = "|"
@@ -49,6 +53,10 @@ def write_csv(data: dict, folder) -> None:
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     for entity, fields in SCHEMA.items():
+        # необязательный столбец пишется, только если он есть хоть у одной записи
+        extra = [(name, kind, True) for name, kind in OPTIONAL.get(entity, [])
+                 if any(item.get(name) is not None for item in data[entity])]
+        fields = list(fields) + extra
         with open(folder / f"{entity}.csv", "w", encoding="utf-8-sig", newline="") as f:
             writer = csv.writer(f, delimiter=DELIMITER)
             writer.writerow([name for name, _, _ in fields])
@@ -72,9 +80,14 @@ def read_csv(folder) -> dict:
             missing = [name for name, _, _ in fields if name not in (reader.fieldnames or [])]
             if missing:
                 raise ValueError(f"{path.name}: нет столбцов {', '.join(missing)}")
-            data[entity] = [
-                {name: _value(row[name] or "", kind, entity, name, n)
-                 for name, kind, _ in fields}
-                for n, row in enumerate(reader, start=2)
-            ]
+            extra = [(name, kind) for name, kind in OPTIONAL.get(entity, [])
+                     if name in (reader.fieldnames or [])]
+            data[entity] = []
+            for n, row in enumerate(reader, start=2):
+                item = {name: _value(row[name] or "", kind, entity, name, n) for name, kind, _ in fields}
+                for name, kind in extra:  # пустая ячейка необязательного поля - поля нет
+                    value = _value(row[name] or "", kind, entity, name, n)
+                    if value not in (None, []):
+                        item[name] = value
+                data[entity].append(item)
     return data
