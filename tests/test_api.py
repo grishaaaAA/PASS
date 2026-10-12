@@ -827,6 +827,19 @@ class TestRegistryImport(unittest.TestCase):
         plan = ok(self.engine.handle("POST", f"/api/days/{payload['day_id']}/plan", None, {}))
         self.assertEqual(plan["violations"], [])
 
+    def test_russian_codes_in_the_address_are_decoded(self):
+        """Коды в реестре перевозчика бывают русскими («Н1»), а браузер шлёт их в адресе
+        закодированными. Без раскодирования интерфейс получал «Нет наряда %D0%9D1»."""
+        from urllib.parse import quote
+        from tests.test_registry import RUSSIAN
+        day = ok(self.post({"files": RUSSIAN, "meta": self.META}))["day_id"]
+        ok(self.engine.handle("POST", f"/api/days/{day}/plan", None, {}))
+        coded = ok(self.engine.handle("GET", f"/api/days/{day}/explain/vehicle/{quote('Н1', safe='')}"))
+        self.assertEqual(coded, ok(self.engine.handle("GET", f"/api/days/{day}/explain/vehicle/Н1")))
+        # косая черта в коде приходит как %2F и тоже раскодируется, а не ломает адрес
+        status, payload = self.engine.handle("GET", f"/api/days/{day}/explain/vehicle/{quote('Н1/2', safe='')}")
+        self.assertEqual((status, payload["error"]), (404, "Нет наряда Н1/2"))
+
     def test_excel_workbook(self):
         from tests.test_registry import TestExcel, workbook
         from naryad.data.registry import encode
