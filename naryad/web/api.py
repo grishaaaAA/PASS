@@ -196,6 +196,12 @@ class Engine:
         for name, value in parsed.items():
             setattr(record, name, value)
 
+    def forget(self, day_id: str) -> None:
+        """Убрать день из памяти и с диска (сервер рабочего места: повторный расчёт той же даты)."""
+        with self._lock:
+            self.days.pop(day_id, None)
+            self.store.forget(day_id)
+
     def _save(self, record: DayRecord, **changes) -> None:
         """Записать живую часть дня на диск, потом применить изменения к записи.
 

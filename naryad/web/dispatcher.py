@@ -32,7 +32,7 @@ from urllib.parse import parse_qs, urlparse
 from naryad.data.generate import generate
 from naryad.geo.store import GeoError, RouteStore
 from naryad.web.marks import MarksError, MarksStore
-from naryad.web.api import Engine, allowed_origin
+from naryad.web.api import DEFAULT_STORE, Engine, allowed_origin
 
 WEB = Path(__file__).resolve().parent
 MAX_BODY = 64 * 1024 * 1024
@@ -182,13 +182,18 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         url = urlparse(self.path)
-        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return self._json(HTTPStatus.BAD_REQUEST, {"error": "неверный заголовок Content-Length"})
         if length > MAX_BODY:
             return self._json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"error": "файл больше 64 МБ"})
         try:
             body = json.loads(self.rfile.read(length) or b"{}")
         except ValueError:
             return self._json(HTTPStatus.BAD_REQUEST, {"error": "тело запроса: неверный JSON"})
+        if url.path.startswith("/x/") and not isinstance(body, dict):
+            return self._json(HTTPStatus.BAD_REQUEST, {"error": "тело запроса: объект JSON"})
         if url.path == "/x/marks":
             try:
                 return self._json(HTTPStatus.OK, self.marks.set(body.get("date") or Date.today().isoformat(), body.get("items"),
@@ -199,9 +204,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._geo(lambda: self.geo.create(body))
         if url.path == "/api/days" and isinstance(body, dict) and "parks" in body:
             self._forget_same_day(body)
+        plan = re.fullmatch(r"/api/days/([^/]+)/plan", url.path.rstrip("/"))
+        if plan and isinstance(body, dict) and "history_from" not in body:
+            yesterday = self._previous_day(plan.group(1))
+            if yesterday:  # отдых водителей считается от того, что они реально отработали накануне
+                body = {**body, "history_from": yesterday}
         if url.path.startswith("/api/"):
             status, payload = self.engine.handle("POST", url.path, {}, body)
-            plan = re.fullmatch(r"/api/days/([^/]+)/plan", url.path.rstrip("/"))
             if plan and int(status) == 200:
                 payload["run"] = self._record_run(plan.group(1), payload)  # номер расчёта - в журнал расчётов
             return self._json(status, payload)
@@ -218,15 +227,39 @@ class Handler(BaseHTTPRequestHandler):
         return self.marks.add_run(meta.get("date") or Date.today().isoformat(), parks, numbers, problems, payload.get("seconds", 0), who=self.client_address[0])
 
     def _forget_same_day(self, day: dict):
-        """Повторный расчёт того же дня тех же парков заменяет прежний. Иначе движок держит в памяти
-        несколько копий одного дня и при проверке отдыха между днями принимает их за дни подряд -
-        получаются сотни ложных «нарушений норм» (одна и та же смена без отдыха)."""
+        """Повторный расчёт того же дня тех же парков заменяет прежний - в памяти и на диске.
+        Копий одного дня в памяти не нужно: диспетчер работает с последним расчётом."""
         date = (day.get("meta") or {}).get("date")
         parks = sorted(p.get("id") for p in day.get("parks", []) if isinstance(p, dict))
         with self.engine._lock:
-            for key, rec in list(self.engine.days.items()):
-                if rec.raw.get("meta", {}).get("date") == date and sorted(p["id"] for p in rec.raw.get("parks", [])) == parks:
-                    del self.engine.days[key]
+            same = [key for key, rec in self.engine.days.items()
+                    if rec.raw.get("meta", {}).get("date") == date
+                    and sorted(p["id"] for p in rec.raw.get("parks", [])) == parks]
+        for key in same:
+            self.engine.forget(key)
+
+    def _previous_day(self, day_id: str):
+        """Последний рассчитанный день тех же парков на более раннюю дату, или None.
+
+        Интерфейс считает план без history_from. Если сервер работает несколько
+        суток, вчерашний день лежит в памяти, и без цепочки движок считал бы
+        водителей полностью отдохнувшими, а проверка отдыха нашла бы сотни
+        нарушений между двумя независимо посчитанными днями. С цепочкой отдых
+        считается от того, что водители реально отработали вчера.
+        """
+        with self.engine._lock:
+            rec = self.engine.days.get(day_id)
+            if rec is None:
+                return None
+            date = rec.day.meta["date"]
+            parks = sorted(rec.day.parks)
+            earlier = [r for r in self.engine.days.values()
+                       if r.id != day_id and r.plan is not None and sorted(r.day.parks) == parks
+                       and r.day.meta["date"] < date]
+        if not earlier:
+            return None
+        best = max(earlier, key=lambda r: (r.day.meta["date"], int(r.id.rsplit("-", 1)[-1])))
+        return best.id
 
     def _geo(self, action):
         try:
@@ -250,6 +283,8 @@ class Handler(BaseHTTPRequestHandler):
             body = self._body()
         except ValueError:
             return self._json(HTTPStatus.BAD_REQUEST, {"error": "тело запроса: неверный JSON"})
+        if not isinstance(body, dict):
+            return self._json(HTTPStatus.BAD_REQUEST, {"error": "тело запроса: объект JSON"})
         rid = url.path.rsplit("/", 1)[-1]
         self._geo(lambda: self.geo.update(rid, body))
 
@@ -266,10 +301,22 @@ def main(argv=None) -> int:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8101)
     parser.add_argument("--no-open", action="store_true")
+    parser.add_argument("--store", default=DEFAULT_STORE,
+                        help=f"папка с днями, они переживают перезапуск (по умолчанию {DEFAULT_STORE}); "
+                             f"none - только в памяти")
     args = parser.parse_args(argv)
+    folder = None if str(args.store).lower() in ("none", "", "нет") else args.store
+    try:
+        Handler.engine = Engine(store=folder)
+    except ValueError as error:
+        print(f"Не запущено: {error}", file=sys.stderr)
+        return 1
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     url = f"http://{args.host}:{args.port}/"
     print(f"AUTODISP, рабочее место диспетчера: {url}", flush=True)
+    print(f"Дни в папке {Path(folder).expanduser().resolve()} (в ней реестр перевозчика, наружу не отдавать), "
+          f"загружено: {len(Handler.engine.days)}" if folder else "Дни только в памяти, перезапуск их сотрёт",
+          flush=True)
     if not args.no_open:
         webbrowser.open(url)
     try:

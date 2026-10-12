@@ -160,6 +160,17 @@ class Store:
         if self.folder:
             self._write(LIVE_FILE.format(day_id), {"format": FORMAT, "day_id": day_id, **live})
 
+    def forget(self, day_id: str) -> None:
+        """Убрать файлы дня: его заменили новым расчётом той же даты и тех же парков.
+
+        Номер дня после этого новому дню всё равно не выдаётся: счётчик
+        номеров в памяти сервера только растёт.
+        """
+        if not self.folder or not DAY_ID.match(day_id):
+            return
+        for name in (LIVE_FILE.format(day_id), DAY_FILE.format(day_id)):
+            (self.folder / name).unlink(missing_ok=True)
+
     def highest_number(self) -> int:
         """Наибольший номер дня среди всех файлов папки, включая непрочитанные.
 
