@@ -32,13 +32,16 @@
     release_limit: "выпуск парка исчерпан",
     lower_priority: "автобус отдан маршруту важнее",
     park_down: "парк не выпускает автобусы",
-    manual: "решение диспетчера"
+    manual: "решение диспетчера",
+    removed_by_dispatcher: "снят диспетчером",
+    after_event: "утром был закрыт, после событий дня остался пустым"
   };
   var PRIORITY = { 1: "высокая", 2: "средняя", 3: "низкая" };
   var CLASSES = { medium: "средний", big: "большой", extra_big: "особо большой" };
   var KINDS = {
     none: "Не заменять", idle: "Автобус сверх выпуска", reserve: "Резерв",
-    donor: "С менее важного маршрута", free_driver: "Свободный водитель", reserve_driver: "Водитель резерва"
+    donor: "С менее важного маршрута", free_driver: "Свободный водитель", reserve_driver: "Водитель резерва",
+    swap: "Обмен сменами"
   };
 
   // Координаты парков: в данных дня их пока нет (lat/lon = null), берём примерно по адресу.
@@ -87,9 +90,14 @@
     return GEO.routes.filter(function (g) { return g.park_id === parkId && g.number.toLowerCase() === n; })[0] || null;
   }
   // Расчёт: план + состояние дня.
+  // Интервалы по всем маршрутам считает движок, по состоянию дня: та же формула,
+  // что в цифрах для заказчика, и наряд работает, только если на нём есть и автобус, и водитель.
+  function intervals(dayId) { return api("GET", "/api/days/" + dayId + "/intervals"); }
+
   function calculate(dayId) {
     return api("POST", "/api/days/" + dayId + "/plan", {}).then(function (plan) {
-      return api("GET", "/api/days/" + dayId + "/state").then(function (state) { return { plan: plan, state: state }; });
+      return Promise.all([api("GET", "/api/days/" + dayId + "/state"), intervals(dayId)])
+        .then(function (r) { return { plan: plan, state: r[0], intervals: r[1] }; });
     });
   }
   function explain(dayId, kind, id, t) {
@@ -99,7 +107,7 @@
   function eventApply(dayId, event, option) { return api("POST", "/api/days/" + dayId + "/events/apply", { event: event, option: option }); }
 
   // ---------- модель для экрана ----------
-  function build(day, plan, state) {
+  function build(day, plan, state, iv) {
     var m = {
       day: day, plan: plan, state: state, meta: day.meta,
       parks: {}, routes: {}, duties: {}, shifts: {}, vehicles: {}, drivers: {},
@@ -174,9 +182,11 @@
       if (v && m.parks[v.park_id]) m.parks[v.park_id].transOut++;
       if (m.parks[t.to_park]) m.parks[t.to_park].transIn++;
     });
+    var rows = {};
+    ((iv && iv.routes) || []).forEach(function (x) { rows[x.route_id] = x; });
     m.routeList.forEach(function (r) {
       r.duties.sort(function (a, b) { return a.start - b.start || (a.id < b.id ? -1 : 1); });
-      r.worst = worstInterval(r);
+      r.worst = iv ? worstFromApi(r, rows[r.id]) : worstInterval(r);
     });
     m.unfilled.sort(function (a, b) {
       var pa = a.type === "reserve" ? 9 : (a.route ? a.route.priority : 5), pb = b.type === "reserve" ? 9 : (b.route ? b.route.priority : 5);
@@ -226,6 +236,28 @@
       if (grow > 0.001 && (!worst || grow > worst.grow)) worst = { t: c.t, grow: grow, planned: planned, actual: actual };
     });
     return worst;
+  }
+
+  // Худший момент маршрута из ответа движка. Остановка (ни одного автобуса) хуже любого роста.
+  function worstFromApi(r, x) {
+    if (!x) return null;
+    if (x.stopped_min > 0 && x.stopped_at) return { stopped: true, t: toMin(x.stopped_at), minutes: x.stopped_min };
+    if (!(x.growth > 1) || !x.at || !x.planned_buses || !x.running_buses) return null;
+    return { t: toMin(x.at), grow: x.growth - 1, planned: r.turn / x.planned_buses, actual: r.turn / x.running_buses };
+  }
+
+  // Худший интервал одной фразой: «худший 11 мин вместо 10 в 08:40» или «без автобусов с 09:10, 40 мин»
+  function worstText(w) {
+    if (!w) return "весь день как по плану";
+    if (w.stopped) return "без автобусов с " + clock(w.t) + ", " + w.minutes + " мин";
+    return "худший " + intervalText(w) + " в " + clock(w.t);
+  }
+
+  // То же коротко, для строки списка: «11 вместо 10 мин», «нет автобусов»
+  function worstShort(w) {
+    if (!w) return "по плану";
+    if (w.stopped) return "нет автобусов";
+    return intervalText(w).replace(" мин вместо ", " вместо ") + " мин";
   }
 
   // «11 мин вместо 10»; если после округления числа равны - с десятыми
@@ -687,8 +719,8 @@
     $: $, esc: esc, toMin: toMin, hm: hm, clock: clock, num: num, pct: pct, plural: plural,
     REASONS: REASONS, PRIORITY: PRIORITY, CLASSES: CLASSES, KINDS: KINDS,
     api: api, loadGeo: loadGeo, geoFor: geoFor, geoAll: function () { return GEO; }, loadParks: loadParks, loadRegistry: loadRegistry, loadMarks: loadMarks, saveMarks: saveMarks, submitDay: submitDay, calculate: calculate, explain: explain,
-    eventOptions: eventOptions, eventApply: eventApply,
-    build: build, intervalText: intervalText, coverage: coverage, lineDuties: lineDuties, running: running,
+    eventOptions: eventOptions, eventApply: eventApply, intervals: intervals,
+    build: build, intervalText: intervalText, worstText: worstText, worstShort: worstShort, coverage: coverage, lineDuties: lineDuties, running: running,
     vehicleName: vehicleName, driverName: driverName, dutyLabel: dutyLabel, parkShort: parkShort,
     explainHtml: explainHtml, gantt: gantt, makeMap: makeMap, flyBounds: flyBounds, flyTo: flyTo, coverageChart: coverageChart, parkMap: parkMap
   };

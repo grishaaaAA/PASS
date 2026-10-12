@@ -26,7 +26,7 @@
       onShown && onShown();  // экран расчёта видим - теперь карта узнает свой размер
       $("#drawer").hidden = true;
       S.run = r.plan.run || null;
-      S.m = D.build(S.day, S.plan, r.state);
+      S.m = D.build(S.day, S.plan, r.state, r.intervals);
       var handlers = { onPark: openPark, onRoute: routeCard, parkTip: parkTip };
       if (!S.map) S.map = D.parkMap($("#map"), S.m, handlers);
       else { S.map.resize(); S.map.refit(); S.map.redraw(S.m, handlers); }
@@ -38,8 +38,12 @@
   }
   window.App = { run: run, resize: function () { S.map && S.map.resize(); }, runNo: function () { return S.run ? S.run.id : null; } };
 
+  // Состояние после события: интервалы пересчитывает движок, поэтому сначала спросить их
   function apply(state) {
-    S.m = D.build(S.day, S.plan, state);
+    return D.intervals(S.info.day_id).then(function (iv) { draw(state, iv); }, function () { draw(state, null); });
+  }
+  function draw(state, iv) {
+    S.m = D.build(S.day, S.plan, state, iv);
     S.map.redraw(S.m);
     if (S.route) S.map.selectRoute(S.route, Math.round($("#drawer").offsetHeight + 30));
     renderSummary(); renderList(); renderProbs();
@@ -58,7 +62,7 @@
   }
   var MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
   function renderSummary() {
-    var m = S.m, t = m.totals, n = S.plan.summary.numbers, pr = problems();
+    var m = S.m, t = m.totals, pr = problems();
     // Заголовок - номер расчёта из журнала расчётов; ниже - парки расчёта с адресами
     var d = (S.run && S.run.day || m.meta.date).split("-");
     $("#resTitle").innerHTML = "Расчёт" + (S.run ? " № " + S.run.id : "") + ' <small>' + (+d[2]) + " " + MONTHS[+d[1] - 1] + "</small>";
@@ -73,7 +77,8 @@
     // показатели - они же переключают список ниже
     var k = [
       ["routes", "Наряды на линии", t.lineFilled, t.lineTotal, pr.line.length ? "bad" : ""],
-      ["shifts", "Смены с водителем", n.shifts_filled, n.shifts_total, pr.shifts.length ? "warn" : ""],
+      // смены на линии по текущему состоянию дня: после событий число меняется
+      ["shifts", "Смены с водителем", t.shiftFilled, t.shiftTotal, pr.shifts.length ? "warn" : ""],
       ["reserve", "Резерв выпущен", t.resFilled, t.resTotal, ""]
     ];
     if (m.parkList.length > 1) k.push(["routes", "Переброски", m.transfers.length, null, ""]);
@@ -101,7 +106,7 @@
     if (S.tab === "routes") {
       routes.sort(function (a, b) { return b.unfilled - a.unfilled || a.priority - b.priority || collate(a.number, b.number); });
       html = '<div class="rows-head"><span>Маршрут</span><span>Наряды</span><span>Интервал, худший</span><span></span></div>' +
-        routes.map(function (r) { return routeItem(r, "<b>" + r.filled + "</b> / " + r.total, r.unfilled ? "bad" : "ok", r.worst ? D.intervalText(r.worst).replace(" мин вместо ", " вместо ") + " мин" : "по плану"); }).join("");
+        routes.map(function (r) { return routeItem(r, "<b>" + r.filled + "</b> / " + r.total, r.unfilled ? "bad" : "ok", D.worstShort(r.worst)); }).join("");
     } else if (S.tab === "shifts") {
       routes.sort(function (a, b) { return b.noDriver - a.noDriver || collate(a.number, b.number); });
       html = '<div class="rows-head"><span>Маршрут</span><span>Смены</span><span>Водители</span><span></span></div>' + routes.map(function (r) {
@@ -119,6 +124,11 @@
     } else {
       var log = m.state.log;
       html = log.length ? log.map(function (l) {
+        if (l.kind === "edit") {  // ручная правка диспетчера: окно времени вместо момента события
+          var why = l.forced ? "Под ответственность диспетчера" + (l.reason ? ": " + l.reason : "") : (l.reason || "Правка диспетчера");
+          return '<div class="item item--static"><span class="chip">' + esc(l.from) + '</span><span><div class="item__t">' + esc(l.title) +
+            '</div><div class="item__s">' + esc(why) + "</div></span><span></span></div>";
+        }
         return '<div class="item item--static"><span class="chip">' + esc(l.at) + '</span><span><div class="item__t">' + esc(D.events.title(m, l)) + '</div><div class="item__s">Решение: ' + esc(l.title) + "</div></span><span></span></div>";
       }).join("") : '<div class="empty">Событий пока нет. Откройте маршрут, нажмите на наряд и отметьте сход, ДТП или неявку.</div>';
     }
@@ -251,7 +261,7 @@
       ["Парк", D.parkShort(m, r.park)],
       ["Важность", D.PRIORITY[r.priority]],
       ["Нарядов на день", calc ? r.filled + " из " + r.total + " на линии" : String(r.total)],
-      calc ? ["Интервал", r.worst ? "худший " + D.intervalText(r.worst) + " в " + D.clock(r.worst.t) : "весь день как по плану"] : null,
+      calc ? ["Интервал", D.worstText(r.worst)] : null,
       ["Круг", r.turn + " мин"],
       ["Длина рейса", kmText(r.length) + " по справке" + (lens.length ? ", по карте " + lens.join(" / ") : "")],
       ["Автобусы", r.classes.map(function (c) { return D.CLASSES[c]; }).join(", ")],
@@ -276,8 +286,8 @@
     var el = S.map.popup(latlng, html, function () { if ($("#drawer").hidden) { S.map.selectRoute(null); } });
     var b = el && el.querySelector('[data-act="duties"]');
     b && b.addEventListener("click", function () { S.map.closePopup(); openRoute(id); });
-    if (calc && r.unfilled) {
-      var bad = r.duties.filter(function (d) { return d.unfilled; })[0];
+    var bad = calc && r.unfilled ? r.duties.filter(function (d) { return d.unfilled; })[0] : null;
+    if (bad) {
       D.explain(S.info.day_id, "unfilled", bad.id).then(function (x) {
         var w = el && el.querySelector("#rcWhy"); if (w) w.innerHTML = '<div class="rc__wq">Почему не закрыт наряд ' + D.hm(bad.start) + "-" + D.hm(bad.end) + "</div>" + esc(x.answer);
       }, function () {});
@@ -298,7 +308,7 @@
     if (!keepSide) S.map.selectRoute(id, Math.round($("#drawer").offsetHeight + 30));
     $("#drTitle").textContent = "Маршрут " + r.number + " · " + D.parkShort(m, r.park);
     $("#drSub").textContent = "Важность " + D.PRIORITY[r.priority] + " · на линии " + r.filled + " из " + r.total + " нарядов · круг " + r.turn + " мин · " +
-      (r.worst ? "худший интервал " + D.intervalText(r.worst) + " в " + D.clock(r.worst.t) : "интервал весь день как по плану");
+      "интервал " + D.worstText(r.worst);
     var a = Math.floor(Math.min.apply(null, r.duties.map(function (d) { return d.start; })) / 60) * 60;
     var b = Math.ceil(Math.max.apply(null, r.duties.map(function (d) { return d.end; })) / 60) * 60;
     D.coverageChart($("#drCov"), D.coverage(r.duties, a, b, 10), { height: 90 });
@@ -322,7 +332,7 @@
     }
     var be = $("#btnEv");
     be && be.addEventListener("click", function () {
-      D.events.open(m, day, duty, t, function (state) { apply(state); renderSummary(); });
+      D.events.open(m, day, duty, t, function (state) { apply(state); });
     });
   }
 

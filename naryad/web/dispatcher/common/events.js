@@ -17,6 +17,7 @@
 
   function eventTitle(m, ev) {
     if (ev.type === "no_show") return "Неявка водителя " + D.driverName(m, ev.driver_id) + " в " + ev.at;
+    if (!ev.vehicle_id) return ev.title || "Событие в " + ev.at;  // вид, которого этот экран ещё не знает
     var v = "автобуса " + D.vehicleName(m, ev.vehicle_id);
     if (ev.type === "accident") return "ДТП " + v + " в " + ev.at;
     return "Сход " + v + " в " + ev.at + (ev.duration_min ? " на " + ev.duration_min + " мин" : " до конца дня");
