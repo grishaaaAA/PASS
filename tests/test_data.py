@@ -358,6 +358,11 @@ class TestMetaAndSelfContradiction(unittest.TestCase):
         result = self.spoiled(lambda d: d["parks"][0].update(state="down"))
         self.assertEqual(result["errors"], [])
         self.assertTrue(any("не закроет" in w for w in result["warnings"]), result["warnings"])
+        # ЧП парк не останавливает (docs/CONTRACT.md): предупреждение говорит именно это
+        result = self.spoiled(lambda d: d["parks"][0].update(state="emergency"))
+        self.assertEqual(result["errors"], [])
+        self.assertFalse(any("не закроет" in w for w in result["warnings"]), result["warnings"])
+        self.assertTrue(any("ЧП" in w and "считается рабочим" in w for w in result["warnings"]), result["warnings"])
 
 
 if __name__ == "__main__":

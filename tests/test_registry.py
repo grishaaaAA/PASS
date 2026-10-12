@@ -187,7 +187,9 @@ class TestCsv(unittest.TestCase):
         files["Автобусы"] = files["Автобусы"].replace(";Тех. состояние", "")
         files["Автобусы"] = "\n".join(line.rsplit(";", 1)[0] for line in files["Автобусы"].splitlines()) + "\n"
         data, report = load(files=files, meta=META)
-        self.assertTrue(any("condition" in e for e in report["errors"]), report["errors"])
+        # отчёт читает диспетчер: столбец назван словами, без имени поля и без слова «движок»
+        self.assertTrue(any("нет обязательных столбцов" in e and "состояние" in e for e in report["errors"]), report["errors"])
+        self.assertFalse(any("condition" in e or "движок" in e for e in report["errors"]), report["errors"])
         line = next(x for x in report["entities"] if x["entity"] == "vehicles")
         self.assertIn("condition", line["missing"])
 
@@ -197,6 +199,7 @@ class TestCsv(unittest.TestCase):
         self.assertEqual(report["errors"], [])
         self.assertIsNone(data["vehicles"][0]["home_route_id"])
         self.assertTrue(any("свой автобус на свой маршрут" in w for w in report["warnings"]))
+        self.assertFalse(any("движок" in w for w in report["warnings"]), report["warnings"])
 
     def test_ambiguous_medical_value_is_not_guessed(self):
         """«Не прошёл» - это недопуск или ещё не проходил? Не угадываем."""
@@ -204,6 +207,8 @@ class TestCsv(unittest.TestCase):
         files["Водители"] = files["Водители"].replace("прошел", "не прошёл")
         data, report = load(files=files, meta=META)
         self.assertTrue(any("не прошёл" in e for e in report["errors"]), report["errors"])
+        # допустимые значения - словами, как в реестре, а не нашими кодами
+        self.assertTrue(any("Допустимо: прошел, не допущен, ожидает" in e for e in report["errors"]), report["errors"])
         self.assertEqual(report["unknown_values"][0]["field"], "medical")
 
     def test_no_medical_column_on_a_morning_day_is_an_error(self):
