@@ -24,8 +24,7 @@ from naryad.core.model import REASONS, Day, Plan
 from naryad.solve.drivers import History, day_base, rest_status
 from naryad.solve.vehicles import allowed_classes, drop_costs, _groups
 
-CLASS_NAMES = {"medium": "средний", "big": "большой", "extra_big": "особо большой"}
-SCHEDULE_NAMES = {"day_off": "выходной по графику", "sick": "на больничном", "vacation": "в отпуске"}
+from naryad.core.words import CLASS_NAMES, CONDITION_NAMES, SCHEDULE_NAMES  # один словарь на весь движок
 
 
 def _hm(minutes_: int) -> str:
@@ -265,7 +264,7 @@ def _duty_of(plan: Plan, vehicle_id: str) -> str | None:
 
 
 def _condition(condition: str) -> str:
-    return {"repair": "в ремонте", "maintenance": "на ТО", "accident": "после ДТП"}.get(condition, condition)
+    return CONDITION_NAMES.get(condition, condition)
 
 
 # --- почему этот водитель ------------------------------------------------------

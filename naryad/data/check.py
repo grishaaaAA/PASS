@@ -13,7 +13,16 @@ from __future__ import annotations
 import re
 from datetime import date as Date
 
+from naryad.core import words
 from .presets import CLASSES
+
+# Сообщения проверки видит диспетчер (отчёт загрузки реестра, отказ «Рассчитать»): сущности словами.
+NOUNS = {"parks": "парк", "routes": "маршрут", "duties": "наряд", "shifts": "смена",
+         "vehicles": "автобус", "drivers": "водитель"}
+PLURALS = {"parks": "парки", "routes": "маршруты", "duties": "наряды", "shifts": "смены",
+           "vehicles": "автобусы", "drivers": "водители"}
+REFERENCES = {"park_id": "парк", "route_id": "маршрут", "duty_id": "наряд",
+              "home_route_id": "закреплённый маршрут", "home_vehicle_id": "закреплённый автобус"}
 
 # Поля каждой сущности: имя, тип, может ли быть пустым.
 # Типы: str, int, float, list (список строк).
@@ -216,7 +225,7 @@ def _permits(data: dict, vehicles: dict, routes: dict, errors: list, warnings: l
         name, makes, own_routes = driver["id"], driver.get("makes") or [], driver.get("routes") or []
         vehicle = vehicles.get(driver["home_vehicle_id"])
         if vehicle and makes and normal_make(make_of(vehicle)) not in {normal_make(m) for m in makes}:
-            errors.append(f"drivers {name}: закреплён за {vehicle['id']} марки "
+            errors.append(f"водитель {driver['tab_number']}: закреплён за автобусом {vehicle['board_number']} марки "
                           f"{make_of(vehicle) or 'без марки'}, но на этой марке не обкатан")
         for text in dict.fromkeys(makes):
             if normal_make(text) not in day_makes:  # «Скания» и «скания» - одна строка сообщения
@@ -233,27 +242,27 @@ def _permits(data: dict, vehicles: dict, routes: dict, errors: list, warnings: l
             no_route.append(name)
         home_route = routes.get(vehicle["home_route_id"]) if vehicle and vehicle["home_route_id"] else None
         if own_routes and home_route and home_route["id"] not in own_routes:
-            warnings.append(f"drivers {name}: закреплён за {vehicle['id']}, а этот автобус закреплён за "
+            warnings.append(f"водитель {driver['tab_number']}: закреплён за автобусом {vehicle['board_number']}, а этот автобус закреплён за "
                             f"маршрутом {home_route['number']}, к которому водитель не допущен")
     nameless = [v["id"] for v in data["vehicles"] if not normal_make(make_of(v))]
     if nameless and any(d.get("makes") for d in data["drivers"]):
-        warnings.append(f"vehicles: у автобусов не указана марка (нет ни make, ни марки в начале model), "
+        warnings.append(f"у автобусов не указана марка (ни в столбце «Марка», ни в начале модели), "
                         f"а у водителей есть допуск по марке - водители со списком марок на эти автобусы "
                         f"не попадут: {_some(nameless)}")
     for text, names in unknown_make.values():
-        warnings.append(f"drivers: в допуске марка «{text}», а автобусов этой марки в дне нет "
+        warnings.append(f"в допуске водителей марка «{text}», а автобусов этой марки в дне нет "
                         f"(водители {_some(names)})")
     for text, names in several.items():
-        warnings.append(f"drivers: в допуске «{text}» - несколько марок через пробел? Учтена только "
+        warnings.append(f"в допуске водителей «{text}» - несколько марок через пробел? Учтена только "
                         f"первая, {make_part(text)}: марки разделяются запятой или | (водители {_some(names)})")
     if no_make:
-        warnings.append(f"drivers: ни одной марки из допуска нет у автобусов дня, эти водители не попадут "
+        warnings.append(f"ни одной марки из допуска нет у автобусов дня, эти водители не попадут "
                         f"ни на один автобус: {_some(no_make)}")
     for route_id, names in unknown_route.items():
-        warnings.append(f"drivers: в допуске маршрут {route_id}, а такого маршрута в дне нет "
+        warnings.append(f"в допуске водителей маршрут {route_id}, а такого маршрута в дне нет "
                         f"(водители {_some(names)})")
     if no_route:
-        warnings.append(f"drivers: ни одного маршрута из допуска нет в дне, эти водители на линию не "
+        warnings.append(f"ни одного маршрута из допуска нет в дне, эти водители на линию не "
                         f"попадут, только в резерв: {_some(no_route)}")
 
 
@@ -278,7 +287,7 @@ def check(data: dict) -> dict:
         index[entity] = {}
         for item in data[entity]:
             if item["id"] in index[entity]:
-                errors.append(f"{entity}: номер {item['id']} повторяется")
+                errors.append(f"{PLURALS[entity]}: код {item['id']} повторяется")
             index[entity][item["id"]] = item
     parks, routes = index["parks"], index["routes"]
     duties, vehicles = index["duties"], index["vehicles"]
@@ -286,14 +295,14 @@ def check(data: dict) -> dict:
     def ref(entity: str, item: dict, field: str, target: dict) -> None:
         value = item[field]
         if value is not None and value not in target:
-            errors.append(f"{entity} {item['id']}: {field} = {value}, такого нет")
+            errors.append(f"{NOUNS[entity]} {item['id']}: {REFERENCES.get(field, field)} «{value}» - такого нет в дне")
 
     for route in data["routes"]:
         ref("routes", route, "park_id", parks)
     for vehicle in data["vehicles"]:
         ref("vehicles", vehicle, "park_id", parks)
         if (vehicle["condition"] == "ok") != (vehicle["repair_days_left"] is None):
-            errors.append(f"vehicles {vehicle['id']}: срок ремонта указывается только "
+            errors.append(f"автобус {vehicle['board_number']}: срок ремонта указывается только "
                           f"у неисправного автобуса")
         ref("vehicles", vehicle, "home_route_id", routes)
     for driver in data["drivers"]:
@@ -301,16 +310,17 @@ def check(data: dict) -> dict:
         ref("drivers", driver, "home_vehicle_id", vehicles)
         vehicle = vehicles.get(driver["home_vehicle_id"])
         if vehicle and vehicle["park_id"] != driver["park_id"]:
-            errors.append(f"drivers {driver['id']}: водитель парка {driver['park_id']} "
+            errors.append(f"водитель {driver['tab_number']}: из парка {driver['park_id']}, а "
                           f"закреплён за автобусом парка {vehicle['park_id']}")
         if vehicle and vehicle["class"] not in driver["classes"]:
-            errors.append(f"drivers {driver['id']}: закреплён за "
-                          f"{vehicle['id']}, но нет допуска к классу {vehicle['class']}")
+            errors.append(f"водитель {driver['tab_number']}: закреплён за автобусом "
+                          f"{vehicle['board_number']}, но нет допуска к классу {words.class_name(vehicle['class'])}")
         if driver["schedule"] != "work" and driver["medical"] is not None:
-            errors.append(f"drivers {driver['id']}: не работает сегодня, но указан медосмотр")
+            errors.append(f"водитель {driver['tab_number']}: не работает сегодня "
+                          f"({words.word(words.SCHEDULE_NAMES, driver['schedule'])}), но стоит отметка о медосмотре")
         if (data.get("meta", {}).get("moment") == "morning" and driver["schedule"] == "work"
                 and driver["medical"] is None):
-            errors.append(f"drivers {driver['id']}: утро дня, водитель работает, "
+            errors.append(f"водитель {driver['tab_number']}: день заявлен на утро, водитель работает, "
                           f"но отметки о медосмотре нет")
     _permits(data, vehicles, routes, errors, warnings)
 
@@ -324,48 +334,49 @@ def check(data: dict) -> dict:
         ref("duties", duty, "park_id", parks)
         if duty["type"] == "line":
             if duty["route_id"] is None:
-                errors.append(f"duties {did}: линейный наряд без маршрута")
+                errors.append(f"наряд {did}: линейный наряд без маршрута")
             else:
                 ref("duties", duty, "route_id", routes)
                 route = routes.get(duty["route_id"])
                 if route and route["park_id"] != duty["park_id"]:
-                    errors.append(f"duties {did}: наряд парка {duty['park_id']}, "
+                    errors.append(f"наряд {did}: наряд парка {duty['park_id']}, "
                                   f"а маршрут {route['number']} - парка {route['park_id']}")
                 if route and duty["vehicle_class"] not in route["allowed_classes"]:
-                    errors.append(f"duties {did}: класс {duty['vehicle_class']} "
+                    errors.append(f"наряд {did}: класс {words.class_name(duty['vehicle_class'])} "
                                   f"не допущен на маршрут {route['number']}")
         elif duty["route_id"] is not None:
-            errors.append(f"duties {did}: у резервного наряда не должно быть маршрута")
+            errors.append(f"наряд {did}: у резервного наряда не должно быть маршрута")
         if not 1 <= duty["shift_count"] <= 3:
-            errors.append(f"duties {did}: смен должно быть от 1 до 3")
+            errors.append(f"наряд {did}: смен должно быть от 1 до 3")
         times = [duty["start"], duty["end"]]
         if not all(TIME_RE.match(t) for t in times):
-            errors.append(f"duties {did}: время должно быть ЧЧ:ММ")
+            errors.append(f"наряд {did}: время должно быть ЧЧ:ММ")
             continue
         own = sorted(shifts_of.get(did, []), key=lambda s: s["order"])
         if len(own) != duty["shift_count"]:
-            errors.append(f"duties {did}: смен {len(own)}, а указано {duty['shift_count']}")
+            errors.append(f"наряд {did}: смен {len(own)}, а указано {duty['shift_count']}")
             continue
         if not all(TIME_RE.match(s["start"]) and TIME_RE.match(s["end"]) for s in own):
-            errors.append(f"duties {did}: время смен должно быть ЧЧ:ММ")
+            errors.append(f"наряд {did}: время смен должно быть ЧЧ:ММ")
             continue
         point = _minutes(duty["start"])
         for shift in own:
             if _minutes(shift["start"]) != point or _minutes(shift["end"]) <= point:
-                errors.append(f"duties {did}: смены идут не встык или пустые")
+                errors.append(f"наряд {did}: смены идут не встык или пустые")
                 break
             point = _minutes(shift["end"])
         else:
             if point != _minutes(duty["end"]):
-                errors.append(f"duties {did}: смены не доходят до конца наряда")
+                errors.append(f"наряд {did}: смены не доходят до конца наряда")
 
     day_type = data.get("meta", {}).get("day_type")
     if day_type in ("weekday", "weekend") and data["duties"]:
         same = sum(d["day_type"] == day_type for d in data["duties"])
         if not same:
             kinds = sorted({d["day_type"] for d in data["duties"]})
-            errors.append(f"в дне нет ни одного наряда на тип дня {day_type}: "
-                          f"в нарядах указано {kinds}. Движок построит пустой план")
+            errors.append(f"в дне нет ни одного наряда на тип дня «{words.word(words.DAY_TYPE_NAMES, day_type)}»: "
+                          f"в нарядах указано {', '.join('«' + words.word(words.DAY_TYPE_NAMES, k) + '»' for k in kinds)}. "
+                          f"План будет пустым")
     for park in data["parks"]:
         pid = park["id"]
         own_vehicles = [v for v in data["vehicles"] if v["park_id"] == pid]
@@ -401,7 +412,7 @@ def check(data: dict) -> dict:
             have = sum(v["class"] == cls and v["condition"] == "ok" for v in own_vehicles)
             need = sum(d["vehicle_class"] == cls for d in own_duties)
             if need > have:
-                warnings.append(f"парк {pid}: класс {cls} - исправных {have}, "
+                warnings.append(f"парк {pid}: исправных автобусов класса {words.class_name(cls)} {have}, "
                                 f"нужно {need}, не хватает {need - have}")
         duty_ids = {d["id"] for d in own_duties}
         need_shifts = sum(s["duty_id"] in duty_ids for s in data["shifts"])

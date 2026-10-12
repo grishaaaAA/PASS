@@ -323,6 +323,30 @@ class TestMetaAndSelfContradiction(unittest.TestCase):
         errors = check(data)["errors"]
         self.assertTrue(any("а маршрут" in e for e in errors), errors)
 
+    def test_messages_speak_dispatcher_words(self):
+        """Ошибки, которые бывают у живого реестра, диспетчер видит в отчёте загрузки и при
+        отказе «Рассчитать»: без наших кодов сущностей, классов, типов дня и без слова «движок»."""
+        import re
+        codes = re.compile(r"\b(drivers|duties|vehicles|routes|shifts|parks|medium|big|extra_big|"
+                           r"weekday|weekend|sick|day_off|passed|pending|repair)\b|[Дд]вижок")
+        spoilers = {
+            "повтор кода": lambda d: d["vehicles"].append(dict(d["vehicles"][0])),
+            "ссылка в никуда": lambda d: d["vehicles"][0].update(home_route_id="нет"),
+            "больной с медосмотром": lambda d: d["drivers"][0].update(schedule="sick", medical="passed"),
+            "класс не для маршрута": lambda d: d["duties"][0].update(vehicle_class="medium"),
+            "не тот тип дня": lambda d: [x.update(day_type="weekend") for x in d["duties"]],
+            "нехватка исправных": lambda d: [v.update(condition="repair", repair_days_left=1) for v in d["vehicles"][:40]],
+            "смены не встык": lambda d: d["shifts"][0].update(end="23:59"),
+        }
+        for name, change in spoilers.items():
+            with self.subTest(name):
+                data = generate("park7", WEEKDAY, seed=1)
+                change(data)
+                result = check(data)
+                said = result["errors"] + result["warnings"]
+                self.assertTrue(said, "порча должна быть замечена")
+                self.assertEqual([m for m in said if codes.search(m)], [], said)
+
     def test_rules_promised_by_the_contract(self):
         """Правила, которые docs/CONTRACT.md называет прямо, и базовые правила полей."""
         cases = (

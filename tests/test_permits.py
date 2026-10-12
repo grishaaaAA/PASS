@@ -407,10 +407,11 @@ class TestData(unittest.TestCase):
         driver["routes"] = [next(r["id"] for r in raw["routes"] if r["id"] != home_route)]
         result = check(raw)
         self.assertEqual(result["errors"], [])
-        self.assertTrue(any(w.startswith(f"drivers {driver['id']}:") and "не допущен" in w
+        # водитель назван табельным номером, как его знает диспетчер, а не кодом записи
+        self.assertTrue(any(w.startswith(f"водитель {driver['tab_number']}:") and "не допущен" in w
                             for w in result["warnings"]), result["warnings"])
         driver["routes"].append(home_route)
-        self.assertFalse(any(w.startswith(f"drivers {driver['id']}:") for w in check(raw)["warnings"]))
+        self.assertFalse(any(w.startswith(f"водитель {driver['tab_number']}:") for w in check(raw)["warnings"]))
 
     def test_csv_round_trip_keeps_permits(self):
         raw = restricted(raw_day())
