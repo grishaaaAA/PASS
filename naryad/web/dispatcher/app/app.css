@@ -100,6 +100,9 @@ body { display: grid; grid-template-rows: 60px 1fr; height: 100vh; overflow: hid
 .cvbox { display: grid; gap: 4px; }
 .ev__h { margin: 4px 0 0; font: var(--text-heading-3); }
 .ev__form { display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: var(--space-3); align-items: end; }
+/* колонки формы сжимаются: длинная подпись в списке событий не должна раздвигать окно шире экрана */
+.ev__form > * { min-width: 0; }
+.ev__form select { width: 100%; text-overflow: ellipsis; }
 .ev__opts { display: grid; gap: var(--space-3); }
 .ev__err { color: var(--danger-text); }
 
