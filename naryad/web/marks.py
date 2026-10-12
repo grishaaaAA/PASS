@@ -22,7 +22,8 @@ from pathlib import Path
 
 DB_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "marks.sqlite"
 KINDS = ("route", "veh", "drv")
-ITEM = re.compile(r"^(P\d{2})-[A-Za-z0-9-]{1,40}$")
+ITEM = re.compile(r"^(P\d{2})-[A-Za-z0-9-]{1,40}$")   # код генератора: парк - в начале кода
+CODE = re.compile(r"^[^\x00-\x1f\x7f]{1,80}$")          # код из реестра перевозчика («М11», «7001»): любой
 
 
 class MarksError(ValueError):
@@ -79,7 +80,11 @@ class MarksStore:
         return out
 
     def set(self, day, items: list, who: str = "") -> dict:
-        """Записать отметки: [{"kind", "id", "value"}]. Сначала проверяется всё, потом пишется одной транзакцией."""
+        """Записать отметки: [{"kind", "id", "value", "park"}]. Сначала проверяется всё, потом пишется одной транзакцией.
+
+        park - парк записи. Без него парк берётся из начала кода генератора (P07-V0001); в реестре
+        перевозчика код парка не содержит («М11», «7001»), и интерфейс передаёт парк сам.
+        """
         day = _day(day)
         if not isinstance(items, list) or not items:
             raise MarksError("нет отметок")
@@ -92,12 +97,21 @@ class MarksStore:
             kind, item = it.get("kind"), str(it.get("id") or "")
             if kind not in KINDS:
                 raise MarksError(f"отметка {i}: kind - route, veh или drv")
-            found = ITEM.match(item)
-            if not found:
-                raise MarksError(f"отметка {i}: id вида P07-...")
+            park = it.get("park")
+            if park is not None:
+                park = str(park)
+                if not CODE.match(park) or len(park) > 40:
+                    raise MarksError(f"отметка {i}: park - код парка")
+                if not CODE.match(item):
+                    raise MarksError(f"отметка {i}: нет кода записи")
+            else:
+                found = ITEM.match(item)
+                if not found:
+                    raise MarksError(f"отметка {i}: не указан парк, а по коду его не понять")
+                park = found.group(1)
             if not isinstance(it.get("value"), bool):
                 raise MarksError(f"отметка {i}: value - true или false")
-            rows.append((found.group(1), kind, item, int(it["value"])))
+            rows.append((park, kind, item, int(it["value"])))
         now = _now()
         with self.lock, self._db() as db:
             for park, kind, item, value in rows:

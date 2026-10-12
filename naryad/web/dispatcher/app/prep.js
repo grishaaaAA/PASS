@@ -295,6 +295,12 @@
   function save() {
     var items = pending();
     if (!items.length) return Promise.resolve();
+    // парк каждой отметки - из реестра: в коде из файла перевозчика («М11», «7001») его нет
+    var park = {};
+    [["route", P.base.routes], ["veh", P.base.vehicles], ["drv", P.base.drivers]].forEach(function (x) {
+      x[1].forEach(function (r) { park[x[0] + ":" + r.id] = r.park_id; });
+    });
+    items.forEach(function (it) { it.park = park[it.kind + ":" + it.id]; });
     $("#btnSave").disabled = true;
     return D.saveMarks(P.date, items).then(function () {
       items.forEach(function (it) { P.saved[it.kind][it.id] = it.value; });

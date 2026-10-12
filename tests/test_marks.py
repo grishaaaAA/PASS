@@ -25,6 +25,16 @@ class MarksTest(unittest.TestCase):
         self.assertEqual(got["route"], {})                              # другой парк не попал
         self.assertEqual(self.store.get(["P07"], "2026-10-08")["veh"], {})  # на следующий день отметок нет
 
+    def test_registry_codes_need_the_park(self):
+        """В реестре перевозчика код не содержит парка («М11», «7001»): парк приходит рядом."""
+        self.store.set("2026-10-12", [{"kind": "route", "id": "М11", "value": False, "park": "P07"},
+                                      {"kind": "veh", "id": "7001", "value": False, "park": "P07"}])
+        got = self.store.get(["P07"], "2026-10-12")
+        self.assertEqual((got["route"], got["veh"]), ({"М11": False}, {"7001": False}))
+        self.assertEqual(self.store.get(["P03"], "2026-10-12")["route"], {})
+        with self.assertRaises(MarksError):   # без парка такой код не разобрать
+            self.store.set("2026-10-12", [{"kind": "route", "id": "М11", "value": True}])
+
     def test_last_value_wins_and_journal_keeps_history(self):
         for value in (False, True, False):
             self.store.set("2026-10-07", [{"kind": "veh", "id": "P07-V0001", "value": value}], who="127.0.0.1")
