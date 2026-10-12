@@ -36,6 +36,17 @@
     removed_by_dispatcher: "снят диспетчером",
     after_event: "утром был закрыт, после событий дня остался пустым"
   };
+  // Нарушение коротко, по коду проверки состояния дня: подпись в списке проблем
+  var VIOLATIONS = {
+    vehicle_twice: "Автобус на двух нарядах сразу", vehicle_class: "Класс автобуса не подходит",
+    vehicle_broken: "Неисправный автобус на наряде", vehicle_park: "Автобус другого парка",
+    wrong_day_type: "Наряд другого типа дня", park_down: "Парк не работает", release_limit: "Выпуск сверх лимита",
+    driver_without_vehicle: "Водитель без автобуса", driver_permit: "Нет допуска",
+    driver_park: "Водитель другого парка", driver_not_working: "Не работает по графику", driver_medical: "Медосмотр",
+    driver_too_many_shifts: "Много смен за день", driver_overlap: "Смены пересекаются", driver_overtime: "Переработка",
+    daily_rest: "Отдых между сменами", rest_ratio: "Отдых между сменами", weekly_rest: "Еженедельный отдых",
+    driver_late: "Водитель ещё не пришёл", down_but_working: "Выбыл, но стоит на наряде"
+  };
   var PRIORITY = { 1: "высокая", 2: "средняя", 3: "низкая" };
   var CLASSES = { medium: "средний", big: "большой", extra_big: "особо большой" };
   var KINDS = {
@@ -738,7 +749,7 @@
 
   window.Disp = {
     $: $, esc: esc, toMin: toMin, hm: hm, clock: clock, num: num, pct: pct, plural: plural,
-    REASONS: REASONS, PRIORITY: PRIORITY, CLASSES: CLASSES, KINDS: KINDS,
+    REASONS: REASONS, VIOLATIONS: VIOLATIONS, PRIORITY: PRIORITY, CLASSES: CLASSES, KINDS: KINDS,
     api: api, loadGeo: loadGeo, geoFor: geoFor, geoAll: function () { return GEO; }, loadParks: loadParks, loadRegistry: loadRegistry, loadMarks: loadMarks, saveMarks: saveMarks, submitDay: submitDay, calculate: calculate, explain: explain,
     eventOptions: eventOptions, eventApply: eventApply, editOptions: editOptions, editApply: editApply, intervals: intervals,
     build: build, intervalText: intervalText, worstText: worstText, worstShort: worstShort, coverage: coverage, lineDuties: lineDuties, running: running,

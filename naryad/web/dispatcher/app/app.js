@@ -126,10 +126,10 @@
       html = log.length ? log.map(function (l) {
         if (l.kind === "edit") {  // ручная правка диспетчера: окно времени вместо момента события
           var why = l.forced ? "Под ответственность диспетчера" + (l.reason ? ": " + l.reason : "") : (l.reason || "Правка диспетчера");
-          return '<div class="item item--static"><span class="chip">' + esc(l.from) + '</span><span><div class="item__t">' + esc(l.title) +
+          return '<div class="item item--static"><span class="chip">' + esc(l.from) + '</span><span><div class="item__t">' + esc(D.plain(m, l.title)) +
             '</div><div class="item__s">' + esc(why) + "</div></span><span></span></div>";
         }
-        return '<div class="item item--static"><span class="chip">' + esc(l.at) + '</span><span><div class="item__t">' + esc(D.events.title(m, l)) + '</div><div class="item__s">Решение: ' + esc(l.title) + "</div></span><span></span></div>";
+        return '<div class="item item--static"><span class="chip">' + esc(l.at) + '</span><span><div class="item__t">' + esc(D.events.title(m, l)) + '</div><div class="item__s">Решение: ' + esc(D.plain(m, l.title)) + "</div></span><span></span></div>";
       }).join("") : '<div class="empty">Событий пока нет. Откройте маршрут, нажмите на наряд и отметьте сход, ДТП, неявку или опоздание.</div>';
     }
     el.innerHTML = html;
@@ -151,7 +151,7 @@
   var PROB_KINDS = [
     { id: "bus", title: "Нет автобуса", icon: "bus", tone: "bad" },
     { id: "driver", title: "Нет водителя", icon: "steering-wheel", tone: "warn" },
-    { id: "norms", title: "Нарушение норм труда", icon: "timer", tone: "bad" }
+    { id: "norms", title: "Нарушение норм", icon: "timer", tone: "bad" }
   ];
   function renderProbs(focus) {
     var pr = problems(), box = $("#probs"), m = S.m;
@@ -164,7 +164,7 @@
       var head = '<div class="probs__grp"><span class="pk-ic pk-ic--' + k.tone + '"><i class="ad-icon ad-icon--' + k.icon + ' ad-icon--sm"></i></span><span>' + k.title + "</span><b>" + list.length + "</b></div>";
       var items = k.id === "norms"
         ? list.slice(0, 20).map(function (v) {
-            return '<div class="probs__it probs__it--text"><span class="pk-ic pk-ic--sm pk-ic--' + k.tone + '"><i class="ad-icon ad-icon--' + k.icon + '"></i></span><span class="probs__txt"><b>' + esc(v.code === "driver_overtime" ? "Переработка" : "Отдых между сменами") + "</b><small>" + esc(v.text) + "</small></span></div>";
+            return '<div class="probs__it probs__it--text"><span class="pk-ic pk-ic--sm pk-ic--' + k.tone + '"><i class="ad-icon ad-icon--' + k.icon + '"></i></span><span class="probs__txt"><b>' + esc(D.VIOLATIONS[v.code] || "Нарушение") + "</b><small>" + esc(D.plain(m, v.text)) + "</small></span></div>";
           }).join("")
         : list.slice(0, 60).map(function (u) {
             var r = u.route, what = u.kind === "shift" ? "смена " + m.shifts[u.id].order : "наряд " + u.duty.id.split("-").pop();
