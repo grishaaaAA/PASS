@@ -2,7 +2,7 @@
 (function () {
   "use strict";
   var D = window.Disp, $ = D.$, esc = D.esc, M = window.Motion;
-  var S = { info: null, day: null, plan: null, m: null, map: null, tab: "routes", route: null, park: null, probsOpen: false };
+  var S = { info: null, day: null, plan: null, m: null, map: null, tab: "routes", route: null, duty: null, park: null, probsOpen: false };
   // Фото парков для карточки (откуда взяты - app/img/CREDITS.md)
   var PARK_PHOTOS = {
     P07: { src: "img/park-P07.jpg" }
@@ -19,7 +19,7 @@
   // Отдаёт обещание: день проверен, план построен, экран расчёта открыт.
   function run(day, onShown) {
     return D.submitDay(day).then(function (r) {
-      S.info = r.info; S.day = day; S.route = null; S.park = null;
+      S.info = r.info; S.day = day; S.route = null; S.duty = null; S.park = null;
       return D.calculate(S.info.day_id);
     }).then(function (r) {
       S.plan = r.plan;
@@ -45,7 +45,7 @@
   function draw(state, iv) {
     S.m = D.build(S.day, S.plan, state, iv);
     S.map.redraw(S.m);
-    if (S.route) S.map.selectRoute(S.route, Math.round($("#drawer").offsetHeight + 30));
+    if (S.route && S.route.indexOf("res:") !== 0) S.map.selectRoute(S.route, Math.round($("#drawer").offsetHeight + 30));
     renderSummary(); renderList(); renderProbs();
     if (S.route) openRoute(S.route, true);
   }
@@ -116,10 +116,11 @@
       }).join("");
     } else if (S.tab === "reserve") {
       var res = Object.keys(m.duties).map(function (k) { return m.duties[k]; }).filter(function (d) { return d.type !== "line"; }).sort(function (a, b) { return a.start - b.start; });
+      // строка резерва нажимается: открывает резерв парка в той же панели, что и маршрут
       html = res.length ? '<div class="rows-head"><span></span><span>Автобус</span><span>Время, класс</span><span></span></div>' + res.map(function (d) {
         var on = d.segs.length > 0;
-        return '<div class="row row--static"><span class="chip chip--res">Р</span><span class="row__main">' + (on ? "<b>" + esc(D.vehicleName(m, d.segs[0].id)) + "</b>" : '<span class="muted">не выпущен</span>') +
-          '</span><span class="row__sub">' + D.hm(d.start) + "–" + D.hm(d.end) + " · " + (D.CLASSES[d.cls] || d.cls) + '</span><span class="item__dot item__dot--' + (on ? "ok" : "off") + '"></span></div>';
+        return '<button class="row' + (S.duty === d.id ? " is-on" : "") + '" data-res="' + esc(d.id) + '"><span class="chip chip--res">Р</span><span class="row__main">' + (on ? "<b>" + esc(D.vehicleName(m, d.segs[0].id)) + "</b>" : '<span class="muted">не выпущен</span>') +
+          '</span><span class="row__sub">' + D.hm(d.start) + "–" + D.hm(d.end) + " · " + (D.CLASSES[d.cls] || d.cls) + '</span><span class="item__dot item__dot--' + (on ? "ok" : "off") + '"></span></button>';
       }).join("") : '<div class="empty">Резервных нарядов нет</div>';
     } else {
       var log = m.state.log;
@@ -135,6 +136,7 @@
     el.innerHTML = html;
     M.stagger(el.children, "up");
     el.querySelectorAll("[data-route]").forEach(function (b) { b.addEventListener("click", function () { openRoute(b.getAttribute("data-route")); }); });
+    el.querySelectorAll("[data-res]").forEach(function (b) { b.addEventListener("click", function () { openDuty(m.duties[b.getAttribute("data-res")]); }); });
   }
   var collator = new Intl.Collator("ru", { numeric: true });
   function collate(a, b) { return collator.compare(a, b); }
@@ -301,9 +303,11 @@
 
   // ---------- Наряды маршрута ----------
   function openRoute(id, keepSide) {
+    if (id.indexOf("res:") === 0) return openReserve(id.slice(4), keepSide);
     var m = S.m, r = m.routes[id]; if (!r) return;
     S.route = id;
     M.show($("#drawer"), "sheet");
+    $("#drCov").parentNode.hidden = false;  // график покрытия есть только у маршрута
     S.map.select(r.park);
     if (!keepSide) S.map.selectRoute(id, Math.round($("#drawer").offsetHeight + 30));
     $("#drTitle").textContent = "Маршрут " + r.number + " · " + D.parkShort(m, r.park);
@@ -316,10 +320,42 @@
     if (!keepSide) $("#drSide").innerHTML = '<p class="caption muted">Нажмите на наряд, чтобы узнать, почему на нём этот автобус и водитель, или отметить сход.</p>';
     document.querySelectorAll("[data-route]").forEach(function (x) { x.classList.toggle("is-on", x.getAttribute("data-route") === id); });
   }
-  $("#drClose").addEventListener("click", function () { M.hide($("#drawer"), "sheet"); S.route = null; S.map.selectRoute(null); });
+  // Резерв парка - в той же панели, что и маршрут: диаграмма нарядов, по щелчку объяснение,
+  // «Изменить…» и события. Трассы и интервала у резерва нет: без графика покрытия и без линии на карте.
+  function reserveOf(m, parkId) {
+    return Object.keys(m.duties).map(function (k) { return m.duties[k]; })
+      .filter(function (d) { return d.type !== "line" && d.park === parkId; })
+      .sort(function (a, b) { return a.start - b.start || (a.id < b.id ? -1 : 1); });
+  }
+  function openReserve(parkId, keepSide) {
+    var m = S.m, list = reserveOf(m, parkId); if (!list.length) return;
+    S.route = "res:" + parkId;
+    M.show($("#drawer"), "sheet");
+    S.map.select(parkId);
+    S.map.selectRoute(null);
+    var on = list.filter(function (d) { return d.segs.length; }).length;
+    $("#drTitle").textContent = "Резерв · " + D.parkShort(m, parkId);
+    $("#drSub").textContent = "Выпущено " + on + " из " + list.length + " " + D.plural(list.length, "наряда", "нарядов", "нарядов");
+    $("#drCov").parentNode.hidden = true;
+    D.gantt($("#drGantt"), m, list, { onDuty: dutyClick });
+    if (!keepSide) $("#drSide").innerHTML = '<p class="caption muted">Нажмите на наряд, чтобы узнать, почему на нём этот автобус и водитель, или изменить его.</p>';
+    document.querySelectorAll("[data-route]").forEach(function (x) { x.classList.remove("is-on"); });
+  }
+  // Строка вкладки «Резерв»: сразу резерв парка и боковая панель этого наряда
+  function openDuty(duty) {
+    if (!duty) return;
+    openReserve(duty.park);
+    var row = $('#drGantt .gantt__row[data-duty="' + CSS.escape(duty.id) + '"]');
+    if (row) row.classList.add("is-selected");
+    document.querySelectorAll("[data-res]").forEach(function (x) { x.classList.toggle("is-on", x.getAttribute("data-res") === duty.id); });
+    dutyClick(duty, duty.start);
+  }
+
+  $("#drClose").addEventListener("click", function () { M.hide($("#drawer"), "sheet"); S.route = null; S.duty = null; S.map.selectRoute(null); });
 
   function dutyClick(duty, t) {
     var side = $("#drSide"), m = S.m, day = S.info.day_id;
+    S.duty = duty.id;
     side.innerHTML = '<div class="label">' + esc(D.dutyLabel(m, duty)) + '</div><div class="caption muted">' + D.hm(duty.start) + "-" + D.hm(duty.end) + ", класс " + (D.CLASSES[duty.cls] || duty.cls) +
       ", смен " + duty.shiftCount + '</div><div id="xpV"><span class="spinner"></span></div><div id="xpD"></div>' +
       '<div class="drawer__acts">' +
