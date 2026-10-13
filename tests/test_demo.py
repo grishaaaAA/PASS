@@ -58,6 +58,13 @@ class TestDemo(unittest.TestCase):
                      "Применено, новых нарушений: 0", "правка  Диспетчер поставил автобус"):
             self.assertIn(word, text)
         self.assertLess(text.index("Журнал дня"), text.index("правка  Диспетчер"))
+
+    def test_no_slang(self):
+        """Показ видит заказчик: без сленга и слов разработчиков - тот же список, что в правиле текстов CLAUDE.md."""
+        for args in ([], ["--no-show"], ["--late", "30"]):
+            code, text = run(args)
+            self.assertEqual(code, 0, text)
+            self.assertNotRegex(text, "арядк|идут в работу|идёт в работу|в бой|[Дд]вижок", args)
         self.assertLess(text.index("Применяем лучший вариант"), text.index("Диспетчер правит план сам"))
 
     def test_late_step(self):
