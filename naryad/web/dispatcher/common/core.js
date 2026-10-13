@@ -295,9 +295,18 @@
     var p = d.full_name.split(" ");
     return p[0] + " " + (p[1] ? p[1][0] + "." : "") + (p[2] ? p[2][0] + "." : "");
   }
+  // Номер наряда для экрана. Код из реестра перевозчика показываем целиком («Н3-1»): это и есть номер,
+  // который знает диспетчер. У кода генератора впереди парк и маршрут (P07-R02-WD11, P07-RES-WD01) -
+  // их отрезаем, остаётся WD11 и WD01.
+  function dutyNo(m, d) {
+    var id = d.id, r = d.route && m.routes[d.route];
+    if (r && id.indexOf(r.id + "-") === 0) return id.slice(r.id.length + 1);
+    if (d.park && id.indexOf(d.park + "-RES-") === 0) return id.slice(d.park.length + 5);
+    return id;
+  }
   function dutyLabel(m, d) {
     var r = d.route && m.routes[d.route];
-    return (r ? "Маршрут " + r.number : "Резерв") + ", наряд " + d.id.split("-").pop();
+    return (r ? "Маршрут " + r.number : "Резерв") + ", наряд " + dutyNo(m, d);
   }
   function parkShort(m, id) { var p = m.parks[id]; return p ? p.name.replace("Автобусный парк ", "Парк ") : id; }
   // Служебные номера в тексте движка (нарушение, запись журнала) - в то, что диспетчер видит на экране:
@@ -307,9 +316,9 @@
       var v = m.vehicles[id]; if (v) return v.board_number;
       if (m.drivers[id]) return driverName(m, id);
       var s = m.shifts[id];
-      if (s) return "смена " + s.order + (m.duties[s.duty] ? " наряда " + s.duty.split("-").pop() : "");
+      if (s) return "смена " + s.order + (m.duties[s.duty] ? " наряда " + dutyNo(m, m.duties[s.duty]) : "");
       var d = m.duties[id];
-      if (d) return id.split("-").pop() + (d.route && m.routes[d.route] ? " маршрута " + m.routes[d.route].number : "");
+      if (d) return dutyNo(m, d) + (d.route && m.routes[d.route] ? " маршрута " + m.routes[d.route].number : "");
       return id;
     });
   }
@@ -349,7 +358,7 @@
           esc("Смена " + s.order + " " + hm(s.start) + "-" + hm(s.end) + (s.segs.length ? ": " + s.segs.map(function (g) { return driverName(m, g.id); }).join(", ") : ": нет водителя")) + '"></span>';
       });
       var mark = d.unfilled ? " is-bad" : (d.shifts.some(function (s) { return d.segs.length && !s.segs.length; }) ? " is-warn" : "");
-      return '<div class="gantt__row' + mark + '" data-duty="' + esc(d.id) + '"><span class="gantt__label">' + esc(d.id.split("-").pop()) +
+      return '<div class="gantt__row' + mark + '" data-duty="' + esc(d.id) + '"><span class="gantt__label"><b class="gantt__no" title="' + esc("Наряд " + dutyNo(m, d)) + '">' + esc(dutyNo(m, d)) + "</b>" +
         '<small>' + hm(d.start) + "</small></span><span class=\"gantt__track\">" + bars + "</span></div>";
     }).join("");
     el.innerHTML = '<div class="gantt"><div class="gantt__axis"><span class="gantt__label"></span><span class="gantt__track">' + hours + "</span></div>" + rows + "</div>";
@@ -753,7 +762,7 @@
     api: api, loadGeo: loadGeo, geoFor: geoFor, geoAll: function () { return GEO; }, loadParks: loadParks, loadRegistry: loadRegistry, loadMarks: loadMarks, saveMarks: saveMarks, submitDay: submitDay, calculate: calculate, explain: explain,
     eventOptions: eventOptions, eventApply: eventApply, editOptions: editOptions, editApply: editApply, intervals: intervals,
     build: build, intervalText: intervalText, worstText: worstText, worstShort: worstShort, coverage: coverage, lineDuties: lineDuties, running: running,
-    vehicleName: vehicleName, driverName: driverName, dutyLabel: dutyLabel, parkShort: parkShort, plain: plain,
+    vehicleName: vehicleName, driverName: driverName, dutyNo: dutyNo, dutyLabel: dutyLabel, parkShort: parkShort, plain: plain,
     explainHtml: explainHtml, gantt: gantt, makeMap: makeMap, flyBounds: flyBounds, flyTo: flyTo, coverageChart: coverageChart, parkMap: parkMap
   };
 })();

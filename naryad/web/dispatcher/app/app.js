@@ -169,7 +169,7 @@
             return '<div class="probs__it probs__it--text"><span class="pk-ic pk-ic--sm pk-ic--' + k.tone + '"><i class="ad-icon ad-icon--' + k.icon + '"></i></span><span class="probs__txt"><b>' + esc(D.VIOLATIONS[v.code] || "Нарушение") + "</b><small>" + esc(D.plain(m, v.text)) + "</small></span></div>";
           }).join("")
         : list.slice(0, 60).map(function (u) {
-            var r = u.route, what = u.kind === "shift" ? "смена " + m.shifts[u.id].order : "наряд " + u.duty.id.split("-").pop();
+            var r = u.route, what = u.kind === "shift" ? "смена " + m.shifts[u.id].order : "наряд " + D.dutyNo(m, u.duty);
             return '<button type="button" class="probs__it" data-problem="' + esc(u.id) + '"><span class="pk-ic pk-ic--sm pk-ic--' + k.tone + '"><i class="ad-icon ad-icon--' + k.icon + '"></i></span>' +
               '<span class="probs__txt"><span class="probs__row"><span class="chip chip--route" style="--c:' + (r && r.geo ? r.geo.color : "var(--accent-deep)") + '">' + (r ? esc(r.number) : "Р") + "</span>" +
               "<b>" + esc(what) + '</b><span class="probs__time">' + D.hm(u.start) + "–" + D.hm(u.end) + "</span></span>" +

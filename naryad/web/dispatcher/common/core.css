@@ -22,8 +22,10 @@ body { background: var(--bg); color: var(--ink); font: var(--text-body); }
 .gantt__row { cursor: pointer; border-radius: 8px; padding: 1px 0; }
 .gantt__row:hover { background: var(--surface-sunken); }
 .gantt__row.is-selected { background: var(--bg); box-shadow: inset 3px 0 0 var(--accent-deep); }
-.gantt__label { font: var(--text-label); font-size: 12px; display: flex; flex-direction: column; line-height: 1.1; padding-left: 6px; }
+.gantt__label { font: var(--text-label); font-size: 12px; display: flex; flex-direction: column; line-height: 1.1; padding-left: 6px; min-width: 0; }
 .gantt__label small { color: var(--ink-muted); font-weight: 400; }
+/* номер из реестра перевозчика бывает длинным: в колонке - сколько влезло, целиком - в подсказке */
+.gantt__no { font: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gantt__duty { position: absolute; top: 3px; height: 18px; border: 1px dashed var(--border-strong); border-radius: 6px; }
 .gantt__seg { position: absolute; top: 3px; height: 18px; border-radius: 6px; background: var(--accent); color: var(--on-accent);
   overflow: hidden; white-space: nowrap; padding: 0 6px; font-size: 11px; line-height: 18px; }
