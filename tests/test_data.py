@@ -328,11 +328,12 @@ class TestMetaAndSelfContradiction(unittest.TestCase):
         отказе «Рассчитать»: без наших кодов сущностей, классов, типов дня и без слова «движок»."""
         import re
         codes = re.compile(r"\b(drivers|duties|vehicles|routes|shifts|parks|medium|big|extra_big|"
-                           r"weekday|weekend|sick|day_off|passed|pending|repair)\b|[Дд]вижок")
+                           r"weekday|weekend|sick|day_off|absent|passed|pending|repair)\b|[Дд]вижок")
         spoilers = {
             "повтор кода": lambda d: d["vehicles"].append(dict(d["vehicles"][0])),
             "ссылка в никуда": lambda d: d["vehicles"][0].update(home_route_id="нет"),
             "больной с медосмотром": lambda d: d["drivers"][0].update(schedule="sick", medical="passed"),
+            "не выходит, но с медосмотром": lambda d: d["drivers"][0].update(schedule="absent", medical="passed"),
             "класс не для маршрута": lambda d: d["duties"][0].update(vehicle_class="medium"),
             "не тот тип дня": lambda d: [x.update(day_type="weekend") for x in d["duties"]],
             "нехватка исправных": lambda d: [v.update(condition="repair", repair_days_left=1) for v in d["vehicles"][:40]],

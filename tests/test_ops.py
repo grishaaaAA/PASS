@@ -313,7 +313,7 @@ class TestCheckState(unittest.TestCase):
                 said = self.broken(spoil)
                 self.assertIn(text, said)
                 # нарушение видит диспетчер (список проблем, окно «Применить всё равно?»): без наших кодов
-                self.assertNotRegex(said, r"\b(medium|big|extra_big|sick|day_off|vacation|passed|pending|failed)\b")
+                self.assertNotRegex(said, r"\b(medium|big|extra_big|sick|day_off|vacation|absent|passed|pending|failed)\b")
 
 
 class TestFreeDrivers(unittest.TestCase):
