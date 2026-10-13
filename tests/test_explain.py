@@ -6,6 +6,7 @@ import random
 import time
 import unittest
 
+from naryad.core.invariants import load_labor
 from naryad.core.model import Day, Plan
 from naryad.explain import (CLASS_NAMES, day_summary, explain_option, interval, intervals,
                             route_interval, why_driver, why_unfilled, why_vehicle)
@@ -268,6 +269,34 @@ class TestExplain(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
+
+
+class TestWordsFollowTheData(unittest.TestCase):
+    """Объяснения называют ту причину, что в данных, и советуют по действующим нормам."""
+
+    def test_pending_medical_is_not_called_failed(self):
+        day = Day.load(SAMPLES / "park7_weekday.json")   # утро: выходит только «пройден»
+        for driver in list(day.drivers.values()):
+            if driver.schedule == "work":
+                day.drivers[driver.id] = dataclasses.replace(driver, medical="pending")
+        plan = solve_drivers(day, solve_vehicles(day))
+        shift_id = next(s for s in sorted(plan.unfilled) if s in day.shifts)
+        text = " ".join(why_unfilled(day, plan, shift_id)["reasons"])
+        self.assertIn("медосмотр ещё не проходил", text)
+        self.assertNotIn("не прошёл медосмотр", text)
+
+    def test_long_shift_advice_follows_the_twelve_hours_rule(self):
+        day = Day.load(SAMPLES / "park7_weekday.json")
+        plan = solve_drivers(day, solve_vehicles(day))
+        shift_id = sorted(plan.drivers)[0]
+        shift = day.shifts[shift_id]
+        day.shifts[shift_id] = dataclasses.replace(shift, end=shift.start + 12 * 60 + 10)
+        del plan.drivers[shift_id]
+        plan.unfilled[shift_id] = "no_driver"
+        allowed = why_unfilled(day, plan, shift_id)["reasons"][-1]          # режим до 12 ч установлен
+        self.assertNotIn("режим до 12 ч", allowed)
+        unknown = why_unfilled(day, plan, shift_id, labor=dict(load_labor(), city_12h_allowed=None))
+        self.assertIn("режим до 12 ч", unknown["reasons"][-1])
 
 class TestIntervals(unittest.TestCase):
     """Интервалы по всем маршрутам сразу: показатель «ровные интервалы» на экране."""

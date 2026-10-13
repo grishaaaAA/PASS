@@ -24,7 +24,7 @@ from naryad.core.model import REASONS, Day, Plan
 from naryad.solve.drivers import History, day_base, month_allows, month_work, rest_status
 from naryad.solve.vehicles import allowed_classes, drop_costs, _groups
 
-from naryad.core.words import CLASS_NAMES, CONDITION_NAMES, SCHEDULE_NAMES  # один словарь на весь движок
+from naryad.core.words import CLASS_NAMES, CONDITION_NAMES, MEDICAL_NAMES, SCHEDULE_NAMES, word  # один словарь на весь движок
 
 
 def _hm(minutes_: int) -> str:
@@ -313,8 +313,8 @@ def _driver_blocker(day: Day, plan: Plan, driver, shift, history: History, labor
     """Почему конкретный водитель не стоит на этой смене."""
     if driver.schedule != "work":
         return SCHEDULE_NAMES.get(driver.schedule, driver.schedule)
-    if driver.schedule == "work" and not may_depart(driver, day.meta.get("moment")):
-        return "не прошёл медосмотр"
+    if not may_depart(driver, day.meta.get("moment")):
+        return word(MEDICAL_NAMES, driver.medical)   # утром «ещё не проходил» - не то же, что «не прошёл»
     other = next((s for s, d in plan.drivers.items() if d == driver.id), None)
     if other is not None:
         return f"работает на смене {other}"
@@ -492,6 +492,8 @@ def _why_shift_unfilled(day: Day, plan: Plan, shift_id: str, history: History, l
                        [f"Смена {_hm(shift.length)}, подготовка и медосмотры до и после {_hm(extra)}",
                         "Норма смены - п. 4 Приказа Минтранса № 160; длину смены задают данные наряда, "
                         "а не расчёт",
+                        "Это вопрос к перевозчику: смена в данных наряда длиннее нормы, её нужно сократить"
+                        if labor.get("city_12h_allowed") else
                         "Это вопрос к перевозчику: либо смена короче, либо установленный режим до 12 ч"],
                        {"shift_min": shift.length, "work_min": work, "limit_min": limit,
                         "prep_min": extra})

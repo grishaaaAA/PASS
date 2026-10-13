@@ -375,8 +375,29 @@ def _month_hours(worked: dict, labor: dict) -> list:
     return out
 
 
+def _worked(day: Day, done) -> dict:
+    """Работа водителей за день: {водитель: [(начало, конец, смена)]}, минуты от начала суток дня.
+
+    done - утренний план (Plan), тогда это смены плана, или уже готовая
+    фактическая работа дня (naryad.ops.replan.worked_today), где сходы,
+    неявки, замены и ручные правки учтены так же, как в памяти водителей.
+    """
+    if not isinstance(done, Plan):
+        return done
+    out = defaultdict(list)
+    for shift_id, driver_id in done.drivers.items():
+        shift = day.shifts.get(shift_id)
+        if shift is not None:
+            out[driver_id].append((shift.start, shift.end, shift.id))
+    return out
+
+
 def check_rest(series: list, labor: dict | None = None) -> list:
     """Отдых водителей на серии дней: список пар (день, план) по порядку дат.
+
+    Вместо плана можно передать фактическую работу дня
+    (naryad.ops.replan.worked_today): так проверяет API, когда в прошлых днях
+    были события и ручные правки.
 
     Проверяет то, что нельзя увидеть в одном дне (Приказ Минтранса № 160):
     - отдых между сменами не меньше 11 ч, до 9 ч - не больше 3 раз
@@ -391,12 +412,11 @@ def check_rest(series: list, labor: dict | None = None) -> list:
     """
     labor = labor or load_labor()
     worked = defaultdict(list)
-    for day, plan in series:
+    for day, done in series:
         base = date.fromisoformat(day.meta["date"]).toordinal() * 1440
-        for shift_id, driver_id in plan.drivers.items():
-            shift = day.shifts.get(shift_id)
-            if shift is not None:
-                worked[driver_id].append((base + shift.start, base + shift.end, shift.id, day.meta["date"][:7]))
+        for driver_id, items in _worked(day, done).items():
+            for start, end, shift_id in items:
+                worked[driver_id].append((base + start, base + end, shift_id, day.meta["date"][:7]))
     out = _month_hours(worked, labor)
     for driver_id, shifts in worked.items():
         shifts.sort()
