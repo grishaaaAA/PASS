@@ -62,7 +62,7 @@ class DriverState:
     in_row: int = 0                  # смен подряд с последнего отдыха 45 ч
     reduced: int = 0                 # сокращённых отдыхов (9-11 ч) с последнего отдыха 45 ч
     month: str = ""                  # месяц, за который считаются часы
-    month_minutes: int = 0           # отработано минут в этом месяце
+    month_minutes: int = 0           # рабочего времени в этом месяце: смены с подготовкой
 
 
 @dataclass
@@ -104,6 +104,17 @@ def rest_status(state: DriverState, start: int, labor: dict) -> str | None:
     return None
 
 
+def month_work(state: DriverState, month: str) -> int:
+    """Рабочее время водителя в месяце month по памяти, минуты."""
+    return state.month_minutes if state.month == month else 0
+
+
+def month_allows(state: DriverState, month: str, length: int, labor: dict) -> bool:
+    """Не выйдет ли месяц за предел перевозчика, если дать смену длиной length."""
+    limit = labor.get("max_month_work_min")
+    return limit is None or month_work(state, month) + work_minutes(length, labor) <= limit
+
+
 def remember(state: DriverState, start: int, end: int, month: str, labor: dict) -> None:
     """Записать в память водителя смену с start до end: сокращения, смены подряд, часы."""
     if rest_status(state, start, labor) == "reduced":
@@ -114,7 +125,7 @@ def remember(state: DriverState, start: int, end: int, month: str, labor: dict) 
     state.last_end, state.last_length = end, end - start
     if state.month != month:
         state.month, state.month_minutes = month, 0
-    state.month_minutes += end - start
+    state.month_minutes += work_minutes(end - start, labor)
 
 
 def _shift_value(day: Day, duty, minutes_: int) -> float:
@@ -155,12 +166,9 @@ def solve_drivers(day: Day, vehicle_plan: Plan, history: History | None = None,
                     continue
                 state = history.get(d.id)
                 status = rest_status(state, base + shift.start, labor)
-                if status is None:
+                if status is None or not month_allows(state, month, shift.length, labor):
                     continue
-                if state.month != month:
-                    hours = 0
-                else:
-                    hours = state.month_minutes
+                hours = month_work(state, month)
                 home_here = d.home_vehicle_id == vehicle.id
                 home_elsewhere = not home_here and d.home_vehicle_id in working_vehicles
                 options.append((not home_here, home_elsewhere, status == "reduced", hours, d.id))

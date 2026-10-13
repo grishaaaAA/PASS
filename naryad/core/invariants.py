@@ -354,6 +354,27 @@ def metrics(day: Day, plan: Plan) -> dict:
     }
 
 
+def _month_hours(worked: dict, labor: dict) -> list:
+    """Предел перевозчика за календарный месяц: смена, на которой рабочее время его превысило."""
+    limit = labor.get("max_month_work_min")
+    if limit is None:
+        return []
+    out = []
+    for driver_id, shifts in worked.items():
+        total, month, told = 0, None, False
+        for start, end, shift_id, shift_month in sorted(shifts):
+            if shift_month != month:
+                total, month, told = 0, shift_month, False
+            total += work_minutes(end - start, labor)
+            if total > limit and not told:   # одно нарушение на водителя за месяц: первая смена сверх предела
+                told = True
+                out.append(Violation("month_hours",
+                                     f"Водитель {driver_id}: смена {shift_id} выводит рабочее время за месяц "
+                                     f"на {_hm(total)}, предел перевозчика {limit // 60} ч",
+                                     (driver_id, shift_id)))
+    return out
+
+
 def check_rest(series: list, labor: dict | None = None) -> list:
     """Отдых водителей на серии дней: список пар (день, план) по порядку дат.
 
@@ -362,7 +383,9 @@ def check_rest(series: list, labor: dict | None = None) -> list:
       между еженедельными отдыхами (п. 17);
     - отдых не меньше двойного времени работы в предыдущую смену (п. 16):
       2 x смена - 30 мин, подробнее в labor.json, meal_break_assumed_min;
-    - не больше 6 смен подряд без отдыха 45 ч (п. 20).
+    - не больше 6 смен подряд без отдыха 45 ч (п. 20);
+    - рабочее время за календарный месяц не больше предела перевозчика
+      (max_month_work_min, 180 ч).
     Что было до первого дня серии, неизвестно: считаем, что перед ней
     у всех был еженедельный отдых.
     """
@@ -373,12 +396,12 @@ def check_rest(series: list, labor: dict | None = None) -> list:
         for shift_id, driver_id in plan.drivers.items():
             shift = day.shifts.get(shift_id)
             if shift is not None:
-                worked[driver_id].append((base + shift.start, base + shift.end, shift.id))
-    out = []
+                worked[driver_id].append((base + shift.start, base + shift.end, shift.id, day.meta["date"][:7]))
+    out = _month_hours(worked, labor)
     for driver_id, shifts in worked.items():
         shifts.sort()
         reduced = in_row = 0
-        for i, (start, end, shift_id) in enumerate(shifts):
+        for i, (start, end, shift_id, _) in enumerate(shifts):
             in_row += 1
             if in_row > labor["max_shifts_between_weekly_rests"]:
                 out.append(Violation("weekly_rest",
@@ -388,7 +411,7 @@ def check_rest(series: list, labor: dict | None = None) -> list:
                                      (driver_id, shift_id)))
             if i + 1 == len(shifts):
                 break
-            next_start, _, next_id = shifts[i + 1]
+            next_start, _, next_id, _ = shifts[i + 1]
             gap, work = rest_minutes(end, next_start, labor), work_minutes(end - start, labor)
             if gap >= labor["min_weekly_rest_min"]:
                 reduced = in_row = 0

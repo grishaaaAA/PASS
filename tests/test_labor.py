@@ -78,7 +78,10 @@ class TestLaborFile(unittest.TestCase):
 
 
 class TestShiftLength(unittest.TestCase):
-    """Смена 11 ч: нарушение, пока неизвестно, установил ли перевозчик смены до 12 ч."""
+    """Смена 11 ч: законна, только если перевозчик установил смены до 12 ч.
+
+    По словам директора парка №6 (13.10.2026) установил, и в labor.json это так.
+    """
 
     def setUp(self):
         self.day = copy.copy(BASE)
@@ -89,13 +92,23 @@ class TestShiftLength(unittest.TestCase):
         self.day.shifts[shift_id] = dataclasses.replace(shift, end=shift.start + 11 * 60)
 
     def test_eleven_hours_without_agreement(self):
-        found = check_plan(self.day, self.plan)
+        found = check_plan(self.day, self.plan, dict(load_labor(), city_12h_allowed=False))
+        self.assertIn("driver_overtime", codes(found))
+
+    def test_eleven_hours_when_unknown_points_to_the_rule(self):
+        found = check_plan(self.day, self.plan, dict(load_labor(), city_12h_allowed=None))
         self.assertIn("driver_overtime", codes(found))
         self.assertTrue(any("п. 4 Приказа Минтранса № 160" in v.text for v in found))
 
     def test_eleven_hours_with_agreement(self):
-        labor = dict(load_labor(), city_12h_allowed=True)
-        self.assertNotIn("driver_overtime", codes(check_plan(self.day, self.plan, labor)))
+        self.assertTrue(load_labor()["city_12h_allowed"])
+        self.assertNotIn("driver_overtime", codes(check_plan(self.day, self.plan)))
+
+    def test_thirteen_hours_is_over_even_with_agreement(self):
+        shift_id = next(iter(self.plan.drivers))
+        shift = self.day.shifts[shift_id]
+        self.day.shifts[shift_id] = dataclasses.replace(shift, end=shift.start + 12 * 60 + 5)
+        self.assertIn("driver_overtime", codes(check_plan(self.day, self.plan)))
 
 
 class TestRest(unittest.TestCase):
@@ -148,9 +161,9 @@ class TestPrepTime(unittest.TestCase):
         plan = greedy_plan(day)
         shift_id = next(iter(plan.drivers))
         shift = day.shifts[shift_id]
-        day.shifts[shift_id] = dataclasses.replace(shift, end=shift.start + 9 * 60 + 40)
+        day.shifts[shift_id] = dataclasses.replace(shift, end=shift.start + 11 * 60 + 40)
         self.assertNotIn("driver_overtime", codes(check_plan(day, plan)))
-        self.assertIn("driver_overtime", codes(check_plan(day, plan, self.PREP)))  # 9:40 + 0:25 > 10 ч
+        self.assertIn("driver_overtime", codes(check_plan(day, plan, self.PREP)))  # 11:40 + 0:25 > 12 ч
 
     def test_rest_without_prep_time(self):
         week = series([(0, 18, 22), (1, 7 + 1 / 6, 11)])  # между сменами 9 ч 10 мин

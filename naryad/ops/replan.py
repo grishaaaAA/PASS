@@ -53,7 +53,7 @@ from naryad.core.invariants import (Violation, can_drive, load_labor, may_depart
                                     shift_limit, work_minutes)
 from naryad.core import words
 from naryad.core.model import Day, Plan, normal_make
-from naryad.solve.drivers import History, day_base, remember, rest_status
+from naryad.solve.drivers import History, day_base, month_allows, month_work, remember, rest_status
 from naryad.solve.vehicles import GROWTH_POWER, PRIORITY_WEIGHT, STOP_SHARE
 
 SUPPLY_MIN = 30
@@ -325,7 +325,7 @@ def free_drivers(state: OpsState, duty, start: int, end: int, labor: dict,
     выбыли, не опаздывают (опоздавший свободен только с момента, когда
     придёт), допуск к классу (и к марке и маршруту, если переданы
     автобусы), отдых после вчерашней смены по нормам, смена не длиннее
-    дневной нормы.
+    дневной нормы и не выводит месяц водителя за предел перевозчика.
 
     cls - класс автобуса, который водитель реально поведёт. Он может
     отличаться от класса наряда: на маршрут допущено несколько классов.
@@ -338,7 +338,7 @@ def free_drivers(state: OpsState, duty, start: int, end: int, labor: dict,
     if work_minutes(end - start, labor) > shift_limit(labor):
         return []
     worked = {s.who for segs in state.drivers.values() for s in segs}
-    base = day_base(state.day)
+    base, month = day_base(state.day), state.day.meta["date"][:7]
     need = tuple(classes) if classes else (cls or state.day.duties[duty.id].vehicle_class,)
     out = []
     for d in state.day.drivers.values():
@@ -349,7 +349,7 @@ def free_drivers(state: OpsState, duty, start: int, end: int, labor: dict,
                 or not _allowed_on(state, d.id, vehicles, duty)):
             continue
         status = rest_status(state.history.peek(d.id), base + start, labor)
-        if status is not None:
+        if status is not None and month_allows(state.history.peek(d.id), month, end - start, labor):
             out.append((status == "reduced", d.tab_number, d.id))
     return [d for *_, d in sorted(out)]
 
@@ -1079,4 +1079,10 @@ def check_state(state: OpsState, labor: dict | None = None) -> list:
                                        f"больше нормы", who)
             if rest_status(state.history.peek(who), day_base(day) + start, labor) is None:
                 bad("daily_rest", f"водитель {who}: не отдохнул после прошлой смены", who)
+            month = day.meta["date"][:7]
+            if not month_allows(state.history.peek(who), month, end - start, labor):
+                total = month_work(state.history.peek(who), month) + work_minutes(end - start, labor)
+                bad("month_hours", f"водитель {who}: за месяц выйдет {total // 60} ч {total % 60:02d} мин "
+                                   f"рабочего времени, предел перевозчика "
+                                   f"{labor['max_month_work_min'] // 60} ч", who)
     return out
