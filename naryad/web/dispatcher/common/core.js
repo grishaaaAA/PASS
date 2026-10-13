@@ -756,8 +756,13 @@
       },
       redraw: function (mm, handlers) { if (handlers) opts = handlers; current = mm; draw(); syncLabels(); },
       popup: function (latlng, html, onClose, cls) {
+        // карточка не встаёт под кнопки карты слева («Слои», «Легенда», «На весь экран»)
+        function mapControlsWidth() {
+          var w = 0; el.querySelectorAll(".mc__zoom, .mc__lbtn").forEach(function (c) { var r = c.getBoundingClientRect(); if (r.width) w = Math.max(w, r.right - el.getBoundingClientRect().left); });
+          return Math.round(w);
+        }
         var wide = cls === "ppop" ? { maxWidth: 300, minWidth: 300 } : { maxWidth: 600, minWidth: 540 };
-        var p = L.popup({ className: cls || "rpop", maxWidth: wide.maxWidth, minWidth: wide.minWidth, autoPanPaddingTopLeft: [20, 60], autoPanPaddingBottomRight: [20, 20] })
+        var p = L.popup({ className: cls || "rpop", maxWidth: wide.maxWidth, minWidth: wide.minWidth, autoPanPaddingTopLeft: [mapControlsWidth() + 16, 16], autoPanPaddingBottomRight: [16, 16] })
           .setLatLng(latlng).setContent(html).openOn(map);
         if (onClose) p.on("remove", onClose);
         return p.getElement();

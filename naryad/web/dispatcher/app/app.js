@@ -278,7 +278,7 @@
     var dirsHtml = dirs.length ? '<div class="rc__dirs"><div class="rc__lbl">Направления</div>' + dirs.map(function (d) {
       var st = d.stops, from = st.length ? st[0].name : "", to = st.length ? st[st.length - 1].name : "";
       var on = dirClicked && dirClicked.id === d.id;
-      return '<div class="rc__dir' + (on ? " is-on" : "") + '"><span class="rc__dl">' + esc(d.id) + '</span><span>' + esc(from) + ' <i class="arr"></i> ' + esc(to) +
+      return '<div class="rc__dir' + (on ? " is-on" : "") + '"><span class="rc__dk">' + esc(d.id) + '</span><span>' + esc(from) + ' <i class="arr"></i> ' + esc(to) +
         "<small>" + st.length + " " + D.plural(st.length, "остановка", "остановки", "остановок") + (d.line.length > 1 ? " · " + kmText(lineKm(d.line)) : "") + "</small></span></div>";
     }).join("") + "</div>" : "";
     var html = '<div class="rc"><div class="rc__head"><span class="rc__n" style="background:' + (g ? g.color : "var(--accent-deep)") + '">' + esc(r.number) + "</span>" +

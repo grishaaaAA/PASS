@@ -68,12 +68,11 @@
       });
     }
     d.stops.forEach(function (s, i) {
-      var mk = L.marker([s.lat, s.lon], { draggable: true, zIndexOffset: 1000,
+      var mk = L.marker([s.lat, s.lon], { zIndexOffset: 1000, keyboard: false,
         icon: L.divIcon({ className: "", html: '<div class="sp' + (hlStop === i ? " is-hl" : "") + '" style="border-color:' + cur.color + '">' + (i + 1) + "</div>", iconSize: [0, 0] }) }).addTo(editLayer);
       mk.bindTooltip((i + 1) + ". " + esc(s.name), { direction: "top", offset: [0, -8] });
-      mk.on("dragstart", change);
-      mk.on("dragend", function () { var p = mk.getLatLng(); s.lat = r6(p.lat); s.lon = r6(p.lng); refresh(); });
-      mk.on("click", function () { highlight(i, true); });
+      // Остановку не тащат: правка - в меню по клику (название, порядок, удаление) или в списке слева
+      mk.on("click", function () { highlight(i, true); stopMenu(i); });
     });
   }
   function arrow(a, b) {
@@ -95,12 +94,65 @@
     var t = dx === 0 && dy === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)));
     return { d: Math.hypot(ax + t * dx - px, ay + t * dy - py), t: t };
   }
-  // Положение точки вдоль трассы: номер отрезка + доля - чтобы вставить остановку по порядку.
-  function along(line, p) {
-    var k = Math.cos(p[0] * Math.PI / 180), best = 0, bd = Infinity;
+  // Ближайшая точка трассы
+  function snap(line, p) {
+    var k = Math.cos(p.lat * Math.PI / 180), best = null;
     for (var i = 0; i < line.length - 1; i++) {
+      var r = segDist([p.lat, p.lng], line[i], line[i + 1], k);
+      if (!best || r.d < best.d) best = { d: r.d, i: i, t: r.t };
+    }
+    var a = line[best.i], b = line[best.i + 1];
+    return L.latLng(a[0] + (b[0] - a[0]) * best.t, a[1] + (b[1] - a[1]) * best.t);
+  }
+  // Меню остановки на карте: название, выше / ниже, удалить
+  function stopMenu(i) {
+    var d = dir(), s = d.stops[i];
+    var box = document.createElement("div");
+    box.className = "sm";
+    box.innerHTML = '<label class="ad-field"><span class="ad-field__label">Остановка ' + (i + 1) + " из " + d.stops.length + '</span><input class="ad-input" maxlength="200"></label>' +
+      '<div class="sm__row"><button type="button" class="ad-btn ad-btn--sm btn-plain" data-a="up"' + (i ? "" : " disabled") + '>Выше</button>' +
+      '<button type="button" class="ad-btn ad-btn--sm btn-plain" data-a="down"' + (i < d.stops.length - 1 ? "" : " disabled") + '>Ниже</button>' +
+      '<span class="grow"></span><button type="button" class="ad-btn ad-btn--sm btn-plain danger" data-a="del">Удалить</button></div>';
+    var inp = box.querySelector("input"); inp.value = s.name;
+    var pop = L.popup({ className: "smpop", offset: [0, -6], autoPanPadding: [24, 24] }).setLatLng([s.lat, s.lon]).setContent(box).openOn(map);
+    var first = true;
+    inp.addEventListener("input", function () {
+      if (first) { change(); first = false; }
+      s.name = inp.value; renderDirs();
+    });
+    inp.addEventListener("keydown", function (e) { if (e.key === "Enter") map.closePopup(pop); });
+    box.querySelectorAll("[data-a]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var a = b.getAttribute("data-a"), to = i;
+        change();
+        if (a === "del") d.stops.splice(i, 1);
+        if (a === "up") { d.stops.splice(i - 1, 0, d.stops.splice(i, 1)[0]); to = i - 1; }
+        if (a === "down") { d.stops.splice(i + 1, 0, d.stops.splice(i, 1)[0]); to = i + 1; }
+        map.closePopup(pop);
+        if (a === "del") { hlStop = -1; refresh(); } else { highlight(to, true); stopMenu(to); }
+      });
+    });
+    pop.on("remove", function () { drawEdit(); });
+    setTimeout(function () { inp.focus(); inp.select(); }, 0);
+  }
+  // Куда по порядку встаёт остановка с положением pos вдоль трассы. Остальные остановки не переставляем:
+  // их положение ищем по ходу движения, каждую - не раньше предыдущей. Иначе остановка у дороги,
+  // по которой трасса идёт дважды (туда и обратно), попала бы на чужой проход и порядок бы поехал.
+  function placeAt(d, pos) {
+    var prev = 0;
+    for (var i = 0; i < d.stops.length; i++) {
+      prev = along(d.line, [d.stops[i].lat, d.stops[i].lon], prev);
+      if (prev > pos) return i;
+    }
+    return d.stops.length;
+  }
+  // Положение точки вдоль трассы: номер отрезка + доля - чтобы вставить остановку по порядку.
+  // from - искать не раньше этого положения
+  function along(line, p, from) {
+    var k = Math.cos(p[0] * Math.PI / 180), start = Math.floor(from || 0), best = from || 0, bd = Infinity;
+    for (var i = start; i < line.length - 1; i++) {
       var r = segDist(p, line[i], line[i + 1], k);
-      if (r.d < bd) { bd = r.d; best = i + r.t; }
+      if (i + r.t >= (from || 0) && r.d < bd) { bd = r.d; best = i + r.t; }
     }
     return best;
   }
@@ -110,9 +162,9 @@
     change();
     if (mode === "line") d.line.push(ll(e.latlng));
     else if (mode === "stop") {
-      var s = { id: "m-" + Date.now(), name: "Новая остановка", lat: r6(e.latlng.lat), lon: r6(e.latlng.lng) };
-      var pos = d.line.length > 1 ? along(d.line, [s.lat, s.lon]) : Infinity, at = d.stops.length;
-      if (isFinite(pos)) for (var i = 0; i < d.stops.length; i++) { if (along(d.line, [d.stops[i].lat, d.stops[i].lon]) > pos) { at = i; break; } }
+      var at0 = d.line.length > 1 ? snap(d.line, e.latlng) : e.latlng;  // новая остановка - сразу на трассе
+      var s = { id: "m-" + Date.now(), name: "Новая остановка", lat: r6(at0.lat), lon: r6(at0.lng) };
+      var at = d.line.length > 1 ? placeAt(d, along(d.line, [s.lat, s.lon])) : d.stops.length;
       d.stops.splice(at, 0, s);
       refresh();
       highlight(at, true, true);
@@ -274,7 +326,7 @@
     $("#map").classList.toggle("is-tool", !!m);
     if (m) window.Motion.show($("#hint"), "down"); else window.Motion.hide($("#hint"), "fade");
     $("#hint").textContent = m === "line" ? "Клик по карте - продолжить трассу. Клик по линии - вставить точку. Точки можно тащить, правый клик - удалить точку."
-      : m === "stop" ? "Клик по карте - новая остановка, она встанет по порядку вдоль трассы. Остановки можно тащить." : "";
+      : m === "stop" ? "Клик по карте - новая остановка на трассе, по порядку. Клик по остановке - название, порядок, удаление." : "";
     drawEdit();
   }
 
