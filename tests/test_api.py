@@ -165,6 +165,22 @@ class TestPlanAndExplain(unittest.TestCase):
                          {"planned_min", "actual_min", "planned_buses", "running_buses"})
         self.assertIn("08:30", interval["question"])
 
+    def test_interval_at_night_and_on_a_stopped_route(self):
+        """Ночью нарядов нет, а маршрут без единого работающего наряда стоит: ответ словами, а не ошибка 500."""
+        night = ok(self.engine.handle("GET", f"/api/days/day-1/explain/interval/{ROUTE}", {"t": "02:00"}))
+        self.assertIn("по плану нарядов нет", night["answer"])
+        self.assertEqual((night["numbers"]["planned_min"], night["numbers"]["actual_min"]), (None, None))
+        engine = Engine()
+        ok(engine.handle("POST", "/api/days", None, PARK7))
+        ok(engine.handle("POST", "/api/days/day-1/plan", None, {}))
+        plan = engine.days["day-1"].plan
+        for duty_id in [d for d in plan.vehicles if d.startswith(ROUTE + "-")]:   # утром маршруту не досталось автобусов
+            del plan.vehicles[duty_id]
+        stopped = ok(engine.handle("GET", f"/api/days/day-1/explain/interval/{ROUTE}", {"t": "08:30"}))
+        self.assertIn("маршрут стоит", stopped["answer"])
+        self.assertIsNone(stopped["numbers"]["actual_min"])
+        self.assertGreater(stopped["numbers"]["planned_buses"], 0)
+
     def test_intervals_over_the_day_and_at_a_moment(self):
         whole = ok(self.engine.handle("GET", "/api/days/day-1/intervals"))
         self.assertEqual(set(whole), {"question", "answer", "reasons", "numbers", "routes"})

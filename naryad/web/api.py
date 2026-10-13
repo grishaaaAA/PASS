@@ -570,10 +570,16 @@ class Engine:
         numbers = explain.interval(record.day, record.plan, route_id, at)
         route = record.day.routes[route_id]
         planned, actual = numbers["planned_min"], numbers["actual_min"]
-        grew = actual - planned
+        if planned is None:     # ночью и до выхода первого наряда интервала нет
+            answer = f"В {hm(at)} на маршруте {route.number} по плану нарядов нет"
+        elif actual is None:    # наряды по плану есть, но ни один не работает
+            answer = f"По плану {planned} мин, сейчас маршрут стоит: не работает ни один наряд"
+        else:
+            grew = actual - planned
+            answer = (f"По плану {planned} мин, сейчас {actual} мин"
+                      + (" - как по плану" if grew <= 0 else f", на {grew} мин больше"))
         return {"question": f"Какой интервал на маршруте {route.number} в {hm(at)}?",
-                "answer": f"По плану {planned} мин, сейчас {actual} мин"
-                          + (" - как по плану" if grew <= 0 else f", на {grew} мин больше"),
+                "answer": answer,
                 "reasons": [f"По плану на маршруте {numbers['planned_buses']} автобусов, "
                             f"работает {numbers['running_buses']}"],
                 "numbers": numbers}
