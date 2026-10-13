@@ -242,3 +242,11 @@ body:has(.layout.map-full:not([hidden])) { grid-template-rows: 1fr; }
 .lg-pk { width: 16px; height: 16px; border-radius: 4px; background-image: var(--gradient-chrome-deep); }
 .lg-pk--ok { background: var(--success-fill); }
 .lg-pk--bad { background: var(--danger-fill); }
+
+/* Логотип в шапке - кнопка «в начало» на обеих страницах */
+.bar__logo { height: 26px; display: block; }
+.bar__home { display: flex; padding: var(--space-1); margin: calc(-1 * var(--space-1)); border: 0; background: none; border-radius: var(--radius-sm); cursor: pointer;
+  transition: transform 160ms var(--easing-standard), opacity 220ms var(--easing-standard); }
+@media (hover: hover) and (pointer: fine) { .bar__home:hover { opacity: .8; } }
+.bar__home:active { transform: scale(0.97); }
+.bar__home:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }

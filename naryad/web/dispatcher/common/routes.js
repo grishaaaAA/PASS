@@ -9,7 +9,8 @@
   var cur = null, isNew = false, dirIdx = 0, mode = null, undo = [], dirty = false, hlStop = -1;
   // та же палитра, что у импорта (naryad/geo/osm_import.py): цвета маршрутов парка не повторяются
   var PALETTE = ["#be0032", "#0067a5", "#f38400", "#008856", "#875692", "#e25822", "#1f2a7a", "#8db600", "#b3446c",
-    "#0f8c99", "#f6a600", "#604e97", "#882d17", "#e68fac", "#2b3d26", "#c51b7d", "#654522", "#f99379", "#5a8f29"];
+    "#0f8c99", "#f6a600", "#604e97", "#882d17", "#e68fac", "#2b3d26", "#c51b7d", "#654522", "#f99379", "#5a8f29",
+    "#11a579", "#e73f74", "#a6761d", "#00585f", "#7a7a00", "#3d5a80"];  // запас: у парка №7 19 маршрутов, первые 19 заняты
 
   // ---------- карта ----------
   var map = D.makeMap("map", [59.85, 30.32], 11);
@@ -201,7 +202,7 @@
       var st = r.directions.reduce(function (n, d) { return n + d.stops.length; }, 0);
       return '<button class="ri" data-id="' + esc(r.id) + '"><span class="ri__n" style="background:' + r.color + '">' + esc(r.number) + '</span><span><div class="ri__t">' + esc(r.name || "без названия") +
         '</div><div class="ri__s' + (empty ? " ri__warn" : "") + '">' + (empty ? "нет трассы - нарисуйте" : r.directions.length + " " + D.plural(r.directions.length, "направление", "направления", "направлений") + ", остановок " + st) +
-        "</div></span><span class=\"ri__s\">" + (r.source.indexOf("osm") === 0 ? "OSM" : "вручную") + "</span></button>";
+        "</div></span></button>";
     }).join("") || '<p class="muted caption">Ничего не найдено</p>';
     if (!renderList.done) { renderList.done = true; window.Motion.stagger($("#list").children); }
     $("#list").querySelectorAll("[data-id]").forEach(function (b) { b.addEventListener("click", function () { tryOpen(b.getAttribute("data-id")); }); });
@@ -241,8 +242,10 @@
   });
 
   function renderEdit() {
-    $("#fNumber").value = cur.number; $("#fName").value = cur.name; $("#fColor").value = cur.color; $("#fNote").value = cur.note || "";
-    $("#fSource").textContent = "Источник: " + (cur.source.indexOf("osm:") === 0 ? "OpenStreetMap, отношения " + cur.source.slice(4) : cur.source) + (cur.updated_at ? " · изменён " + cur.updated_at.replace("T", " ").slice(0, 16) + " UTC" : "");
+    $("#fNumber").value = cur.number; $("#fName").value = cur.name; renderColors(); $("#fNote").value = cur.note || "";
+    // источник - словами, без служебных кодов карты; дата изменения - по-нашему, без часового пояса
+    var upd = cur.updated_at ? cur.updated_at.slice(0, 10).split("-").reverse().join(".") : "";
+    $("#fSource").textContent = (cur.source.indexOf("osm") === 0 ? "Трасса из OpenStreetMap" : "Трасса нарисована вручную") + (upd ? ", изменена " + upd : "");
     renderDirs();
   }
   function renderDirs() {
@@ -250,6 +253,8 @@
       return '<button class="chip' + (i === dirIdx ? " is-on" : "") + '" data-i="' + i + '" title="' + esc(d.name) + '">' + esc(d.id) + (d.name ? ": " + esc(d.name) : "") + "</button>";
     }).join("") || '<span class="caption muted">Нет направлений - добавьте</span>';
     $("#dirChips").querySelectorAll("[data-i]").forEach(function (b) { b.addEventListener("click", function () { dirIdx = +b.getAttribute("data-i"); hlStop = -1; renderDirs(); drawEdit(); }); });
+    var full = cur.directions.length >= 2;  // туда и обратно уже есть - добавлять нечего
+    $("#btnDirAdd").hidden = full; $("#tReverse").hidden = full;
     var d = dir();
     $("#dirBox").hidden = !d;
     if (!d) return;
@@ -294,19 +299,32 @@
     $(f[0]).addEventListener("focus", function () { change.pending = true; });
     $(f[0]).addEventListener("input", function (e) { if (change.pending) { change(); change.pending = false; } cur[f[1]] = e.target.value; });
   });
-  $("#fColor").addEventListener("input", function (e) { change(); cur.color = e.target.value; drawEdit(); });
+  // Цвет - любой: кружок с текущим цветом, по нажатию - обычный выбор цвета.
+  // Цвет другого маршрута парка видно сразу (сохранить такой нельзя: цвета в парке не повторяются).
+  function renderColors() {
+    $("#fColor").value = cur.color; $("#fColorDot").style.background = cur.color;
+    var same = G.routes.filter(function (r) { return r.park_id === (cur.park_id || park) && r.id !== cur.id && r.color.toLowerCase() === cur.color.toLowerCase(); })[0];
+    $("#fColorWarn").hidden = !same;
+    if (same) $("#fColorWarn").textContent = "Такой цвет уже у маршрута " + same.number;
+  }
+  $("#fColor").addEventListener("focus", function () { change.pending = true; });
+  $("#fColor").addEventListener("input", function (e) {
+    if (change.pending) { change(); change.pending = false; }
+    cur.color = e.target.value; renderColors(); drawEdit();
+  });
   $("#dName").addEventListener("focus", function () { change.pending = true; });
   $("#dName").addEventListener("input", function (e) { if (change.pending) { change(); change.pending = false; } dir().name = e.target.value; renderChipsOnly(); });
   function renderChipsOnly() { var b = $("#dirChips").querySelector('[data-i="' + dirIdx + '"]'); if (b) b.textContent = dir().id + (dir().name ? ": " + dir().name : ""); }
 
   // направления
-  function nextDirId() { var used = cur.directions.map(function (d) { return d.id; }); return "ABCDEFGH".split("").filter(function (c) { return used.indexOf(c) < 0; })[0]; }
+  // Направлений не больше двух: туда (A) и обратно (B)
+  function nextDirId() { var used = cur.directions.map(function (d) { return d.id; }); return "AB".split("").filter(function (c) { return used.indexOf(c) < 0; })[0]; }
   $("#btnDirAdd").addEventListener("click", function () {
-    var id = nextDirId(); if (!id) return toast("Не больше 8 направлений", true);
+    var id = nextDirId(); if (!id) return toast("Направлений не больше двух: туда и обратно", true);
     change(); cur.directions.push({ id: id, name: "", line: [], stops: [] }); dirIdx = cur.directions.length - 1; refresh(); setMode("line");
   });
   $("#tReverse").addEventListener("click", function () {
-    var d = dir(), id = nextDirId(); if (!id) return toast("Не больше 8 направлений", true);
+    var d = dir(), id = nextDirId(); if (!id) return toast("Направлений не больше двух: туда и обратно", true);
     change();
     var parts = d.name.split(" → ");
     cur.directions.push({ id: id, name: parts.length === 2 ? parts[1] + " → " + parts[0] : "", line: d.line.slice().reverse(),

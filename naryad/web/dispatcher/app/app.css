@@ -1,12 +1,6 @@
 /* Рабочее место диспетчера: список слева, карта в центре, наряды маршрута - выезжающей панелью снизу. */
 body { display: grid; grid-template-rows: 60px 1fr; height: 100vh; overflow: hidden; }
 .bar { display: flex; align-items: center; gap: var(--space-4); padding: 0 var(--space-5); background: var(--surface); border-bottom: 1px solid var(--border); z-index: 10; }
-.bar__logo { height: 26px; display: block; }
-.bar__home { display: flex; padding: var(--space-1); margin: calc(-1 * var(--space-1)); border: 0; background: none; border-radius: var(--radius-sm); cursor: pointer;
-  transition: transform 160ms var(--easing-standard), opacity 220ms var(--easing-standard); }
-@media (hover: hover) and (pointer: fine) { .bar__home:hover { opacity: .8; } }
-.bar__home:active { transform: scale(0.97); }
-.bar__home:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
 .bar__title { font: var(--text-title); }
 .bar__day { font: var(--text-label); background: var(--surface-sunken); border-radius: var(--radius-pill); padding: 4px 12px; }
 .bar__grow { flex: 1; }

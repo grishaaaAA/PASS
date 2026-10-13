@@ -1,7 +1,6 @@
 /* Редактор справочника маршрутов */
 body { display: grid; grid-template-rows: 60px 1fr; height: 100vh; overflow: hidden; }
 .bar { display: flex; align-items: center; gap: var(--space-4); padding: 0 var(--space-5); background: var(--surface); border-bottom: 1px solid var(--border); z-index: 10; }
-.bar__logo { height: 26px; }
 .bar__title { font: var(--text-title); }
 .bar__park { width: auto; height: 38px; }
 .bar__grow, .grow { flex: 1; }
@@ -13,16 +12,14 @@ body { display: grid; grid-template-rows: 60px 1fr; height: 100vh; overflow: hid
 .row { display: flex; gap: var(--space-2); align-items: center; }
 .row .ad-input { height: 40px; }
 .list { display: grid; gap: 4px; }
-.ri { display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-3); align-items: center; padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid transparent;
+.ri { display: grid; grid-template-columns: auto 1fr; gap: var(--space-3); align-items: center; padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid transparent;
   background: none; text-align: left; font: inherit; color: inherit; cursor: pointer; width: 100%; }
 .ri:hover { background: var(--bg); border-color: var(--border); }
 .ri__n { min-width: 52px; height: 30px; border-radius: 8px; display: grid; place-content: center; font: var(--text-label); color: #fff; padding: 0 6px; }
 .ri__t { font: var(--text-caption); }
 .ri__s { font: var(--text-caption); font-size: 12px; color: var(--ink-muted); }
 .ri__warn { color: var(--warning-text); }
-.grid2 { display: grid; grid-template-columns: minmax(0, 1fr) 120px; gap: var(--space-3); }
-.grid2 .ad-input, .dir .ad-input, .pane > .ad-field .ad-input { width: 100%; min-width: 0; }
-.color { padding: 4px; height: 44px; }
+.dir .ad-input, .pane > .ad-field .ad-input { width: 100%; min-width: 0; }
 textarea.ad-input { height: auto; resize: vertical; padding-top: 8px; }
 .dirty { font: var(--text-label); color: var(--warning-text); }
 .dirs__head, .stops__head { display: flex; justify-content: space-between; align-items: center; }
@@ -68,3 +65,14 @@ textarea.ad-input { height: auto; resize: vertical; padding-top: 8px; }
   .layout { grid-template-columns: 1fr; grid-template-rows: 50vh 1fr; }
   .side { border-right: 0; border-bottom: 1px solid var(--border); }
 }
+.grid2 { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3); align-items: end; }
+.grid2 .ad-input { width: 100%; min-width: 0; }
+/* Цвет маршрута: кнопка «кружок + Сменить», сам системный выбор цвета невидим поверх неё */
+.cpick { position: relative; display: inline-flex; align-items: center; gap: var(--space-2); height: 44px; padding: 0 var(--space-4) 0 var(--space-3);
+  border: 1px solid var(--border); border-radius: var(--radius-pill); background: var(--surface); font: var(--text-label); color: var(--ink); cursor: pointer;
+  transition: transform 160ms var(--easing-standard), border-color 220ms var(--easing-standard); }
+@media (hover: hover) and (pointer: fine) { .cpick:hover { border-color: var(--border-strong); } }
+.cpick:active { transform: scale(0.97); }
+.cpick:focus-within { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
+.cpick__dot { width: 24px; height: 24px; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--border); }
+.cpick input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }

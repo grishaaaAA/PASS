@@ -83,8 +83,8 @@ class RouteStore:
         if not COLOR.match(color):
             raise GeoError("цвет - в виде #RRGGBB")
         dirs = r.get("directions") or []
-        if not isinstance(dirs, list) or len(dirs) > 8:
-            raise GeoError("направлений - от 0 до 8")
+        if not isinstance(dirs, list) or len(dirs) > 2:
+            raise GeoError("направлений - не больше двух: туда и обратно")
         out_dirs, points = [], 0
         for i, d in enumerate(dirs):
             if not isinstance(d, dict):
