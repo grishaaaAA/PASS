@@ -1,5 +1,7 @@
 """API движка (Б5): ручки, ошибки, образцы ответов, живой сервер. Запуск: python -m unittest"""
 
+from __future__ import annotations
+
 import contextlib
 import io
 import json

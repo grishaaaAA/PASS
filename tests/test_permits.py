@@ -5,6 +5,8 @@
 необязательны: нет списка - нет ограничения, как раньше.
 """
 
+from __future__ import annotations
+
 import copy
 import csv
 import dataclasses

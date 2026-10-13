@@ -4,6 +4,8 @@
 отдыха, повторный расчёт той же даты, дни на диске, понятные ошибки.
 """
 
+from __future__ import annotations
+
 import http.client
 import json
 import shutil
