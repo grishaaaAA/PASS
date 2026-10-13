@@ -323,11 +323,23 @@
     });
   }
 
-  function explainHtml(x) {
+  // morning: объяснение утреннего плана, а днём на наряде или смене что-то менялось (движок объясняет утро)
+  function explainHtml(x, morning) {
     if (!x) return "";
     var reasons = (x.reasons || []).map(function (r) { return "<li>" + esc(r) + "</li>"; }).join("");
-    return '<div class="xp"><div class="xp__q">' + esc(x.question) + '</div><div class="xp__a">' + esc(x.answer) + "</div>" +
+    return '<div class="xp">' + (morning ? '<div class="xp__note">По утреннему плану</div>' : "") +
+      '<div class="xp__q">' + esc(x.question) + '</div><div class="xp__a">' + esc(x.answer) + "</div>" +
       (reasons ? '<ul class="xp__r">' + reasons + "</ul>" : "") + "</div>";
+  }
+
+  // Изменилось ли за день то, что стоит на наряде (kind "duty") или смене ("shift"), против утреннего плана:
+  // другой автобус или водитель, разрыв, отрезок не на всё время.
+  function changedSinceMorning(m, kind, x) {
+    var list = m.plan && m.plan.plan && m.plan.plan[kind === "duty" ? "vehicle_assignments" : "driver_assignments"] || [];
+    var key = kind === "duty" ? "duty_id" : "shift_id", res = kind === "duty" ? "vehicle_id" : "driver_id";
+    var a = list.filter(function (r) { return r[key] === x.id; })[0];
+    if (!a) return x.segs.length > 0;
+    return x.segs.length !== 1 || x.segs[0].id !== a[res] || x.segs[0].from !== x.start || x.segs[0].to !== x.end;
   }
 
   // Диаграмма нарядов маршрута. opts: {onDuty(duty, tMin, evt)}
@@ -759,7 +771,7 @@
   window.Disp = {
     $: $, esc: esc, toMin: toMin, hm: hm, clock: clock, num: num, pct: pct, plural: plural,
     REASONS: REASONS, VIOLATIONS: VIOLATIONS, PRIORITY: PRIORITY, CLASSES: CLASSES, KINDS: KINDS,
-    api: api, loadGeo: loadGeo, geoFor: geoFor, geoAll: function () { return GEO; }, loadParks: loadParks, loadRegistry: loadRegistry, loadMarks: loadMarks, saveMarks: saveMarks, submitDay: submitDay, calculate: calculate, explain: explain,
+    api: api, loadGeo: loadGeo, geoFor: geoFor, geoAll: function () { return GEO; }, loadParks: loadParks, loadRegistry: loadRegistry, loadMarks: loadMarks, saveMarks: saveMarks, submitDay: submitDay, calculate: calculate, explain: explain, changedSinceMorning: changedSinceMorning,
     eventOptions: eventOptions, eventApply: eventApply, editOptions: editOptions, editApply: editApply, intervals: intervals,
     build: build, intervalText: intervalText, worstText: worstText, worstShort: worstShort, coverage: coverage, lineDuties: lineDuties, running: running,
     vehicleName: vehicleName, driverName: driverName, dutyNo: dutyNo, dutyLabel: dutyLabel, parkShort: parkShort, plain: plain,
