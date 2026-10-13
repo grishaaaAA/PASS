@@ -44,6 +44,12 @@
     if (name === "result") crumbs.push(["<span>Расчёт" + (no ? " № " + no : "") + "</span>", true]);
     $("#crumbs").innerHTML = crumbs.map(function (c) { return '<span class="crumb' + (c[1] ? " is-on" : "") + '">' + c[0] + "</span>"; }).join('<span class="crumb__sep">/</span>');
   }
+  // Логотип: есть расчёт - к нему, нет - в самое начало, к приветствию
+  $("#btnHome").addEventListener("click", function () {
+    var to = P.calculated ? "result" : "welcome";
+    if (to === current) return;
+    confirmLeave().then(function (ok) { if (!ok) return; go(to); if (to === "welcome") showWelcome(); });
+  });
   window.addEventListener("autodisp:run", function () { if (current === "result") renderCrumbs("result"); });
   document.addEventListener("click", function (e) {
     var b = e.target.closest("[data-go]"); if (!b) return;
