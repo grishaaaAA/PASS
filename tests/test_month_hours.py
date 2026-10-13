@@ -216,11 +216,22 @@ class TestSeriesByFact(unittest.TestCase):
         self.assertEqual({v.ids[0] for v in fact if v.code == "month_hours"} & self.missing, set())
         self.assertTrue({v.ids[0] for v in morning if v.code == "month_hours"} & self.missing)
 
-    def test_worked_today_matches_memory(self):
-        worked = worked_today(self.first.state)
-        self.assertEqual(set(worked) & self.missing, set())
-        for driver_id, [(start, end, _)] in worked.items():
-            self.assertEqual(self.first.history_after.peek(driver_id).last_length, end - start, driver_id)
+    def test_worked_today_is_the_plan_without_no_shows(self):
+        """Неявки «не заменять»: фактический день - утренний план без не вышедших, смена в смену."""
+        expected = {d: [(self.first.day.shifts[s].start, self.first.day.shifts[s].end, s)]
+                    for s, d in self.first.plan.drivers.items() if d not in self.missing}
+        self.assertEqual(worked_today(self.first.state), expected)
+
+    def test_worked_today_joins_the_whole_working_day(self):
+        """Водитель резерва ушёл на линию: один рабочий день от начала резерва до конца линии."""
+        state = OpsState.from_plan(self.first.day, self.first.plan)
+        day = state.day
+        reserve_id, driver = next((s, d) for s, d in sorted(self.first.plan.drivers.items())
+                                  if day.duties[day.shifts[s].duty_id].type == "reserve")
+        reserve = day.shifts[reserve_id]
+        line_id = next(s for s in sorted(state.drivers) if day.duties[day.shifts[s].duty_id].type == "line")
+        state.drivers[line_id].append(Segment(reserve.end - 60, reserve.end + 120, driver))   # проверке время не важно
+        self.assertEqual(worked_today(state)[driver], [(reserve.start, reserve.end + 120, reserve_id)])
 
 
 class TestSeriesReport(unittest.TestCase):

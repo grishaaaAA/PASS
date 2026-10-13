@@ -486,15 +486,19 @@ def _why_shift_unfilled(day: Day, plan: Plan, shift_id: str, history: History, l
     work, limit = work_minutes(shift.length, labor), shift_limit(labor)
     if work > limit:
         extra = labor.get("prep_before_min", 0) + labor.get("prep_after_min", 0)
+        if not labor.get("city_12h_allowed") and work <= labor["max_shift_extended_min"]:
+            advice = "Это вопрос к перевозчику: либо смена короче, либо установленный режим до 12 ч"
+        else:   # режим до 12 ч уже есть или не поможет
+            advice = ("Это вопрос к перевозчику: " +
+                      ("смена вместе с подготовкой и медосмотрами" if extra else "смена в данных наряда") +
+                      " длиннее нормы, её нужно сократить")
         return _answer(question,
                        f"На эту смену нельзя поставить никого: с подготовкой и медосмотром "
                        f"{_hm(work)}, дневная норма {_hm(limit)}",
                        [f"Смена {_hm(shift.length)}, подготовка и медосмотры до и после {_hm(extra)}",
                         "Норма смены - п. 4 Приказа Минтранса № 160; длину смены задают данные наряда, "
                         "а не расчёт",
-                        "Это вопрос к перевозчику: смена в данных наряда длиннее нормы, её нужно сократить"
-                        if labor.get("city_12h_allowed") else
-                        "Это вопрос к перевозчику: либо смена короче, либо установленный режим до 12 ч"],
+                        advice],
                        {"shift_min": shift.length, "work_min": work, "limit_min": limit,
                         "prep_min": extra})
     cls = vehicle.cls

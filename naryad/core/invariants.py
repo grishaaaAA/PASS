@@ -354,13 +354,13 @@ def metrics(day: Day, plan: Plan) -> dict:
     }
 
 
-def _month_hours(worked: dict, labor: dict) -> list:
+def _month_hours(worked: list, labor: dict) -> list:
     """Предел перевозчика за календарный месяц: смена, на которой рабочее время его превысило."""
     limit = labor.get("max_month_work_min")
     if limit is None:
         return []
     out = []
-    for driver_id, shifts in worked.items():
+    for driver_id, shifts in worked:
         total, month, told = 0, None, False
         for start, end, shift_id, shift_month in sorted(shifts):
             if shift_month != month:
@@ -417,9 +417,10 @@ def check_rest(series: list, labor: dict | None = None) -> list:
         for driver_id, items in _worked(day, done).items():
             for start, end, shift_id in items:
                 worked[driver_id].append((base + start, base + end, shift_id, day.meta["date"][:7]))
+    # водители по времени первой смены: так нарушения идут по ходу дней, как раньше шли по плану
+    worked = sorted(((d, sorted(shifts)) for d, shifts in worked.items()), key=lambda item: (item[1][0], item[0]))
     out = _month_hours(worked, labor)
-    for driver_id, shifts in worked.items():
-        shifts.sort()
+    for driver_id, shifts in worked:
         reduced = in_row = 0
         for i, (start, end, shift_id, _) in enumerate(shifts):
             in_row += 1

@@ -266,9 +266,6 @@ class TestExplain(unittest.TestCase):
                          day_summary(day, plan)["numbers"]["shifts_filled"] - 1)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 
 class TestWordsFollowTheData(unittest.TestCase):
@@ -290,13 +287,20 @@ class TestWordsFollowTheData(unittest.TestCase):
         plan = solve_drivers(day, solve_vehicles(day))
         shift_id = sorted(plan.drivers)[0]
         shift = day.shifts[shift_id]
-        day.shifts[shift_id] = dataclasses.replace(shift, end=shift.start + 12 * 60 + 10)
         del plan.drivers[shift_id]
         plan.unfilled[shift_id] = "no_driver"
-        allowed = why_unfilled(day, plan, shift_id)["reasons"][-1]          # режим до 12 ч установлен
-        self.assertNotIn("режим до 12 ч", allowed)
-        unknown = why_unfilled(day, plan, shift_id, labor=dict(load_labor(), city_12h_allowed=None))
-        self.assertIn("режим до 12 ч", unknown["reasons"][-1])
+
+        def advice(minutes: int, **norms) -> str:
+            day.shifts[shift_id] = dataclasses.replace(shift, end=shift.start + minutes)
+            return why_unfilled(day, plan, shift_id, labor=dict(load_labor(), **norms))["reasons"][-1]
+
+        unknown = dict(city_12h_allowed=None)
+        self.assertIn("режим до 12 ч", advice(11 * 60, **unknown))           # 11 ч: режим до 12 ч поможет
+        self.assertNotIn("режим до 12 ч", advice(12 * 60 + 10, **unknown))  # 12 ч 10 мин: не поможет
+        self.assertIn("смена в данных наряда длиннее нормы", advice(12 * 60 + 10))   # режим уже установлен
+        with_prep = advice(11 * 60 + 45, prep_before_min=20, prep_after_min=10)     # 11:45 + 0:30 > 12 ч
+        self.assertIn("вместе с подготовкой", with_prep)
+        self.assertNotIn("режим до 12 ч", with_prep)
 
 class TestIntervals(unittest.TestCase):
     """Интервалы по всем маршрутам сразу: показатель «ровные интервалы» на экране."""
@@ -435,3 +439,7 @@ class TestIntervals(unittest.TestCase):
         self.assertEqual(total, answer["numbers"]["routes_total"])
         self.assertIn(f"и ещё {total - 5}", answer["answer"])
         self.assertIn(f"и ещё {total - 5}", " ".join(answer["reasons"]))
+
+
+if __name__ == "__main__":
+    unittest.main()
