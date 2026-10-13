@@ -683,16 +683,31 @@
     if (!P.base) return;  // реестр ещё грузится
     var c = counts();
     if (!c.lineDuties) return toast("Ни один маршрут не работает - считать нечего", true);
-    $("#prepBusy").hidden = false; $("#prepBusyText").textContent = "Расчёт расстановки…";
-    // Не сохранились отметки - считаем всё равно, по тому, что отмечено на экране: сообщение
-    // «Не сохранилось» уже показано, а «Сохранить» осталась с числом, и сохранение можно повторить.
-    save().catch(function () {}).then(function () { return window.App.run(buildDay(), function () { P.calculated = true; go("result"); }); }).then(function () {
-      $("#prepBusy").hidden = true;
-    }, function (e) {
-      $("#prepBusy").hidden = true;
-      toast(e.message + (e.details && e.details.length ? ": " + e.details.slice(0, 2).join("; ") : ""), true);
+    confirmRecalc().then(function (ok) {
+      if (!ok) return;
+      $("#prepBusy").hidden = false; $("#prepBusyText").textContent = "Расчёт расстановки…";
+      // Не сохранились отметки - считаем всё равно, по тому, что отмечено на экране: сообщение
+      // «Не сохранилось» уже показано, а «Сохранить» осталась с числом, и сохранение можно повторить.
+      save().catch(function () {}).then(function () { return window.App.run(buildDay(), function () { P.calculated = true; go("result"); }); }).then(function () {
+        $("#prepBusy").hidden = true;
+      }, function (e) {
+        $("#prepBusy").hidden = true;
+        toast(e.message + (e.details && e.details.length ? ": " + e.details.slice(0, 2).join("; ") : ""), true);
+      });
     });
   });
+  // Повторный расчёт того же дня тех же парков заменяет прежний: сходы, замены и правки дня пропадают.
+  // Если они были - спросить. Сервер не ответил - не мешаем расчёту.
+  function confirmRecalc() {
+    var day = P.base, parks = day.parks.map(function (p) { return p.id; });
+    return D.api("GET", "/x/day-log?date=" + encodeURIComponent(day.meta.date) + "&parks=" + parks.map(encodeURIComponent).join(",")).then(function (r) {
+      var n = r.events + r.edits;
+      if (!n) return true;
+      return D.events.confirm({ title: "Рассчитать заново?",
+        text: "Сходы, замены и правки этого дня пропадут: " + n + " " + D.plural(n, "запись", "записи", "записей") + " в журнале.",
+        ok: "Рассчитать заново", cancel: "Отмена", danger: true });
+    }, function () { return true; });
+  }
 
   // ---------- старт ----------
   // Заставка: короткая линия загрузки, пока приходит список парков; не меньше 500 мс, чтобы не мигала.

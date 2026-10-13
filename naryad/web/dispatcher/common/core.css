@@ -10,6 +10,7 @@ body { background: var(--bg); color: var(--ink); font: var(--text-body); }
 /* Карточка объяснения «почему» */
 .xp { display: grid; gap: var(--space-2); }
 .xp__q { font: var(--text-caption); color: var(--ink-muted); }
+.xp__note { font: var(--text-label); color: var(--accent-text); }
 .xp__a { font: var(--text-body-strong); }
 .xp__r { margin: 0; padding-left: 18px; display: grid; gap: 4px; font: var(--text-caption); color: var(--ink); }
 

@@ -48,6 +48,10 @@
     if (S.route && S.route.indexOf("res:") !== 0) S.map.selectRoute(S.route, Math.round($("#drawer").offsetHeight + 30));
     renderSummary(); renderList(); renderProbs();
     if (S.route) openRoute(S.route, true);
+    // Открытый наряд - заново по новому состоянию: иначе в панели остаётся то, что стояло до события или правки
+    var duty = S.route && S.duty && S.m.duties[S.duty];
+    var row = duty && $('#drGantt .gantt__row[data-duty="' + CSS.escape(duty.id) + '"]');
+    if (row) { row.classList.add("is-selected"); dutyClick(duty, S.dutyT); }
   }
 
   // ---------- Левое меню: парк и состояние, показатели, списки ----------
@@ -355,7 +359,7 @@
 
   function dutyClick(duty, t) {
     var side = $("#drSide"), m = S.m, day = S.info.day_id;
-    S.duty = duty.id;
+    S.duty = duty.id; S.dutyT = t;
     side.innerHTML = '<div class="label">' + esc(D.dutyLabel(m, duty)) + '</div><div class="caption muted">' + D.hm(duty.start) + "-" + D.hm(duty.end) + ", класс " + (D.CLASSES[duty.cls] || duty.cls) +
       ", смен " + duty.shiftCount + '</div><div id="xpV"><span class="spinner"></span></div><div id="xpD"></div>' +
       '<div class="drawer__acts">' +
@@ -363,10 +367,10 @@
       '<button class="ad-btn ad-btn--outline ad-btn--sm" id="btnEdit"><i class="ad-icon ad-icon--pencil-simple ad-icon--sm"></i>Изменить…</button></div>';
     var vReq = duty.segs.length ? D.explain(day, "vehicle", duty.id) : D.explain(day, "unfilled", duty.id);
     M.swap(side);
-    vReq.then(function (x) { $("#xpV").innerHTML = D.explainHtml(x); M.swap($("#xpV")); }, function (e) { $("#xpV").innerHTML = '<p class="err">' + esc(e.message) + "</p>"; });
+    vReq.then(function (x) { $("#xpV").innerHTML = D.explainHtml(x, duty.segs.length && D.changedSinceMorning(m, "duty", duty)); M.swap($("#xpV")); }, function (e) { $("#xpV").innerHTML = '<p class="err">' + esc(e.message) + "</p>"; });
     var sh = duty.shifts.filter(function (s) { return s.start <= t && t < s.end; })[0] || duty.shifts[0];
     if (sh && duty.segs.length) {
-      D.explain(day, sh.segs.length ? "driver" : "unfilled", sh.id).then(function (x) { $("#xpD").innerHTML = D.explainHtml(x); M.swap($("#xpD")); }, function () {});
+      D.explain(day, sh.segs.length ? "driver" : "unfilled", sh.id).then(function (x) { $("#xpD").innerHTML = D.explainHtml(x, sh.segs.length && D.changedSinceMorning(m, "shift", sh)); M.swap($("#xpD")); }, function () {});
     }
     var be = $("#btnEv");
     be && be.addEventListener("click", function () {
