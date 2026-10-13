@@ -1,12 +1,6 @@
 /* Рабочее место диспетчера: список слева, карта в центре, наряды маршрута - выезжающей панелью снизу. */
 body { display: grid; grid-template-rows: 60px 1fr; height: 100vh; overflow: hidden; }
 .bar { display: flex; align-items: center; gap: var(--space-4); padding: 0 var(--space-5); background: var(--surface); border-bottom: 1px solid var(--border); z-index: 10; }
-.bar__logo { height: 26px; display: block; }
-.bar__home { display: flex; padding: var(--space-1); margin: calc(-1 * var(--space-1)); border: 0; background: none; border-radius: var(--radius-sm); cursor: pointer;
-  transition: transform 160ms var(--easing-standard), opacity 220ms var(--easing-standard); }
-@media (hover: hover) and (pointer: fine) { .bar__home:hover { opacity: .8; } }
-.bar__home:active { transform: scale(0.97); }
-.bar__home:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
 .bar__title { font: var(--text-title); }
 .bar__day { font: var(--text-label); background: var(--surface-sunken); border-radius: var(--radius-pill); padding: 4px 12px; }
 .bar__grow { flex: 1; }
@@ -173,14 +167,18 @@ body { display: grid; grid-template-rows: 60px 1fr; height: 100vh; overflow: hid
 
 /* Карточка маршрута на карте */
 .rpop .leaflet-popup-content-wrapper { border-radius: var(--radius-md); box-shadow: var(--shadow-lg); padding: 0; }
-.rpop .leaflet-popup-content { margin: 0; width: auto !important; }
+.rpop .leaflet-popup-content { margin: 0; width: min(540px, calc(100vw - 48px)) !important; }
 .rc { display: grid; gap: var(--space-3); padding: var(--space-4) var(--space-5); font: var(--text-caption); color: var(--ink); }
-.rc__head { display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-3); align-items: center; }
+.rc__head { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px var(--space-3); align-items: center; padding-right: var(--space-6); }
+.rc__status { grid-column: 2; }
+.rc__n { grid-row: span 2; align-self: start; }
+@media (max-width: 600px) { .rc__cols { grid-template-columns: minmax(0, 1fr); } }
 .rc__n { min-width: 48px; height: 36px; border-radius: 10px; display: grid; place-content: center; color: #fff; font: var(--text-label); font-size: 16px; padding: 0 8px; }
 .rc__t { font: var(--text-body-strong); }
 .rc__s { color: var(--ink-muted); font-size: 13px; line-height: 18px; }
 .rc__status .ad-badge { height: 24px; font-size: 13px; }
 /* Горизонтальная раскладка: слева направления и причина, справа сведения */
+.rc__s { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .rc__cols { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: var(--space-5); padding-top: var(--space-3); border-top: 1px solid var(--border); }
 .rc__col { display: grid; gap: var(--space-3); align-content: start; }
 .rc__lbl { font-size: 12px; color: var(--ink-muted); margin-bottom: 4px; }
@@ -188,13 +186,13 @@ body { display: grid; grid-template-rows: 60px 1fr; height: 100vh; overflow: hid
 .rc__dir { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: start; padding: 6px 8px; border-radius: 8px; line-height: 1.35; }
 .rc__dir.is-on { background: var(--accent-deep); color: var(--on-fill); }
 .rc__dir.is-on small { color: var(--on-fill); }
-.rc__dir.is-on .rc__dl { background: var(--surface); color: var(--ink); }
+.rc__dir.is-on .rc__dk { background: var(--surface); color: var(--ink); }
 .rc__dir .arr { width: 12px; height: 12px; opacity: .6; }
 .rc__dir small { display: block; color: var(--ink-muted); font-size: 12px; }
 .rc__dl { display: grid; grid-template-columns: auto 1fr; gap: 4px var(--space-3); margin: 0; }
 .rc__dl dt { color: var(--ink-muted); }
 .rc__dl dd { margin: 0; }
-.rc__dir .rc__dl { display: grid; place-content: center; width: 22px; height: 22px; border-radius: 6px; background: var(--surface-sunken); font: var(--text-label); font-size: 12px; }
+.rc__dk { display: grid; place-content: center; width: 22px; height: 22px; border-radius: 6px; background: var(--surface-sunken); font: var(--text-label); font-size: 12px; }
 .rc__why:empty { display: none; }
 .rc__why { background: var(--danger-fill); color: var(--on-fill); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); }
 .rc__wq { color: var(--on-fill); font: var(--text-label); font-size: 13px; }

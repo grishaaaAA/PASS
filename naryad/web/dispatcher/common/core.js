@@ -270,15 +270,16 @@
   }
 
   // Худший интервал одной фразой: «худший 11 мин вместо 10 в 08:40» или «без автобусов с 09:10, 40 мин»
+  // Интервал не рос - пусто: показываем только проблемы
   function worstText(w) {
-    if (!w) return "весь день как по плану";
+    if (!w) return "";
     if (w.stopped) return "без автобусов с " + clock(w.t) + ", " + w.minutes + " мин";
     return "худший " + intervalText(w) + " в " + clock(w.t);
   }
 
   // То же коротко, для строки списка: «11 вместо 10 мин», «нет автобусов»
   function worstShort(w) {
-    if (!w) return "по плану";
+    if (!w) return "";
     if (w.stopped) return "нет автобусов";
     return intervalText(w).replace(" мин вместо ", " вместо ") + " мин";
   }
@@ -565,6 +566,20 @@
   }
 
   // Карта парков. opts: {onPark(id)}. Отдаёт {select(id), redraw(m)}.
+  function shade(hex, k) {
+    var n = parseInt(hex.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+    function f(c) { return Math.round(c + (255 - c) * k); }
+    return "#" + ((1 << 24) + (f(r) << 16) + (f(g) << 8) + f(b)).toString(16).slice(1);
+  }
+  // Цвет направления маршрута - один на все карты: A - цветом маршрута, B и дальше - тем же, светлее
+  function dirColor(color, i) { return i > 0 ? shade(color, 0.42) : color; }
+  // Подъезд от парка к началу маршрута (начало направления A): серый пунктир по прямой
+  function depotLine(map, park, geo) {
+    var d = geo && geo.directions.filter(function (x) { return x.line.length > 1; })[0];
+    if (!park || !d) return L.layerGroup();
+    var ink = getComputedStyle(document.documentElement).getPropertyValue("--ink-muted").trim() || "#6b7280";
+    return L.polyline([park, d.line[0]], { color: ink, weight: 2.5, opacity: 0.9, dashArray: "2 8", lineCap: "round", interactive: false });
+  }
   function parkMap(el, m, opts) {
     opts = opts || {};
     if (!window.L) { el.innerHTML = '<p class="muted map__off">Карта не загрузилась: нет доступа к интернету для подложки.</p>'; return { select: function () {}, redraw: function () {}, selectRoute: function () {}, resize: function () {}, refit: function () {} }; }
@@ -584,11 +599,6 @@
     map._overlay("Остановки выбранного маршрута", stopLayer);
     map._overlay("Парки и переброски", layer);
     // Оттенок направления B: цвет маршрута, чуть светлее - чтобы различать «туда» и «обратно»
-    function shade(hex, k) {
-      var n = parseInt(hex.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255;
-      function f(c) { return Math.round(c + (255 - c) * k); }
-      return "#" + ((1 << 24) + (f(r) << 16) + (f(g) << 8) + f(b)).toString(16).slice(1);
-    }
     // Стрелки направления движения вдоль линии: через каждые ~650 м, повёрнуты по ходу
     function arrows(line, color, offset) {
       var step = 650, acc = -offset, prev = L.latLng(line[0]);
@@ -611,10 +621,12 @@
       list.sort(function (a, b) { return rank(a) - rank(b); });
       list.forEach(function (r) {
         var on = selRoute === r.id, dim = selRoute && !on, bad = current.state && r.unfilled;
+        if (dim) return;  // выбранный маршрут - один на карте, остальные не рисуются
+        if (on) depotLine(map, current.parks[r.park] && current.parks[r.park].coords, r.geo).addTo(routeLayer);
         r.geo.directions.forEach(function (d, i) {
           if (d.line.length < 2) return;
           // у выбранного маршрута направление A - цветом маршрута, B - чуть светлее; у остальных оба одним цветом
-          var col = on && i > 0 ? shade(r.geo.color, 0.42) : r.geo.color;
+          var col = on ? dirColor(r.geo.color, i) : r.geo.color;
           var base = on ? 5 : bad ? 4 : 3;
           // Проблема (наряды без автобуса) - ярко-красная обводка под линией маршрута.
           if (bad) L.polyline(d.line, { renderer: canvas, color: "#e0001b", weight: on ? 12 : 9, opacity: dim ? 0.2 : 0.95, interactive: false }).addTo(routeLayer);
@@ -633,7 +645,7 @@
           // остановки каждого направления - его цветом; общая для обоих остановка рисуется один раз
           var seen = {};
           r.geo.directions.forEach(function (d, i) {
-            var col = i > 0 ? shade(r.geo.color, 0.42) : r.geo.color;
+            var col = dirColor(r.geo.color, i);
             d.stops.forEach(function (s, k) {
               var key = s.name + "|" + s.lat.toFixed(4) + s.lon.toFixed(4); if (seen[key]) return; seen[key] = 1;
               var end = k === 0 || k === d.stops.length - 1;
@@ -651,7 +663,7 @@
     function placeLabels() {
       labelLayer.clearLayers();
       if (map.getZoom() < 11.5) return;
-      var list = (current.routeList || []).filter(function (r) { return r.geo; });
+      var list = (current.routeList || []).filter(function (r) { return r.geo && (!selRoute || selRoute === r.id); });
       list.sort(function (a, b) { return (selRoute === b.id) - (selRoute === a.id) || (b.unfilled ? 1 : 0) - (a.unfilled ? 1 : 0); });
       var placed = [], size = map.getSize(), fr = [0.4, 0.25, 0.55, 0.7, 0.15, 0.85, 0.32, 0.62, 0.48];
       list.forEach(function (r) {
@@ -724,13 +736,12 @@
         var tone = !current.state ? "idle" : p.state === "down" ? "down" : miss ? "bad" : "ok";
         var sub = !current.state ? p.lineTotal + " " + plural(p.lineTotal, "наряд", "наряда", "нарядов")
           : '<b class="pk__n--' + (miss ? "bad" : "ok") + '">' + p.lineFilled + "</b> из <b>" + p.lineTotal + "</b>";
-        var html = '<div class="pk pk--' + tone + (selected === p.id ? " is-selected" : "") + '"><span class="pk__ic"><i class="ad-icon ad-icon--bus"></i></span><span class="pk__tx"><b>' +
-          esc(p.name.replace("Автобусный парк", "Парк")) + "</b><small>" + sub + "</small></span></div>";
+        var html = '<div class="pk pk--' + tone + (selected === p.id ? " is-selected" : "") + '" aria-label="' + esc(p.name) + '"><span class="pk__ic"><i class="ad-icon ad-icon--bus"></i></span></div>';
         var mk = L.marker(p.coords, { icon: L.divIcon({ className: "pk-wrap", html: html, iconSize: [0, 0], iconAnchor: [0, 0] }), zIndexOffset: 500 }).addTo(layer);
         var noDrv = p.unfilled.filter(function (u) { return u.kind === "shift" && u.type === "line"; }).length;
         // подсказка при наведении: краткая сводка по парку (её собирает экран, если умеет)
-        mk.bindTooltip(opts.parkTip ? opts.parkTip(p) : esc(p.address || "") + (p.approx ? " (на карте примерно)" : ""),
-          { direction: "right", offset: [100, 0], className: "ptip-wrap", opacity: 1 });
+        mk.bindTooltip(opts.parkTip ? opts.parkTip(p, sub) : "<b>" + esc(p.name) + "</b><br>" + sub,
+          { direction: "right", offset: [24, 0], className: "ptip-wrap", opacity: 1 });
         mk.on("click", function () { opts.onPark && opts.onPark(p.id); });
         markers[p.id] = mk;
       });
@@ -760,8 +771,13 @@
       },
       redraw: function (mm, handlers) { if (handlers) opts = handlers; current = mm; draw(); syncLabels(); },
       popup: function (latlng, html, onClose, cls) {
+        // карточка не встаёт под кнопки карты слева («Слои», «Легенда», «На весь экран»)
+        function mapControlsWidth() {
+          var w = 0; el.querySelectorAll(".mc__zoom, .mc__lbtn").forEach(function (c) { var r = c.getBoundingClientRect(); if (r.width) w = Math.max(w, r.right - el.getBoundingClientRect().left); });
+          return Math.round(w);
+        }
         var wide = cls === "ppop" ? { maxWidth: 300, minWidth: 300 } : { maxWidth: 600, minWidth: 540 };
-        var p = L.popup({ className: cls || "rpop", maxWidth: wide.maxWidth, minWidth: wide.minWidth, autoPanPaddingTopLeft: [20, 60], autoPanPaddingBottomRight: [20, 20] })
+        var p = L.popup({ className: cls || "rpop", maxWidth: wide.maxWidth, minWidth: wide.minWidth, autoPanPaddingTopLeft: [mapControlsWidth() + 16, 16], autoPanPaddingBottomRight: [16, 16] })
           .setLatLng(latlng).setContent(html).openOn(map);
         if (onClose) p.on("remove", onClose);
         return p.getElement();
@@ -779,6 +795,6 @@
     eventOptions: eventOptions, eventApply: eventApply, editOptions: editOptions, editApply: editApply, intervals: intervals,
     build: build, intervalText: intervalText, worstText: worstText, worstShort: worstShort, coverage: coverage, lineDuties: lineDuties, running: running,
     vehicleName: vehicleName, driverName: driverName, dutyNo: dutyNo, dutyLabel: dutyLabel, parkShort: parkShort, plain: plain,
-    explainHtml: explainHtml, gantt: gantt, makeMap: makeMap, flyBounds: flyBounds, flyTo: flyTo, coverageChart: coverageChart, parkMap: parkMap
+    explainHtml: explainHtml, gantt: gantt, makeMap: makeMap, flyBounds: flyBounds, flyTo: flyTo, coverageChart: coverageChart, parkMap: parkMap, depotLine: depotLine, dirColor: dirColor
   };
 })();

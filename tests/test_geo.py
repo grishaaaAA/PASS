@@ -42,6 +42,8 @@ class StoreTest(unittest.TestCase):
             self.store.create({**ROUTE, "directions": [{"stops": [{"name": "", "lat": 59.8, "lon": 30.3}]}]})
         with self.assertRaisesRegex(GeoError, "цвет"):
             self.store.create({**ROUTE, "color": "red"})
+        with self.assertRaisesRegex(GeoError, "не больше двух"):  # туда и обратно, третьего нет
+            self.store.create({**ROUTE, "directions": ROUTE["directions"] * 3})
         self.store.create(ROUTE)
         with self.assertRaisesRegex(GeoError, "цвета не повторяются"):
             self.store.create({**ROUTE, "number": "998т", "color": "#227B81"})
