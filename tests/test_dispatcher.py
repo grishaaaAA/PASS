@@ -93,6 +93,18 @@ class TestYesterday(unittest.TestCase):
         second, _ = self.server.plan_day(DAY)
         self.assertEqual(list(dispatcher.Handler.engine.days), [second])
 
+    def test_day_log_counts_what_recalculation_erases(self):
+        """Перед повторным расчётом интерфейс спрашивает, сколько событий и правок пропадёт."""
+        day_id, plan = self.server.plan_day(DAY)
+        ask = f"/x/day-log?date={DAY.isoformat()}&parks=P07"
+        self.assertEqual(self.server.call("GET", ask), (200, {"events": 0, "edits": 0}))
+        duty = plan["plan"]["vehicle_assignments"][0]["duty_id"]
+        status, state = self.server.call("POST", f"/api/days/{day_id}/edits", {"type": "clear_vehicle", "duty_id": duty})
+        self.assertEqual(status, 200, state)
+        self.assertEqual(self.server.call("GET", ask), (200, {"events": 0, "edits": 1}))
+        other = f"/x/day-log?date={(DAY + timedelta(days=1)).isoformat()}&parks=P07"
+        self.assertEqual(self.server.call("GET", other), (200, {"events": 0, "edits": 0}))
+
 
 class TestStore(unittest.TestCase):
 

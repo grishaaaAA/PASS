@@ -155,6 +155,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(*self.engine.handle("GET", url.path, query))
         if url.path == "/x/runs":
             return self._json(HTTPStatus.OK, {"runs": self.marks.runs()})
+        if url.path == "/x/day-log":
+            return self._json(HTTPStatus.OK, self._day_log({k: v[-1] for k, v in parse_qs(url.query).items()}))
         if url.path in ("/x/marks", "/x/marks/journal"):
             q = {k: v[-1] for k, v in parse_qs(url.query).items()}
             parks = [p for p in (q.get("parks") or "").split(",") if p]
@@ -226,17 +228,27 @@ class Handler(BaseHTTPRequestHandler):
         problems = len(line) + len(payload.get("violations", [])) + len(payload.get("rest_violations", []))
         return self.marks.add_run(meta.get("date") or Date.today().isoformat(), parks, numbers, problems, payload.get("seconds", 0), who=self.client_address[0])
 
+    def _same_days(self, date, parks) -> list:
+        """Записи дней той же даты тех же парков - их заменит повторный расчёт."""
+        parks = sorted(parks)
+        with self.engine._lock:
+            return [(key, rec) for key, rec in self.engine.days.items()
+                    if rec.raw.get("meta", {}).get("date") == date
+                    and sorted(p["id"] for p in rec.raw.get("parks", [])) == parks]
+
     def _forget_same_day(self, day: dict):
         """Повторный расчёт того же дня тех же парков заменяет прежний - в памяти и на диске.
         Копий одного дня в памяти не нужно: диспетчер работает с последним расчётом."""
         date = (day.get("meta") or {}).get("date")
-        parks = sorted(p.get("id") for p in day.get("parks", []) if isinstance(p, dict))
-        with self.engine._lock:
-            same = [key for key, rec in self.engine.days.items()
-                    if rec.raw.get("meta", {}).get("date") == date
-                    and sorted(p["id"] for p in rec.raw.get("parks", [])) == parks]
-        for key in same:
+        parks = [p.get("id") for p in day.get("parks", []) if isinstance(p, dict)]
+        for key, _ in self._same_days(date, parks):
             self.engine.forget(key)
+
+    def _day_log(self, query: dict) -> dict:
+        """Сколько событий и правок пропадёт при повторном расчёте дня: интерфейс предупреждает до расчёта."""
+        parks = [p for p in (query.get("parks") or "").split(",") if p]
+        log = [e for _, rec in self._same_days(query.get("date"), parks) for e in rec.log]
+        return {"events": sum(e.get("kind") == "event" for e in log), "edits": sum(e.get("kind") == "edit" for e in log)}
 
     def _previous_day(self, day_id: str):
         """Последний рассчитанный день тех же парков на более раннюю дату, или None.
