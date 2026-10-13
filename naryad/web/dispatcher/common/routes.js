@@ -9,7 +9,8 @@
   var cur = null, isNew = false, dirIdx = 0, mode = null, undo = [], dirty = false, hlStop = -1;
   // та же палитра, что у импорта (naryad/geo/osm_import.py): цвета маршрутов парка не повторяются
   var PALETTE = ["#be0032", "#0067a5", "#f38400", "#008856", "#875692", "#e25822", "#1f2a7a", "#8db600", "#b3446c",
-    "#0f8c99", "#f6a600", "#604e97", "#882d17", "#e68fac", "#2b3d26", "#c51b7d", "#654522", "#f99379", "#5a8f29"];
+    "#0f8c99", "#f6a600", "#604e97", "#882d17", "#e68fac", "#2b3d26", "#c51b7d", "#654522", "#f99379", "#5a8f29",
+    "#11a579", "#e73f74", "#a6761d", "#00585f", "#7a7a00", "#3d5a80"];  // запас: у парка №7 19 маршрутов, первые 19 заняты
 
   // ---------- карта ----------
   var map = D.makeMap("map", [59.85, 30.32], 11);
@@ -18,10 +19,11 @@
 
   function drawContext() {
     ctxLayer.clearLayers();
-    G.routes.filter(function (r) { return r.park_id === park && (!cur || r.id !== cur.id); }).forEach(function (r) {
+    // открыт маршрут - он один на карте, остальные маршруты парка не рисуются
+    G.routes.filter(function (r) { return r.park_id === park && !cur; }).forEach(function (r) {
       r.directions.forEach(function (d) {
         if (d.line.length < 2) return;
-        L.polyline(d.line, { renderer: canvas, color: r.color, weight: cur ? 2 : 3.5, opacity: cur ? 0.25 : 0.75 })
+        L.polyline(d.line, { renderer: canvas, color: r.color, weight: 3.5, opacity: 0.75 })
           .bindTooltip("Маршрут " + esc(r.number) + (d.name ? "<br>" + esc(d.name) : ""), { sticky: true })
           .on("click", function () { if (!mode) tryOpen(r.id); })
           .addTo(ctxLayer);
@@ -31,9 +33,9 @@
     var p = G.parks[park];
     var n = G.routes.filter(function (r) { return r.park_id === park; }).length;
     if (p) L.marker([p.lat, p.lon], { zIndexOffset: 500, icon: L.divIcon({ className: "pk-wrap", iconSize: [0, 0], iconAnchor: [0, 0],
-      html: '<div class="pk pk--idle"><span class="pk__ic"><i class="ad-icon ad-icon--bus"></i></span><span class="pk__tx"><b>Парк ' +
-        park.replace("P0", "№").replace("P", "№") + "</b><small>" + n + " " + D.plural(n, "маршрут", "маршрута", "маршрутов") + "</small></span></div>" }) })
-      .bindTooltip("Автобусный парк " + park.replace("P0", "№")).addTo(parkLayer);
+      html: '<div class="pk pk--idle"><span class="pk__ic"><i class="ad-icon ad-icon--bus"></i></span></div>' }) })
+      .bindTooltip("<b>Автобусный парк " + park.replace("P0", "№").replace("P", "№") + "</b><br>" + n + " " + D.plural(n, "маршрут", "маршрута", "маршрутов"),
+        { direction: "right", offset: [24, 0] }).addTo(parkLayer);
   }
 
   function dir() { return cur && cur.directions[dirIdx]; }
@@ -42,14 +44,17 @@
     editLayer.clearLayers();
     if (!cur) return;
     var d = dir();
+    var pk = G.parks[cur.park_id || park];
+    if (pk) D.depotLine(map, [pk.lat, pk.lon], cur).addTo(editLayer);  // подъезд от парка к началу маршрута
     cur.directions.forEach(function (x, i) {
       if (i === dirIdx || x.line.length < 2) return;
-      L.polyline(x.line, { renderer: canvas, color: cur.color, weight: 3, opacity: 0.45, dashArray: "6 6", interactive: false }).addTo(editLayer);
+      L.polyline(x.line, { renderer: canvas, color: D.dirColor(cur.color, i), weight: 3, opacity: 0.9, interactive: false }).addTo(editLayer);
     });
     if (!d) return;
     if (d.line.length >= 2) {
       L.polyline(d.line, { color: "#fff", weight: 10, opacity: 0.9, interactive: false }).addTo(editLayer);
-      var pl = L.polyline(d.line, { color: cur.color, weight: 5, opacity: 1 }).addTo(editLayer);
+      var col = D.dirColor(cur.color, dirIdx);
+      var pl = L.polyline(d.line, { color: col, weight: 5, opacity: 1 }).addTo(editLayer);
       pl.on("click", function (e) {
         if (mode !== "line") return;
         L.DomEvent.stopPropagation(e);
@@ -68,17 +73,16 @@
       });
     }
     d.stops.forEach(function (s, i) {
-      var mk = L.marker([s.lat, s.lon], { draggable: true, zIndexOffset: 1000,
-        icon: L.divIcon({ className: "", html: '<div class="sp' + (hlStop === i ? " is-hl" : "") + '" style="border-color:' + cur.color + '">' + (i + 1) + "</div>", iconSize: [0, 0] }) }).addTo(editLayer);
+      var mk = L.marker([s.lat, s.lon], { zIndexOffset: 1000, keyboard: false,
+        icon: L.divIcon({ className: "", html: '<div class="sp' + (hlStop === i ? " is-hl" : "") + '" style="border-color:' + D.dirColor(cur.color, dirIdx) + '">' + (i + 1) + "</div>", iconSize: [0, 0] }) }).addTo(editLayer);
       mk.bindTooltip((i + 1) + ". " + esc(s.name), { direction: "top", offset: [0, -8] });
-      mk.on("dragstart", change);
-      mk.on("dragend", function () { var p = mk.getLatLng(); s.lat = r6(p.lat); s.lon = r6(p.lng); refresh(); });
-      mk.on("click", function () { highlight(i, true); });
+      // Остановку не тащат: правка - в меню по клику (название, порядок, удаление) или в списке слева
+      mk.on("click", function () { highlight(i, true); stopMenu(i); });
     });
   }
   function arrow(a, b) {
     var ang = Math.atan2(b[0] - a[0], (b[1] - a[1]) * Math.cos(a[0] * Math.PI / 180)) * 180 / Math.PI;
-    L.marker(b, { interactive: false, icon: L.divIcon({ className: "map-arrow", html: '<span style="color:' + cur.color + ";transform:rotate(" + (-ang) + 'deg)">➤</span>', iconSize: [14, 14] }) }).addTo(editLayer);
+    L.marker(b, { interactive: false, icon: L.divIcon({ className: "map-arrow", html: '<span style="color:' + D.dirColor(cur.color, dirIdx) + ";transform:rotate(" + (-ang) + 'deg)">➤</span>', iconSize: [14, 14] }) }).addTo(editLayer);
   }
   function r6(x) { return Math.round(x * 1e6) / 1e6; }
   function ll(p) { return [r6(p.lat), r6(p.lng)]; }
@@ -95,12 +99,65 @@
     var t = dx === 0 && dy === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)));
     return { d: Math.hypot(ax + t * dx - px, ay + t * dy - py), t: t };
   }
-  // Положение точки вдоль трассы: номер отрезка + доля - чтобы вставить остановку по порядку.
-  function along(line, p) {
-    var k = Math.cos(p[0] * Math.PI / 180), best = 0, bd = Infinity;
+  // Ближайшая точка трассы
+  function snap(line, p) {
+    var k = Math.cos(p.lat * Math.PI / 180), best = null;
     for (var i = 0; i < line.length - 1; i++) {
+      var r = segDist([p.lat, p.lng], line[i], line[i + 1], k);
+      if (!best || r.d < best.d) best = { d: r.d, i: i, t: r.t };
+    }
+    var a = line[best.i], b = line[best.i + 1];
+    return L.latLng(a[0] + (b[0] - a[0]) * best.t, a[1] + (b[1] - a[1]) * best.t);
+  }
+  // Меню остановки на карте: название, выше / ниже, удалить
+  function stopMenu(i) {
+    var d = dir(), s = d.stops[i];
+    var box = document.createElement("div");
+    box.className = "sm";
+    box.innerHTML = '<label class="ad-field"><span class="ad-field__label">Остановка ' + (i + 1) + " из " + d.stops.length + '</span><input class="ad-input" maxlength="200"></label>' +
+      '<div class="sm__row"><button type="button" class="ad-btn ad-btn--sm btn-plain" data-a="up"' + (i ? "" : " disabled") + '>Выше</button>' +
+      '<button type="button" class="ad-btn ad-btn--sm btn-plain" data-a="down"' + (i < d.stops.length - 1 ? "" : " disabled") + '>Ниже</button>' +
+      '<span class="grow"></span><button type="button" class="ad-btn ad-btn--sm btn-plain danger" data-a="del">Удалить</button></div>';
+    var inp = box.querySelector("input"); inp.value = s.name;
+    var pop = L.popup({ className: "smpop", offset: [0, -6], autoPanPadding: [24, 24] }).setLatLng([s.lat, s.lon]).setContent(box).openOn(map);
+    var first = true;
+    inp.addEventListener("input", function () {
+      if (first) { change(); first = false; }
+      s.name = inp.value; renderDirs();
+    });
+    inp.addEventListener("keydown", function (e) { if (e.key === "Enter") map.closePopup(pop); });
+    box.querySelectorAll("[data-a]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var a = b.getAttribute("data-a"), to = i;
+        change();
+        if (a === "del") d.stops.splice(i, 1);
+        if (a === "up") { d.stops.splice(i - 1, 0, d.stops.splice(i, 1)[0]); to = i - 1; }
+        if (a === "down") { d.stops.splice(i + 1, 0, d.stops.splice(i, 1)[0]); to = i + 1; }
+        map.closePopup(pop);
+        if (a === "del") { hlStop = -1; refresh(); } else { highlight(to, true); stopMenu(to); }
+      });
+    });
+    pop.on("remove", function () { drawEdit(); });
+    setTimeout(function () { inp.focus(); inp.select(); }, 0);
+  }
+  // Куда по порядку встаёт остановка с положением pos вдоль трассы. Остальные остановки не переставляем:
+  // их положение ищем по ходу движения, каждую - не раньше предыдущей. Иначе остановка у дороги,
+  // по которой трасса идёт дважды (туда и обратно), попала бы на чужой проход и порядок бы поехал.
+  function placeAt(d, pos) {
+    var prev = 0;
+    for (var i = 0; i < d.stops.length; i++) {
+      prev = along(d.line, [d.stops[i].lat, d.stops[i].lon], prev);
+      if (prev > pos) return i;
+    }
+    return d.stops.length;
+  }
+  // Положение точки вдоль трассы: номер отрезка + доля - чтобы вставить остановку по порядку.
+  // from - искать не раньше этого положения
+  function along(line, p, from) {
+    var k = Math.cos(p[0] * Math.PI / 180), start = Math.floor(from || 0), best = from || 0, bd = Infinity;
+    for (var i = start; i < line.length - 1; i++) {
       var r = segDist(p, line[i], line[i + 1], k);
-      if (r.d < bd) { bd = r.d; best = i + r.t; }
+      if (i + r.t >= (from || 0) && r.d < bd) { bd = r.d; best = i + r.t; }
     }
     return best;
   }
@@ -110,9 +167,9 @@
     change();
     if (mode === "line") d.line.push(ll(e.latlng));
     else if (mode === "stop") {
-      var s = { id: "m-" + Date.now(), name: "Новая остановка", lat: r6(e.latlng.lat), lon: r6(e.latlng.lng) };
-      var pos = d.line.length > 1 ? along(d.line, [s.lat, s.lon]) : Infinity, at = d.stops.length;
-      if (isFinite(pos)) for (var i = 0; i < d.stops.length; i++) { if (along(d.line, [d.stops[i].lat, d.stops[i].lon]) > pos) { at = i; break; } }
+      var at0 = d.line.length > 1 ? snap(d.line, e.latlng) : e.latlng;  // новая остановка - сразу на трассе
+      var s = { id: "m-" + Date.now(), name: "Новая остановка", lat: r6(at0.lat), lon: r6(at0.lng) };
+      var at = d.line.length > 1 ? placeAt(d, along(d.line, [s.lat, s.lon])) : d.stops.length;
       d.stops.splice(at, 0, s);
       refresh();
       highlight(at, true, true);
@@ -145,7 +202,7 @@
       var st = r.directions.reduce(function (n, d) { return n + d.stops.length; }, 0);
       return '<button class="ri" data-id="' + esc(r.id) + '"><span class="ri__n" style="background:' + r.color + '">' + esc(r.number) + '</span><span><div class="ri__t">' + esc(r.name || "без названия") +
         '</div><div class="ri__s' + (empty ? " ri__warn" : "") + '">' + (empty ? "нет трассы - нарисуйте" : r.directions.length + " " + D.plural(r.directions.length, "направление", "направления", "направлений") + ", остановок " + st) +
-        "</div></span><span class=\"ri__s\">" + (r.source.indexOf("osm") === 0 ? "OSM" : "вручную") + "</span></button>";
+        "</div></span></button>";
     }).join("") || '<p class="muted caption">Ничего не найдено</p>';
     if (!renderList.done) { renderList.done = true; window.Motion.stagger($("#list").children); }
     $("#list").querySelectorAll("[data-id]").forEach(function (b) { b.addEventListener("click", function () { tryOpen(b.getAttribute("data-id")); }); });
@@ -185,8 +242,10 @@
   });
 
   function renderEdit() {
-    $("#fNumber").value = cur.number; $("#fName").value = cur.name; $("#fColor").value = cur.color; $("#fNote").value = cur.note || "";
-    $("#fSource").textContent = "Источник: " + (cur.source.indexOf("osm:") === 0 ? "OpenStreetMap, отношения " + cur.source.slice(4) : cur.source) + (cur.updated_at ? " · изменён " + cur.updated_at.replace("T", " ").slice(0, 16) + " UTC" : "");
+    $("#fNumber").value = cur.number; $("#fName").value = cur.name; renderColors(); $("#fNote").value = cur.note || "";
+    // источник - словами, без служебных кодов карты; дата изменения - по-нашему, без часового пояса
+    var upd = cur.updated_at ? cur.updated_at.slice(0, 10).split("-").reverse().join(".") : "";
+    $("#fSource").textContent = (cur.source.indexOf("osm") === 0 ? "Трасса из OpenStreetMap" : "Трасса нарисована вручную") + (upd ? ", изменена " + upd : "");
     renderDirs();
   }
   function renderDirs() {
@@ -194,6 +253,8 @@
       return '<button class="chip' + (i === dirIdx ? " is-on" : "") + '" data-i="' + i + '" title="' + esc(d.name) + '">' + esc(d.id) + (d.name ? ": " + esc(d.name) : "") + "</button>";
     }).join("") || '<span class="caption muted">Нет направлений - добавьте</span>';
     $("#dirChips").querySelectorAll("[data-i]").forEach(function (b) { b.addEventListener("click", function () { dirIdx = +b.getAttribute("data-i"); hlStop = -1; renderDirs(); drawEdit(); }); });
+    var full = cur.directions.length >= 2;  // туда и обратно уже есть - добавлять нечего
+    $("#btnDirAdd").hidden = full; $("#tReverse").hidden = full;
     var d = dir();
     $("#dirBox").hidden = !d;
     if (!d) return;
@@ -238,19 +299,32 @@
     $(f[0]).addEventListener("focus", function () { change.pending = true; });
     $(f[0]).addEventListener("input", function (e) { if (change.pending) { change(); change.pending = false; } cur[f[1]] = e.target.value; });
   });
-  $("#fColor").addEventListener("input", function (e) { change(); cur.color = e.target.value; drawEdit(); });
+  // Цвет - любой: кружок с текущим цветом, по нажатию - обычный выбор цвета.
+  // Цвет другого маршрута парка видно сразу (сохранить такой нельзя: цвета в парке не повторяются).
+  function renderColors() {
+    $("#fColor").value = cur.color; $("#fColorDot").style.background = cur.color;
+    var same = G.routes.filter(function (r) { return r.park_id === (cur.park_id || park) && r.id !== cur.id && r.color.toLowerCase() === cur.color.toLowerCase(); })[0];
+    $("#fColorWarn").hidden = !same;
+    if (same) $("#fColorWarn").textContent = "Такой цвет уже у маршрута " + same.number;
+  }
+  $("#fColor").addEventListener("focus", function () { change.pending = true; });
+  $("#fColor").addEventListener("input", function (e) {
+    if (change.pending) { change(); change.pending = false; }
+    cur.color = e.target.value; renderColors(); drawEdit();
+  });
   $("#dName").addEventListener("focus", function () { change.pending = true; });
   $("#dName").addEventListener("input", function (e) { if (change.pending) { change(); change.pending = false; } dir().name = e.target.value; renderChipsOnly(); });
   function renderChipsOnly() { var b = $("#dirChips").querySelector('[data-i="' + dirIdx + '"]'); if (b) b.textContent = dir().id + (dir().name ? ": " + dir().name : ""); }
 
   // направления
-  function nextDirId() { var used = cur.directions.map(function (d) { return d.id; }); return "ABCDEFGH".split("").filter(function (c) { return used.indexOf(c) < 0; })[0]; }
+  // Направлений не больше двух: туда (A) и обратно (B)
+  function nextDirId() { var used = cur.directions.map(function (d) { return d.id; }); return "AB".split("").filter(function (c) { return used.indexOf(c) < 0; })[0]; }
   $("#btnDirAdd").addEventListener("click", function () {
-    var id = nextDirId(); if (!id) return toast("Не больше 8 направлений", true);
+    var id = nextDirId(); if (!id) return toast("Направлений не больше двух: туда и обратно", true);
     change(); cur.directions.push({ id: id, name: "", line: [], stops: [] }); dirIdx = cur.directions.length - 1; refresh(); setMode("line");
   });
   $("#tReverse").addEventListener("click", function () {
-    var d = dir(), id = nextDirId(); if (!id) return toast("Не больше 8 направлений", true);
+    var d = dir(), id = nextDirId(); if (!id) return toast("Направлений не больше двух: туда и обратно", true);
     change();
     var parts = d.name.split(" → ");
     cur.directions.push({ id: id, name: parts.length === 2 ? parts[1] + " → " + parts[0] : "", line: d.line.slice().reverse(),
@@ -274,7 +348,7 @@
     $("#map").classList.toggle("is-tool", !!m);
     if (m) window.Motion.show($("#hint"), "down"); else window.Motion.hide($("#hint"), "fade");
     $("#hint").textContent = m === "line" ? "Клик по карте - продолжить трассу. Клик по линии - вставить точку. Точки можно тащить, правый клик - удалить точку."
-      : m === "stop" ? "Клик по карте - новая остановка, она встанет по порядку вдоль трассы. Остановки можно тащить." : "";
+      : m === "stop" ? "Клик по карте - новая остановка на трассе, по порядку. Клик по остановке - название, порядок, удаление." : "";
     drawEdit();
   }
 

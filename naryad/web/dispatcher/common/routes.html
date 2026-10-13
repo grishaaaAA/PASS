@@ -13,7 +13,7 @@
 </head>
 <body>
 <header class="bar">
-  <img class="bar__logo" src="ds/logo.svg" alt="AUTODISP">
+  <a class="bar__home" href="/" aria-label="AUTODISP: в начало"><img class="bar__logo" src="ds/logo.svg" alt=""></a>
   <span class="bar__title">Маршруты и остановки</span>
   <select class="ad-input bar__park" id="park" aria-label="Парк"></select>
   <span class="bar__grow"></span>
@@ -42,8 +42,10 @@
       </div>
       <div class="grid2">
         <label class="ad-field"><span class="ad-field__label">Номер</span><input class="ad-input" id="fNumber" maxlength="20"></label>
-        <label class="ad-field"><span class="ad-field__label">Цвет на карте</span><input class="ad-input color" id="fColor" type="color"></label>
+        <div class="ad-field"><span class="ad-field__label">Цвет на карте</span>
+          <label class="cpick"><span class="cpick__dot" id="fColorDot"></span>Сменить<input type="color" id="fColor" aria-label="Цвет маршрута на карте"></label></div>
       </div>
+      <p class="err" id="fColorWarn" hidden></p>
       <label class="ad-field"><span class="ad-field__label">Название</span><input class="ad-input" id="fName" maxlength="200" placeholder="Конечная - конечная"></label>
       <label class="ad-field"><span class="ad-field__label">Заметка</span><textarea class="ad-input" id="fNote" rows="2" maxlength="1000"></textarea></label>
       <div class="caption muted" id="fSource"></div>
