@@ -8,7 +8,7 @@
 CLASS_NAMES = {"medium": "средний", "big": "большой", "extra_big": "особо большой"}
 CONDITION_NAMES = {"ok": "исправен", "repair": "в ремонте", "maintenance": "на ТО", "accident": "после ДТП"}
 SCHEDULE_NAMES = {"work": "работает", "day_off": "выходной по графику", "sick": "на больничном",
-                  "vacation": "в отпуске"}
+                  "vacation": "в отпуске", "absent": "не выходит по отметке диспетчера"}
 MEDICAL_NAMES = {"passed": "медосмотр пройден", "failed": "не прошёл медосмотр",
                  "pending": "медосмотр ещё не проходил", None: "нет отметки о медосмотре"}
 DAY_TYPE_NAMES = {"weekday": "будни", "weekend": "выходные"}

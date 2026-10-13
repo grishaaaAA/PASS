@@ -242,7 +242,7 @@ def _driver_fits(day: Day, plan: Plan) -> list:
                                  f"{duty.park_id}", (shift_id, driver_id)))
         if driver.schedule != "work":
             out.append(Violation("driver_not_working",
-                                 f"{name}: по графику не работает ({words.word(words.SCHEDULE_NAMES, driver.schedule)})",
+                                 f"{name}: не работает сегодня ({words.word(words.SCHEDULE_NAMES, driver.schedule)})",
                                  (shift_id, driver_id)))
         if not may_depart(driver, day.meta.get("moment")) and driver.schedule == "work":
             mark = words.word(words.MEDICAL_NAMES, driver.medical)

@@ -98,7 +98,7 @@ ENUMS = {
     ("vehicles", "fuel"): {"gas", "diesel", "electric"},
     ("vehicles", "condition"): {"ok", "repair", "maintenance", "accident"},
     ("drivers", "classes"): set(CLASSES),
-    ("drivers", "schedule"): {"work", "day_off", "sick", "vacation"},
+    ("drivers", "schedule"): {"work", "day_off", "sick", "vacation", "absent"},
     ("drivers", "medical"): {"passed", "failed", "pending"},
 }
 
