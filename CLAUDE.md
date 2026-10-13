@@ -51,7 +51,7 @@
 ## Работа с репозиторием
 
 - Главная ветка - `main`. Изменения - через ветку и запрос на слияние в `main`. В ветку Антона без разрешения не пушить.
-- Только Python 3.9+ без сторонних библиотек: системный `python3` на macOS - 3.9.6, им запускаются `start.command` и `start.sh`. Проверка: `python -m unittest` (474 теста, около 2-3 мин); под 3.9 - `/usr/bin/python3 -m unittest` (на macOS это 3.9, около 4 мин). Подсказки типов вида `X | None` - только в файле с `from __future__ import annotations` в начале, иначе 3.9 не загрузит модуль.
+- Только Python 3.9+ без сторонних библиотек: системный `python3` на macOS - 3.9.6, им запускаются `start.command` и `start.sh`. Проверка: `python -m unittest` (475 тестов, около 2-3 мин); под 3.9 - `/usr/bin/python3 -m unittest` (на macOS это 3.9, около 4 мин). Подсказки типов вида `X | None` - только в файле с `from __future__ import annotations` в начале, иначе 3.9 не загрузит модуль.
 - Цифры для заказчика брать только из `python -m naryad.solve.compare` и `python -m naryad.solve.series --days 14` и сравнивать с аккуратной моделью ручного способа (`naryad/solve/baseline.py`), не со слабой.
 
 ## Ключевые факты и решения

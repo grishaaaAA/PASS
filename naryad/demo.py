@@ -193,7 +193,7 @@ class Demo:
         before = self.call("GET", f"/api/days/{self.day_id}/state")
         options = self.call("POST", f"/api/days/{self.day_id}/events/options", event)["options"]
         if not options:
-            raise DemoError("движок не дал ни одного варианта")
+            raise DemoError("сервис не дал ни одного варианта")
         self.next_step(f"Варианты замены: {len(options)}")
         print(f"  {'№':>2}  {'вид':15} {'что сделать':42} {'цена':>7}  {'простой':>9}")
         for option in options:
@@ -277,10 +277,10 @@ class Demo:
                               {"type": "set_vehicle", "duty_id": duty, "vehicle_id": taken})
         print(f"\n  Диспетчер ставит автобус {self.day.vehicles[taken].board_number}, "
               f"который уже занят на наряде {donor['duty_id']}:")
-        print(f"    Движок: {refused['error']}")
+        print(f"    Ответ: {refused['error']}")
         for violation in refused["violations"]:
             print(f"    - {violation['text']}")
-        print("    Правка не применена, день не изменился. Движок не молчит и не решает за человека.")
+        print("    Правка не применена, день не изменился. Сервис не молчит и не решает за человека.")
 
         if not free["vehicles"]:
             return
@@ -315,7 +315,7 @@ class Demo:
 def run(path: Path, at: int, duration: int | None, with_no_show: bool, late: int | None = None) -> None:
     demo = Demo(path)
     print("=" * WIDTH)
-    print("AUTODISP: нарядка автобусов и водителей, показ на одном парке".center(WIDTH))
+    print("AUTODISP: расстановка автобусов и водителей, показ на одном парке".center(WIDTH))
     print("=" * WIDTH)
     demo.load(path)
     demo.plan()
