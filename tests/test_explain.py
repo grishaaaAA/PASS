@@ -6,6 +6,7 @@ import random
 import time
 import unittest
 
+from naryad.core.invariants import load_labor
 from naryad.core.model import Day, Plan
 from naryad.explain import (CLASS_NAMES, day_summary, explain_option, interval, intervals,
                             route_interval, why_driver, why_unfilled, why_vehicle)
@@ -265,9 +266,41 @@ class TestExplain(unittest.TestCase):
                          day_summary(day, plan)["numbers"]["shifts_filled"] - 1)
 
 
-if __name__ == "__main__":
-    unittest.main()
 
+
+class TestWordsFollowTheData(unittest.TestCase):
+    """Объяснения называют ту причину, что в данных, и советуют по действующим нормам."""
+
+    def test_pending_medical_is_not_called_failed(self):
+        day = Day.load(SAMPLES / "park7_weekday.json")   # утро: выходит только «пройден»
+        for driver in list(day.drivers.values()):
+            if driver.schedule == "work":
+                day.drivers[driver.id] = dataclasses.replace(driver, medical="pending")
+        plan = solve_drivers(day, solve_vehicles(day))
+        shift_id = next(s for s in sorted(plan.unfilled) if s in day.shifts)
+        text = " ".join(why_unfilled(day, plan, shift_id)["reasons"])
+        self.assertIn("медосмотр ещё не проходил", text)
+        self.assertNotIn("не прошёл медосмотр", text)
+
+    def test_long_shift_advice_follows_the_twelve_hours_rule(self):
+        day = Day.load(SAMPLES / "park7_weekday.json")
+        plan = solve_drivers(day, solve_vehicles(day))
+        shift_id = sorted(plan.drivers)[0]
+        shift = day.shifts[shift_id]
+        del plan.drivers[shift_id]
+        plan.unfilled[shift_id] = "no_driver"
+
+        def advice(minutes: int, **norms) -> str:
+            day.shifts[shift_id] = dataclasses.replace(shift, end=shift.start + minutes)
+            return why_unfilled(day, plan, shift_id, labor=dict(load_labor(), **norms))["reasons"][-1]
+
+        unknown = dict(city_12h_allowed=None)
+        self.assertIn("режим до 12 ч", advice(11 * 60, **unknown))           # 11 ч: режим до 12 ч поможет
+        self.assertNotIn("режим до 12 ч", advice(12 * 60 + 10, **unknown))  # 12 ч 10 мин: не поможет
+        self.assertIn("смена в данных наряда длиннее нормы", advice(12 * 60 + 10))   # режим уже установлен
+        with_prep = advice(11 * 60 + 45, prep_before_min=20, prep_after_min=10)     # 11:45 + 0:30 > 12 ч
+        self.assertIn("вместе с подготовкой", with_prep)
+        self.assertNotIn("режим до 12 ч", with_prep)
 
 class TestIntervals(unittest.TestCase):
     """Интервалы по всем маршрутам сразу: показатель «ровные интервалы» на экране."""
@@ -406,3 +439,7 @@ class TestIntervals(unittest.TestCase):
         self.assertEqual(total, answer["numbers"]["routes_total"])
         self.assertIn(f"и ещё {total - 5}", answer["answer"])
         self.assertIn(f"и ещё {total - 5}", " ".join(answer["reasons"]))
+
+
+if __name__ == "__main__":
+    unittest.main()

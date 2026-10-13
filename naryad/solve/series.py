@@ -15,7 +15,7 @@ import argparse
 import statistics
 from collections import defaultdict
 
-from naryad.core.invariants import check_plan, check_rest, use_labor_preset
+from naryad.core.invariants import check_plan, check_rest, load_labor, use_labor_preset
 from naryad.core.model import Day
 from naryad.data.generate import generate_series
 
@@ -54,13 +54,17 @@ def series_report(series: list) -> dict:
                 filled += 1
                 minutes[driver_id] += shift.length
                 own += day.drivers[driver_id].home_vehicle_id == vehicle_id
-    rest = check_rest(series)
+    found = check_rest(series)
+    rest = [v for v in found if v.code != "month_hours"]
+    month = [v for v in found if v.code == "month_hours"]
+    limit = load_labor().get("max_month_work_min")
     hours = sorted(m / 60 for m in minutes.values())
     tenth = statistics.quantiles(hours, n=10)
     return {
         "смен закрыто": f"{filled} из {needed}",
         "нарушений норм отдыха": len(rest),
         "водителей с нарушениями": len({v.ids[0] for v in rest}),
+        f"водителей сверх {limit // 60 if limit else '-'} ч за месяц": len({v.ids[0] for v in month}),
         "на своём закреплённом автобусе, %": round(100 * own / max(1, filled)),
         "часов на водителя: медиана": round(statistics.median(hours)),
         "часов у 80% водителей (без 10% крайних с каждой стороны)": f"{tenth[0]:.0f}-{tenth[-1]:.0f}",

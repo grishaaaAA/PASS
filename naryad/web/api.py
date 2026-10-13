@@ -56,7 +56,7 @@ from naryad.data import registry
 from naryad.data.generate import generate
 from naryad.ops.replan import (EDIT_TYPES, Accident, Breakdown, Edit, Late, NoShow, OpsState, apply,
                                check_state, free_drivers, free_vehicles, history_after,
-                               late_shift, manual_edit, options_for)
+                               late_shift, manual_edit, options_for, worked_today)
 from naryad.solve.city import add_transfers
 from naryad.solve.drivers import History, solve_drivers
 from naryad.solve.vehicles import solve_vehicles
@@ -443,7 +443,9 @@ class Engine:
             add_transfers(record.day, vehicles, gas_parks=gas_parks)
         plan = solve_drivers(record.day, vehicles, history)
         seconds = round(time.perf_counter() - started, 2)
-        series = [(r.day, r.plan) for r in earlier] + [(record.day, plan)]
+        # прошлые дни - по факту, как память водителей: неявка не смена, замена - смена
+        series = [(r.day, worked_today(r.state) if r.state is not None else r.plan)
+                  for r in earlier] + [(record.day, plan)]
         answer = {"plan": plan.to_dict(), "violations": _violations(check_plan(record.day, plan)),
                   "rest_violations": _violations(check_rest(series, labor)),
                   "summary": explain.day_summary(record.day, plan, before),

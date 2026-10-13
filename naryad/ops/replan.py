@@ -361,11 +361,18 @@ def _classes(state: OpsState, duty) -> tuple:
 
 
 def _day_fits(state: OpsState, driver_id: str, start: int, end: int, labor: dict) -> bool:
-    """Рабочий день водителя вместе с новым отрезком не длиннее дневной нормы."""
+    """Рабочий день водителя вместе с новым отрезком не длиннее дневной нормы
+    и не выводит его месяц за предел перевозчика.
+
+    Водитель резерва уже работает сегодня, и отрезок на линии удлиняет его
+    рабочий день: месяц считается так же, как в check_state, - по памяти до
+    дня плюс весь рабочий день от первого отрезка до последнего.
+    """
     worked = state.driver_worked(driver_id)
     first = min([s.start for s in worked] + [start])
     last = max([s.end for s in worked] + [end])
-    return work_minutes(last - first, labor) <= shift_limit(labor)
+    return (work_minutes(last - first, labor) <= shift_limit(labor)
+            and month_allows(state.history.peek(driver_id), state.day.meta["date"][:7], last - first, labor))
 
 
 def _taken_over(state: OpsState, vehicle_id: str, duty, start: int, end: int,
@@ -926,14 +933,28 @@ def history_after(state: OpsState, labor: dict | None = None) -> History:
     labor = labor or load_labor()
     out = copy.deepcopy(state.history)
     base, month = day_base(state.day), state.day.meta["date"][:7]
-    worked: dict = {}
-    for segments in state.drivers.values():
-        for segment in segments:
-            start, end = worked.get(segment.who, (segment.start, segment.end))
-            worked[segment.who] = (min(start, segment.start), max(end, segment.end))
-    for driver_id, (start, end) in sorted(worked.items(), key=lambda item: (item[1][0], item[0])):
+    for driver_id, [(start, end, _)] in sorted(worked_today(state).items(),
+                                               key=lambda item: (item[1][0][0], item[0])):
         remember(out.get(driver_id), base + start, base + end, month, labor)
     return out
+
+
+def worked_today(state: OpsState) -> dict:
+    """Фактическая работа водителей за день: {водитель: [(начало, конец, смена)]}.
+
+    Рабочий день - целиком, от начала первого отрезка до конца последнего,
+    смена - та, с которой он начался. По этому же дню память водителей
+    (history_after) пишет, кто сколько отработал, и по нему же check_rest
+    проверяет отдых и месячный предел на серии дней. По утреннему плану
+    проверка засчитала бы неявку как отработанную смену, а часы водителя
+    замены не увидела бы, и разошлась бы с расстановкой следующего дня.
+    """
+    spans: dict = {}
+    for shift_id in sorted(state.drivers):
+        for s in state.drivers[shift_id]:
+            start, end, first = spans.get(s.who, (s.start, s.end, shift_id))
+            spans[s.who] = (min(start, s.start), max(end, s.end), shift_id if s.start < start else first)
+    return {who: [span] for who, span in spans.items()}
 
 
 def _end(table: dict, key: str, t: int, who: str | None = None) -> None:

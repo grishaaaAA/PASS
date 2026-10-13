@@ -14,6 +14,7 @@ import unittest
 
 from naryad.core.model import Day
 from naryad.data.check import check
+from naryad.data.registry import load
 from naryad.explain import why_driver, why_unfilled
 from naryad.solve.drivers import solve_drivers
 from naryad.solve.vehicles import solve_vehicles
@@ -133,6 +134,29 @@ class TestAbsent(unittest.TestCase):
         status, answer = engine.handle("POST", f"/api/days/{day_id}/edits", None, {**edit, "force": True})
         self.assertEqual(status, 200, answer)
 
+
+
+class TestRegistry(unittest.TestCase):
+
+    def test_registry_word(self):
+        """В столбце графика реестра «не выходит» - та же отметка, медосмотра у него нет."""
+        import csv
+        import io
+        folder = SAMPLES / "park7_weekday_csv"
+        files = {p.name: p.read_text(encoding="utf-8-sig") for p in folder.glob("*.csv")}
+        rows = list(csv.reader(io.StringIO(files["drivers.csv"]), delimiter=";"))
+        schedule, medical = rows[0].index("schedule"), rows[0].index("medical")
+        marked = [r for r in rows[1:] if r[schedule] == "work"][:2]
+        for row, value in zip(marked, ("не выходит", "Не выходит")):
+            row[schedule], row[medical] = value, ""
+        out = io.StringIO()
+        csv.writer(out, delimiter=";", lineterminator="\n").writerows(rows)
+        files["drivers.csv"] = out.getvalue()
+        data, report = load(files=files, meta={"date": "2026-10-05", "day_type": "weekday", "moment": "morning"})
+        self.assertEqual(report["errors"], [])
+        read = [d for d in data["drivers"] if d["schedule"] == "absent"]
+        self.assertEqual(len(read), 2)
+        self.assertTrue(all(d["medical"] is None for d in read))
 
 if __name__ == "__main__":
     unittest.main()
