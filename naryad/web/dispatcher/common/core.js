@@ -161,6 +161,10 @@
         start: toMin(d.start), end: toMin(d.end), shiftCount: d.shift_count, segs: [], shifts: [], unfilled: null };
       if (d.route_id && m.routes[d.route_id]) m.routes[d.route_id].duties.push(m.duties[d.id]);
     });
+    // Маршрут без нарядов сегодня (снят на подготовке, не работает в этот тип дня) на экран расчёта не идёт:
+    // ни в список, ни на карту, ни в число маршрутов парка
+    m.routeList = m.routeList.filter(function (r) { return r.duties.length > 0; });
+    m.parkList.forEach(function (p) { p.routes = p.routes.filter(function (r) { return r.duties.length > 0; }); });
     day.shifts.forEach(function (s) {
       m.shifts[s.id] = { id: s.id, duty: s.duty_id, order: s.order, start: toMin(s.start), end: toMin(s.end), segs: [], unfilled: null };
       m.duties[s.duty_id] && m.duties[s.duty_id].shifts.push(m.shifts[s.id]);
