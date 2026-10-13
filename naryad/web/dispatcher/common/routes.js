@@ -18,10 +18,11 @@
 
   function drawContext() {
     ctxLayer.clearLayers();
-    G.routes.filter(function (r) { return r.park_id === park && (!cur || r.id !== cur.id); }).forEach(function (r) {
+    // открыт маршрут - он один на карте, остальные маршруты парка не рисуются
+    G.routes.filter(function (r) { return r.park_id === park && !cur; }).forEach(function (r) {
       r.directions.forEach(function (d) {
         if (d.line.length < 2) return;
-        L.polyline(d.line, { renderer: canvas, color: r.color, weight: cur ? 2 : 3.5, opacity: cur ? 0.25 : 0.75 })
+        L.polyline(d.line, { renderer: canvas, color: r.color, weight: 3.5, opacity: 0.75 })
           .bindTooltip("Маршрут " + esc(r.number) + (d.name ? "<br>" + esc(d.name) : ""), { sticky: true })
           .on("click", function () { if (!mode) tryOpen(r.id); })
           .addTo(ctxLayer);
@@ -31,9 +32,9 @@
     var p = G.parks[park];
     var n = G.routes.filter(function (r) { return r.park_id === park; }).length;
     if (p) L.marker([p.lat, p.lon], { zIndexOffset: 500, icon: L.divIcon({ className: "pk-wrap", iconSize: [0, 0], iconAnchor: [0, 0],
-      html: '<div class="pk pk--idle"><span class="pk__ic"><i class="ad-icon ad-icon--bus"></i></span><span class="pk__tx"><b>Парк ' +
-        park.replace("P0", "№").replace("P", "№") + "</b><small>" + n + " " + D.plural(n, "маршрут", "маршрута", "маршрутов") + "</small></span></div>" }) })
-      .bindTooltip("Автобусный парк " + park.replace("P0", "№")).addTo(parkLayer);
+      html: '<div class="pk pk--idle"><span class="pk__ic"><i class="ad-icon ad-icon--bus"></i></span></div>' }) })
+      .bindTooltip("<b>Автобусный парк " + park.replace("P0", "№").replace("P", "№") + "</b><br>" + n + " " + D.plural(n, "маршрут", "маршрута", "маршрутов"),
+        { direction: "right", offset: [24, 0] }).addTo(parkLayer);
   }
 
   function dir() { return cur && cur.directions[dirIdx]; }
@@ -42,14 +43,17 @@
     editLayer.clearLayers();
     if (!cur) return;
     var d = dir();
+    var pk = G.parks[cur.park_id || park];
+    if (pk) D.depotLine(map, [pk.lat, pk.lon], cur).addTo(editLayer);  // подъезд от парка к началу маршрута
     cur.directions.forEach(function (x, i) {
       if (i === dirIdx || x.line.length < 2) return;
-      L.polyline(x.line, { renderer: canvas, color: cur.color, weight: 3, opacity: 0.45, dashArray: "6 6", interactive: false }).addTo(editLayer);
+      L.polyline(x.line, { renderer: canvas, color: D.dirColor(cur.color, i), weight: 3, opacity: 0.9, interactive: false }).addTo(editLayer);
     });
     if (!d) return;
     if (d.line.length >= 2) {
       L.polyline(d.line, { color: "#fff", weight: 10, opacity: 0.9, interactive: false }).addTo(editLayer);
-      var pl = L.polyline(d.line, { color: cur.color, weight: 5, opacity: 1 }).addTo(editLayer);
+      var col = D.dirColor(cur.color, dirIdx);
+      var pl = L.polyline(d.line, { color: col, weight: 5, opacity: 1 }).addTo(editLayer);
       pl.on("click", function (e) {
         if (mode !== "line") return;
         L.DomEvent.stopPropagation(e);
@@ -69,7 +73,7 @@
     }
     d.stops.forEach(function (s, i) {
       var mk = L.marker([s.lat, s.lon], { zIndexOffset: 1000, keyboard: false,
-        icon: L.divIcon({ className: "", html: '<div class="sp' + (hlStop === i ? " is-hl" : "") + '" style="border-color:' + cur.color + '">' + (i + 1) + "</div>", iconSize: [0, 0] }) }).addTo(editLayer);
+        icon: L.divIcon({ className: "", html: '<div class="sp' + (hlStop === i ? " is-hl" : "") + '" style="border-color:' + D.dirColor(cur.color, dirIdx) + '">' + (i + 1) + "</div>", iconSize: [0, 0] }) }).addTo(editLayer);
       mk.bindTooltip((i + 1) + ". " + esc(s.name), { direction: "top", offset: [0, -8] });
       // Остановку не тащат: правка - в меню по клику (название, порядок, удаление) или в списке слева
       mk.on("click", function () { highlight(i, true); stopMenu(i); });
@@ -77,7 +81,7 @@
   }
   function arrow(a, b) {
     var ang = Math.atan2(b[0] - a[0], (b[1] - a[1]) * Math.cos(a[0] * Math.PI / 180)) * 180 / Math.PI;
-    L.marker(b, { interactive: false, icon: L.divIcon({ className: "map-arrow", html: '<span style="color:' + cur.color + ";transform:rotate(" + (-ang) + 'deg)">➤</span>', iconSize: [14, 14] }) }).addTo(editLayer);
+    L.marker(b, { interactive: false, icon: L.divIcon({ className: "map-arrow", html: '<span style="color:' + D.dirColor(cur.color, dirIdx) + ";transform:rotate(" + (-ang) + 'deg)">➤</span>', iconSize: [14, 14] }) }).addTo(editLayer);
   }
   function r6(x) { return Math.round(x * 1e6) / 1e6; }
   function ll(p) { return [r6(p.lat), r6(p.lng)]; }

@@ -118,26 +118,22 @@ body { background: var(--bg); color: var(--ink); font: var(--text-body); }
 .mc__chk input { accent-color: var(--accent-deep); width: 16px; height: 16px; margin: 0; }
 .mc__credit { position: absolute; right: 8px; bottom: 5px; z-index: 600; font: 400 10px/1 var(--font-sans); color: var(--ink); opacity: .32; pointer-events: none; letter-spacing: .02em; }
 
-/* Метка парка: карточка - слева квадрат с автобусом на цветной подложке во всю высоту, справа название и цифры.
-   Центр квадрата - ровно в точке парка. Цвет подложки - состояние: зелёный всё на линии, красный - есть нехватка. */
+/* Метка парка: квадрат с автобусом, центр - ровно в точке парка. Название и цифры - в подсказке при наведении.
+   Цвет подложки - состояние: зелёный всё на линии, красный - есть нехватка. */
 .pk-wrap { background: none; border: 0; }
-.pk { position: absolute; left: 0; top: 0; transform: translate(-19px, -50%); display: flex; align-items: stretch; height: 38px; box-sizing: border-box; cursor: pointer; white-space: nowrap;
+.pk { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); display: flex; box-sizing: border-box; cursor: pointer;
   background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-md); overflow: hidden;
-  transform-origin: 19px 50%;
   transition: transform 320ms var(--easing-standard), box-shadow 320ms var(--easing-standard), border-color 220ms var(--easing-standard); }
-.pk:hover { transform: translate(-19px, -50%) scale(1.08); box-shadow: var(--shadow-lg); border-color: var(--border-strong); }
+.pk:hover { transform: translate(-50%, -50%) scale(1.08); box-shadow: var(--shadow-lg); border-color: var(--border-strong); }
+.pk:active { transform: translate(-50%, -50%) scale(0.97); }
 .pk.is-selected { border-color: var(--accent-deep); box-shadow: 0 0 0 1px var(--accent-deep), var(--shadow-md); }
 .pk__ic { flex: none; width: 36px; height: 36px; display: grid; place-items: center; background-image: var(--gradient-chrome-deep); color: var(--on-fill); }
 .pk__ic .ad-icon { width: 18px; height: 18px; }
 .pk--ok .pk__ic { background-image: none; background-color: var(--success-fill); }
 .pk--bad .pk__ic { background-image: none; background-color: var(--danger-fill); }
 .pk--down .pk__ic { background-image: none; background-color: var(--neutral-fill); }
-.pk__tx { display: grid; align-content: center; gap: 1px; padding: 0 10px 0 8px; line-height: 1.15; }
-.pk__tx > b { font: 500 12px/1.2 var(--font-sans); color: var(--ink); }
-.pk__tx small { font: 400 11px/1.2 var(--font-sans); color: var(--ink-muted); }
-.pk__tx small b { font-weight: 700; color: var(--ink); }
-.pk__tx small .pk__n--ok { color: var(--success-text); }
-.pk__tx small .pk__n--bad { color: var(--danger-text); }
+.pk__n--ok { color: var(--success-text); }
+.pk__n--bad { color: var(--danger-text); }
 
 /* Значок парка без текста: квадрат с автобусом, мягко «дышит» - свечение расходится и гаснет, без мигания */
 .bus-mark { position: relative; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background-image: var(--gradient-chrome-deep);
