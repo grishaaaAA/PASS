@@ -21,10 +21,18 @@
     side: { opacity: 0, transform: "translateX(-8px)" },
     sheet: { opacity: 0, transform: "translateY(24px)" }
   };
-  function frames(kind) {
-    var f = FROM[kind] || FROM.fade;
-    if (reduce) return [{ opacity: 0 }, { opacity: 1 }];
-    return [f, { opacity: 1, transform: f.transform ? "none" : undefined }].map(clean);
+  // Конец появления - собственная прозрачность элемента, а не 1: недоступное (0,45) проявляется
+  // сразу до своей прозрачности, а не ярким с рывком в конце. Пока на элементе идёт другая
+  // анимация, его прозрачность не настоящая - берём запомненную.
+  function rest(el) {
+    if (!el || !el.getAnimations) return 1;
+    if (!el.getAnimations().length) { var o = parseFloat(getComputedStyle(el).opacity); el._rest = isNaN(o) ? 1 : o; }
+    return el._rest != null ? el._rest : 1;
+  }
+  function frames(kind, el) {
+    var f = FROM[kind] || FROM.fade, to = rest(el);
+    if (reduce) return [{ opacity: 0 }, { opacity: to }];
+    return [f, { opacity: to, transform: f.transform ? "none" : undefined }].map(clean);
   }
   function clean(o) { var r = {}; Object.keys(o).forEach(function (k) { if (o[k] !== undefined) r[k] = o[k]; }); return r; }
   function canAnimate(el) { return el && typeof el.animate === "function"; }
@@ -45,25 +53,25 @@
     el.hidden = false;
     if (!canAnimate(el) || (!was && !opts.force)) return;
     if (el._out) { el._out.cancel(); el._out = null; }
-    el.animate(frames(kind), { duration: opts.duration || BASE, easing: EASE, delay: opts.delay || 0, fill: "backwards" });
+    el.animate(frames(kind, el), { duration: opts.duration || BASE, easing: EASE, delay: opts.delay || 0, fill: "backwards" });
   }
   // Спрятать элемент: сначала уход, потом [hidden]. Уход быстрее появления.
   function hide(el, kind, done) {
     if (!el || el.hidden) { if (done) done(); return; }
     if (!canAnimate(el)) { el.hidden = true; if (done) done(); return; }
-    var a = el.animate(frames(kind).reverse(), { duration: FAST, easing: EASE_EXIT, fill: "forwards" });
+    var a = el.animate(frames(kind, el).reverse(), { duration: FAST, easing: EASE_EXIT, fill: "forwards" });
     el._out = a;
     after(a, FAST, function () { if (el._out !== a) return; el._out = null; el.hidden = true; a.cancel(); if (done) done(); });
   }
   // Вставить элемент (создан кодом) с появлением
   function enter(el, kind, delay) {
     if (!canAnimate(el)) return;
-    el.animate(frames(kind), { duration: BASE, easing: EASE, delay: delay || 0, fill: "backwards" });
+    el.animate(frames(kind, el), { duration: BASE, easing: EASE, delay: delay || 0, fill: "backwards" });
   }
   // Убрать вставленный элемент с уходом
   function leave(el, kind) {
     if (!el || !canAnimate(el)) { if (el) el.remove(); return; }
-    var a = el.animate(frames(kind).reverse(), { duration: FAST, easing: EASE_EXIT, fill: "forwards" });
+    var a = el.animate(frames(kind, el).reverse(), { duration: FAST, easing: EASE_EXIT, fill: "forwards" });
     after(a, FAST, function () { el.remove(); });
   }
   // Каскад: элементы появляются друг за другом с шагом 40 мс (не больше 8 ступеней)
@@ -92,8 +100,8 @@
     // содержимое: при раскрытии проявляется чуть позже, чем начинает расти высота; при сворачивании гаснет первым
     Array.prototype.forEach.call(d.children, function (c) {
       if (c === sum) return;
-      if (opening) c.animate([{ opacity: 0, transform: "translateY(-6px)" }, { opacity: 1, transform: "none" }], { duration: BASE, delay: 80, easing: EASE, fill: "backwards" });
-      else c.animate([{ opacity: 1 }, { opacity: 0 }], { duration: Math.round(CLOSE * 0.6), easing: EASE_EXIT, fill: "forwards" });
+      if (opening) c.animate([{ opacity: 0, transform: "translateY(-6px)" }, { opacity: rest(c), transform: "none" }], { duration: BASE, delay: 80, easing: EASE, fill: "backwards" });
+      else c.animate([{ opacity: rest(c) }, { opacity: 0 }], { duration: Math.round(CLOSE * 0.6), easing: EASE_EXIT, fill: "forwards" });
     });
     after(a, opening ? OPEN : CLOSE, function () {
       if (d._anim !== a) return;  // поверх запущена новая анимация - она и завершит
