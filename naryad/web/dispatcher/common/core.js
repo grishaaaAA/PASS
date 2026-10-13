@@ -270,15 +270,16 @@
   }
 
   // Худший интервал одной фразой: «худший 11 мин вместо 10 в 08:40» или «без автобусов с 09:10, 40 мин»
+  // Интервал не рос - пусто: показываем только проблемы
   function worstText(w) {
-    if (!w) return "весь день как по плану";
+    if (!w) return "";
     if (w.stopped) return "без автобусов с " + clock(w.t) + ", " + w.minutes + " мин";
     return "худший " + intervalText(w) + " в " + clock(w.t);
   }
 
   // То же коротко, для строки списка: «11 вместо 10 мин», «нет автобусов»
   function worstShort(w) {
-    if (!w) return "по плану";
+    if (!w) return "";
     if (w.stopped) return "нет автобусов";
     return intervalText(w).replace(" мин вместо ", " вместо ") + " мин";
   }

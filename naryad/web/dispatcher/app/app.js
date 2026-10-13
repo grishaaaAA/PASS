@@ -116,7 +116,7 @@
       html = '<div class="rows-head"><span>Маршрут</span><span>Смены</span><span>Водители</span><span></span></div>' + routes.map(function (r) {
         var total = 0, filled = 0;
         r.duties.forEach(function (d) { d.shifts.forEach(function (s) { total++; if (s.segs.length) filled++; }); });
-        return routeItem(r, "<b>" + filled + "</b> / " + total, r.noDriver ? "warn" : "ok", r.noDriver ? "без водителя " + r.noDriver : "все с водителем");
+        return routeItem(r, "<b>" + filled + "</b> / " + total, r.noDriver ? "warn" : "ok", r.noDriver ? "без водителя " + r.noDriver : "");
       }).join("");
     } else if (S.tab === "reserve") {
       var res = Object.keys(m.duties).map(function (k) { return m.duties[k]; }).filter(function (d) { return d.type !== "line"; }).sort(function (a, b) { return a.start - b.start; });
@@ -267,7 +267,7 @@
       ["Парк", D.parkShort(m, r.park)],
       ["Важность", D.PRIORITY[r.priority]],
       ["Нарядов на день", calc ? r.filled + " из " + r.total + " на линии" : String(r.total)],
-      calc ? ["Интервал", D.worstText(r.worst)] : null,
+      calc && r.worst ? ["Интервал", D.worstText(r.worst)] : null,
       ["Круг", r.turn + " мин"],
       ["Длина рейса", kmText(r.length) + " по справке" + (lens.length ? ", по карте " + lens.join(" / ") : "")],
       ["Автобусы", r.classes.map(function (c) { return D.CLASSES[c]; }).join(", ")],
@@ -315,8 +315,8 @@
     S.map.select(r.park);
     if (!keepSide) S.map.selectRoute(id, Math.round($("#drawer").offsetHeight + 30));
     $("#drTitle").textContent = "Маршрут " + r.number + " · " + D.parkShort(m, r.park);
-    $("#drSub").textContent = "Важность " + D.PRIORITY[r.priority] + " · на линии " + r.filled + " из " + r.total + " нарядов · круг " + r.turn + " мин · " +
-      "интервал " + D.worstText(r.worst);
+    $("#drSub").textContent = "Важность " + D.PRIORITY[r.priority] + " · на линии " + r.filled + " из " + r.total + " нарядов · круг " + r.turn + " мин" +
+      (r.worst ? " · интервал " + D.worstText(r.worst) : "");
     var a = Math.floor(Math.min.apply(null, r.duties.map(function (d) { return d.start; })) / 60) * 60;
     var b = Math.ceil(Math.max.apply(null, r.duties.map(function (d) { return d.end; })) / 60) * 60;
     D.coverageChart($("#drCov"), D.coverage(r.duties, a, b, 10), { height: 90 });
