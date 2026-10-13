@@ -21,7 +21,7 @@ from collections import Counter
 from naryad.core.invariants import (load_labor, may_depart, permit_problem, rest_minutes,
                                     shift_limit, work_minutes)
 from naryad.core.model import REASONS, Day, Plan
-from naryad.solve.drivers import History, day_base, rest_status
+from naryad.solve.drivers import History, day_base, month_allows, month_work, rest_status
 from naryad.solve.vehicles import allowed_classes, drop_costs, _groups
 
 from naryad.core.words import CLASS_NAMES, CONDITION_NAMES, SCHEDULE_NAMES  # один словарь на весь движок
@@ -294,8 +294,10 @@ def why_driver(day: Day, plan: Plan, shift_id: str, history: History | None = No
                        + f" - в пределах дневной нормы {_hm(limit)}")
     if state.last_end is not None:
         reasons.append(_rest_given(state, day_base(day) + shift.start, labor))
-    if state.month_minutes:
-        reasons.append(f"В этом месяце отработал {_hm(state.month_minutes)}")
+    done = month_work(state, day.meta["date"][:7])
+    if done:
+        limit = labor.get("max_month_work_min")
+        reasons.append(f"В этом месяце отработал {_hm(done)}" + (f" из {limit // 60} ч" if limit else ""))
     own = driver.home_vehicle_id == vehicle_id
     if own:
         answer = f"Водитель {driver.tab_number} закреплён за этим автобусом"
@@ -319,6 +321,9 @@ def _driver_blocker(day: Day, plan: Plan, driver, shift, history: History, labor
     state = history.peek(driver.id)
     if rest_status(state, day_base(day) + shift.start, labor) is None:
         return _rest_missing(state, rest_minutes(state.last_end, day_base(day) + shift.start, labor), labor)
+    if not month_allows(state, day.meta["date"][:7], shift.length, labor):
+        return (f"выработал месяц: {_hm(month_work(state, day.meta['date'][:7]))}, с этой сменой выйдет "
+                f"больше предела перевозчика {labor['max_month_work_min'] // 60} ч")
     return "свободен; не поставлен, чтобы закрыть другие смены"
 
 
@@ -510,6 +515,7 @@ def _why_shift_unfilled(day: Day, plan: Plan, shift_id: str, history: History, l
             key = ("работают на других сменах" if text.startswith("работает") else
                    "не отдохнули после прошлой смены" if text.startswith("не отдохнул") else
                    "положен еженедельный отдых" if "45 ч" in text else
+                   f"выработали месячный предел {labor['max_month_work_min'] // 60} ч" if text.startswith("выработал") else
                    "свободны, но нужны на другие смены" if text.startswith("свободен") else text)
             blockers[key] += 1
     if drivers and permits == len(drivers):

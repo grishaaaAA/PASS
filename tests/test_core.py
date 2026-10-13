@@ -247,7 +247,7 @@ class TestBrokenPlans(unittest.TestCase):
         self.broken("driver_overlap")
 
     def test_driver_overtime(self):
-        labor = dict(load_labor(), max_shift_min=60)
+        labor = dict(load_labor(), max_shift_min=60, city_12h_allowed=False)
         self.broken("driver_overtime", labor)
 
     def test_unexplained_duty(self):
@@ -302,9 +302,9 @@ class TestBrokenPlans(unittest.TestCase):
 
     def test_shift_exactly_at_limit(self):
         shift = self.day.shifts[self.shift_ids[0]]
-        self.day.shifts[shift.id] = dataclasses.replace(shift, end=shift.start + 600)
+        self.day.shifts[shift.id] = dataclasses.replace(shift, end=shift.start + 720)   # смены до 12 ч установлены
         self.assertNotIn("driver_overtime", codes(check_plan(self.day, self.plan)))
-        self.day.shifts[shift.id] = dataclasses.replace(shift, end=shift.start + 601)
+        self.day.shifts[shift.id] = dataclasses.replace(shift, end=shift.start + 721)
         self.broken("driver_overtime")
 
 

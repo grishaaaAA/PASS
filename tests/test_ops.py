@@ -327,7 +327,7 @@ class TestFreeDrivers(unittest.TestCase):
         moved = found[0]
         state.day.drivers[moved] = dataclasses.replace(state.day.drivers[moved], park_id="P99")
         self.assertNotIn(moved, free_drivers(state, duty, MORNING, MORNING + 60, load_labor()))
-        self.assertEqual(free_drivers(state, duty, MORNING, MORNING + 11 * 60, load_labor()), [])
+        self.assertEqual(free_drivers(state, duty, MORNING, MORNING + 13 * 60, load_labor()), [])   # больше 12 ч
 
     def test_several_classes_need_a_permit_to_each(self):
         state = morning_state()
