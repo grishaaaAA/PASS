@@ -308,5 +308,41 @@ class TestBrokenPlans(unittest.TestCase):
         self.broken("driver_overtime")
 
 
+
+class TestTransfersInThePlan(unittest.TestCase):
+    """Переброски сверяются с днём: ссылки в никуда и остановленный парк-отправитель."""
+
+    @classmethod
+    def setUpClass(cls):
+        from naryad.data.generate import generate
+        cls.raw = generate("case", "2026-10-05", seed=2, moment="morning")
+
+    def setUp(self):
+        self.day = Day.from_dict(self.raw)
+        from naryad.solve.drivers import solve_drivers
+        from naryad.solve.vehicles import solve_vehicles
+        self.plan = solve_drivers(self.day, solve_vehicles(self.day))
+
+    def test_transfer_to_nowhere(self):
+        self.plan.transfers["НЕТ-АВТОБУСА"] = "НЕТ-ПАРКА"
+        found = [v for v in check_plan(self.day, self.plan) if v.code == "unknown_id"]
+        self.assertEqual(len(found), 2, [v.text for v in found])
+        self.assertTrue(any("НЕТ-ПАРКА" in v.text for v in found))
+
+    def test_bus_from_a_stopped_park(self):
+        day, plan = self.day, self.plan
+        used = set(plan.vehicles.values())
+        duty = next(d for d in sorted(day.duties.values(), key=lambda d: d.id) if d.id in plan.vehicles and d.type == "line")
+        bus = next(v for v in sorted(day.vehicles.values(), key=lambda v: v.id)
+                   if v.park_id != duty.park_id and v.condition == "ok" and v.id not in used
+                   and v.cls in day.routes[duty.route_id].allowed_classes)
+        plan.vehicles[duty.id] = bus.id
+        plan.transfers[bus.id] = duty.park_id
+        self.assertEqual([v for v in check_plan(day, plan) if v.code in ("park_down", "vehicle_park")], [])
+        day.parks[bus.park_id] = dataclasses.replace(day.parks[bus.park_id], state="down")
+        found = [v for v in check_plan(day, plan) if v.code == "park_down" and v.ids == (duty.id, bus.id)]
+        self.assertEqual(len(found), 1)
+        self.assertIn("переброшен из парка", found[0].text)
+
 if __name__ == "__main__":
     unittest.main()

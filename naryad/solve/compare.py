@@ -25,7 +25,7 @@ import statistics
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from naryad.core.invariants import check_plan, use_labor_preset
+from naryad.core.invariants import check_plan, labor_preset_name, use_labor_preset
 from naryad.core.model import Day, Plan
 
 from .baseline import baseline_drivers, baseline_vehicles
@@ -170,7 +170,7 @@ def main(argv=None) -> int:
     use_labor_preset(args.labor)
     day = Day.load(args.day)
     lines = sum(d.day_type == day.day_type and d.type == "line" for d in day.duties.values())
-    print(f"Нарядов на линии: {lines}. Нормы: {args.labor or 'current'}. "
+    print(f"Нарядов на линии: {lines}. Нормы: {labor_preset_name()}. "
           f"В клетке: среднее по {args.seeds} сценариям (худший сценарий).")
     for name, table in compare(day, args.seeds).items():
         print(f"\n{name}")

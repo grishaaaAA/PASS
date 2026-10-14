@@ -15,7 +15,7 @@ import argparse
 import statistics
 from collections import defaultdict
 
-from naryad.core.invariants import check_plan, check_rest, load_labor, use_labor_preset
+from naryad.core.invariants import check_plan, check_rest, labor_preset_name, load_labor, use_labor_preset
 from naryad.core.model import Day
 from naryad.data.generate import generate_series
 
@@ -88,7 +88,7 @@ def main(argv=None) -> int:
                "наш план": series_report(solve_series(days))}
     keys = list(columns["наш план"])
     width = max(map(len, keys))
-    print(f"{args.days} дней подряд, {args.preset}, нормы: {args.labor or 'current'}\n")
+    print(f"{args.days} дней подряд, {args.preset}, нормы: {labor_preset_name()}\n")
     print(f"{'':{width}}  " + "  ".join(f"{name:>26}" for name in columns))
     for key in keys:
         print(f"{key:{width}}  " + "  ".join(f"{table[key]!s:>26}" for table in columns.values()))

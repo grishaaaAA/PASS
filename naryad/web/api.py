@@ -257,8 +257,10 @@ class Engine:
         raw = json.loads(LABOR_FILE.read_text(encoding="utf-8"))
         labor = load_labor()
         return {"preset": labor_preset_name(), "presets": list(labor_presets()),
+                # rule и status написаны под значение файла (base_value); overridden - набор норм его поменял
                 "norms": [{"name": k, "value": labor[k], "rule": v["rule"], "p160": v["p160"],
-                           "status": v["status"]}
+                           "status": v["status"], "checked": v["checked"], "base_value": v["value"],
+                           "overridden": labor[k] != v["value"]}
                           for k, v in raw.items() if not k.startswith("_")]}
 
     def list_days(self, query, body):

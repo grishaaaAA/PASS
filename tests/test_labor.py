@@ -165,6 +165,20 @@ class TestPrepTime(unittest.TestCase):
         self.assertNotIn("driver_overtime", codes(check_plan(day, plan)))
         self.assertIn("driver_overtime", codes(check_plan(day, plan, self.PREP)))  # 11:40 + 0:25 > 12 ч
 
+    def test_double_rest_text_shows_the_work_time(self):
+        """Двойной отдых считается от рабочего времени: в тексте видно, откуда взялось «нужно»."""
+        from naryad.explain import _rest_missing
+        from naryad.solve.drivers import DriverState
+        state = DriverState(last_end=0, last_length=9 * 60 + 30, in_row=1)
+        text = _rest_missing(state, 10 * 60, self.PREP)       # 9:30 + 0:25 = 9:55 работы, нужно 19:20
+        self.assertIn("9 ч 30 мин с подготовкой и медосмотрами (9 ч 55 мин работы)", text)
+        self.assertIn("нужно 19 ч 20 мин", text)
+        self.assertNotIn("подготовк", _rest_missing(state, 10 * 60, load_labor()))   # без подготовки - как было
+        week = series([(0, 6, 15.5), (1, 6, 15.5)])                                    # 9:30 смены, 14:30 отдыха
+        found = [v.text for v in check_rest(week, self.PREP) if v.code == "rest_ratio"]
+        self.assertTrue(found)
+        self.assertIn("с подготовкой и медосмотрами (9 ч 55 мин работы)", found[0])
+
     def test_rest_without_prep_time(self):
         week = series([(0, 18, 22), (1, 7 + 1 / 6, 11)])  # между сменами 9 ч 10 мин
         self.assertEqual(check_rest(week), [])             # сокращённый отдых, законно
@@ -215,6 +229,17 @@ class TestLaborPresets(unittest.TestCase):
         self.assertFalse(load_labor()["city_12h_allowed"])
         use_labor_preset(None)
         self.assertEqual(load_labor()["prep_after_min"], 0)
+
+    def test_reports_name_the_preset_in_force(self):
+        """series подписывает тот набор, по которому считал, даже если он задан переменной окружения."""
+        import contextlib
+        import io
+        from naryad.solve import series
+        out = io.StringIO()
+        with mock.patch.dict(os.environ, {LABOR_ENV: "strict"}), contextlib.redirect_stdout(out):
+            use_labor_preset(None)
+            series.main(["--days", "1"])
+        self.assertIn("нормы: strict", out.getvalue())
 
     def test_preset_from_environment(self):
         with mock.patch.dict(os.environ, {LABOR_ENV: "likely"}):
