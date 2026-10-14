@@ -349,7 +349,10 @@ def _rest_missing(state, rest: int, labor: dict) -> str:
         return f"уже {state.in_row} смен подряд, положен еженедельный отдых 45 ч (п. 20 Приказа № 160)"
     need = labor["rest_to_work_ratio"] * work_minutes(state.last_length, labor) - labor["meal_break_assumed_min"]
     if rest < need:
-        return (f"не отдохнул: после смены {_hm(state.last_length)} отдых {_hm(rest)}, нужно {_hm(need)} "
+        work = work_minutes(state.last_length, labor)
+        shift = (f"{_hm(state.last_length)}" if work == state.last_length else
+                 f"{_hm(state.last_length)} с подготовкой и медосмотрами ({_hm(work)} работы)")
+        return (f"не отдохнул: после смены {shift} отдых {_hm(rest)}, нужно {_hm(need)} "
                 f"(двойное время работы, п. 16 Приказа № 160)")
     if rest < labor["min_daily_rest_reduced_min"]:
         return f"не отдохнул: после прошлой смены {_hm(rest)}, нужно 11 ч, сократить можно до 9 ч (п. 17 Приказа № 160)"

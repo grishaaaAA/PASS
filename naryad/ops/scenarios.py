@@ -16,6 +16,7 @@ import random
 import time
 from pathlib import Path
 
+from naryad.core.invariants import labor_preset_name
 from naryad.core.model import Day
 from naryad.solve.drivers import solve_drivers
 from naryad.solve.vehicles import solve_vehicles
@@ -89,6 +90,7 @@ def main(argv=None) -> int:
     parser.add_argument("day", nargs="?", default=str(DEFAULT_DAY))
     args = parser.parse_args(argv)
     day = Day.load(args.day)
+    print(f"{args.day}, нормы: {labor_preset_name()}")   # набор задаёт NARYAD_LABOR
     for name, events in build(day).items():
         result = run(day, events)
         print(f"\n=== {name} ===")

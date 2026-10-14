@@ -11,7 +11,7 @@ import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
 
-from naryad.core.invariants import check_rest
+from naryad.core.invariants import check_rest, use_labor_preset
 from naryad.core.model import Plan
 from naryad.data.generate import generate
 from naryad.solve.drivers import DriverState
@@ -122,6 +122,20 @@ class TestDays(unittest.TestCase):
         norms = {n["name"]: n for n in payload["norms"]}
         self.assertEqual(norms["max_shift_min"]["value"], 600)
         self.assertTrue(norms["max_shift_min"]["p160"] and norms["max_shift_min"]["status"])
+        self.assertEqual(norms["max_shift_min"]["checked"], "по дню")
+        self.assertFalse(any(n["overridden"] for n in norms.values()), "набор current - это сам файл")
+        self.assertEqual({n["name"] for n in norms.values() if n["value"] != n["base_value"]}, set())
+
+    def test_labor_marks_what_the_preset_changed(self):
+        """Набор likely меняет подготовку: видно и значение набора, и значение файла, под которое написан rule."""
+        use_labor_preset("likely")
+        try:
+            norms = {n["name"]: n for n in ok(Engine().handle("GET", "/api/labor"))["norms"]}
+        finally:
+            use_labor_preset(None)
+        prep = norms["prep_before_min"]
+        self.assertEqual((prep["value"], prep["base_value"], prep["overridden"]), (20, 0, True))
+        self.assertFalse(norms["max_shift_min"]["overridden"])
 
 
 class TestPlanAndExplain(unittest.TestCase):

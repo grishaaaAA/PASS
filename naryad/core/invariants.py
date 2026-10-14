@@ -154,6 +154,13 @@ def _unknown(day: Day, plan: Plan) -> list:
         if item_id not in day.duties and item_id not in day.shifts:
             out.append(Violation("unknown_id", f"Незакрытого {item_id} нет в данных дня",
                                  (item_id,)))
+    for vehicle_id, park_id in plan.transfers.items():
+        if vehicle_id not in day.vehicles:
+            out.append(Violation("unknown_id", f"Переброшенного автобуса {vehicle_id} нет в данных дня",
+                                 (vehicle_id,)))
+        if park_id not in day.parks:
+            out.append(Violation("unknown_id", f"Парка {park_id}, куда переброшен автобус {vehicle_id}, "
+                                               f"нет в данных дня", (vehicle_id, park_id)))
     return out
 
 
@@ -197,6 +204,11 @@ def _vehicle_fits(day: Day, plan: Plan) -> list:
             out.append(Violation("vehicle_park",
                                  f"{name}: автобус из парка {vehicle.park_id}, наряд парка "
                                  f"{duty.park_id}, переброска не оформлена", (duty_id, vehicle_id)))
+        elif vehicle.park_id != duty.park_id and day.parks[vehicle.park_id].state == "down":
+            # _park_limits смотрит парк наряда; остановленный парк не выпускает автобусы и чужим
+            out.append(Violation("park_down",
+                                 f"{name}: автобус переброшен из парка {day.parks[vehicle.park_id].name}, "
+                                 f"а этот парк не работает", (duty_id, vehicle_id)))
     return out
 
 
@@ -283,6 +295,13 @@ def _driver_load(day: Day, plan: Plan, labor: dict) -> list:
 
 def _hm(minutes_: int) -> str:
     return f"{minutes_ // 60} ч {minutes_ % 60:02d} мин"
+
+
+def _with_prep(length: int, work: int) -> str:
+    """Смена словами для правила двойного отдыха: оно считается от рабочего времени, а не от смены."""
+    if work == length:
+        return f" {_hm(length)}"
+    return f" {_hm(length)} с подготовкой и медосмотрами ({_hm(work)} работы)"
 
 
 def _unfilled_explained(day: Day, plan: Plan, drivers: bool = True) -> list:
@@ -441,7 +460,7 @@ def check_rest(series: list, labor: dict | None = None) -> list:
             if gap < need:
                 out.append(Violation("rest_ratio",
                                      f"Водитель {driver_id}: между {shift_id} и {next_id} отдых "
-                                     f"{_hm(gap)}, а после смены {_hm(work)} нужно не меньше "
+                                     f"{_hm(gap)}, а после смены{_with_prep(end - start, work)} нужно не меньше "
                                      f"{_hm(need)} (двойное время работы, п. 16 Приказа № 160)",
                                      (driver_id, shift_id, next_id)))
             if gap < labor["min_daily_rest_min"]:
