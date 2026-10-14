@@ -231,15 +231,25 @@ class TestLaborPresets(unittest.TestCase):
         self.assertEqual(load_labor()["prep_after_min"], 0)
 
     def test_reports_name_the_preset_in_force(self):
-        """series подписывает тот набор, по которому считал, даже если он задан переменной окружения."""
+        """compare, series и scenarios подписывают тот набор, по которому считали, даже если он задан
+        переменной окружения. Сами расчёты compare и scenarios здесь подменены пустыми: проверяется подпись."""
         import contextlib
         import io
-        from naryad.solve import series
-        out = io.StringIO()
-        with mock.patch.dict(os.environ, {LABOR_ENV: "strict"}), contextlib.redirect_stdout(out):
-            use_labor_preset(None)
-            series.main(["--days", "1"])
-        self.assertIn("нормы: strict", out.getvalue())
+        from naryad.ops import scenarios
+        from naryad.solve import compare, series
+        runs = ((series.main, ["--days", "1"], "нормы: strict"),
+                (compare.main, ["--seeds", "1"], "Нормы: strict."),
+                (scenarios.main, [], "нормы: strict"))
+        for main, argv, label in runs:
+            with self.subTest(main.__module__):
+                out = io.StringIO()
+                with mock.patch.dict(os.environ, {LABOR_ENV: "strict"}), contextlib.redirect_stdout(out), \
+                        mock.patch.object(compare, "compare", return_value={}), \
+                        mock.patch.object(compare, "compare_drivers", return_value={}), \
+                        mock.patch.object(scenarios, "build", return_value={}):
+                    use_labor_preset(None)
+                    main(argv)
+                self.assertIn(label, out.getvalue())
 
     def test_preset_from_environment(self):
         with mock.patch.dict(os.environ, {LABOR_ENV: "likely"}):
