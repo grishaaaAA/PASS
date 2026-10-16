@@ -190,14 +190,16 @@ def intervals(day: Day, state, t: int | None = None) -> dict:
         answer = "Интервалы как по плану"
     else:
         answer = (f"Хуже всего на маршруте {worst['number']}: интервал вырос "
-                  f"в {worst['growth']} раза"
+                  f"в {str(worst['growth']).replace('.', ',')} раза"
                   + (f", в {worst['at']}" if worst["at"] else ""))
     reasons = []
     if stopped:
         reasons.append("маршруты, где не осталось ни одного автобуса: " + _names(stopped))
     if over:
         reasons.append("интервал вырос больше чем на четверть на маршрутах: " + _names(over))
-    if not reasons:
+    if not reasons and worst is not None:   # рост есть, но меньше четверти: «в пределах плана» спорило бы с ответом
+        reasons.append(f"больше чем на четверть интервал не вырос ни на одном из {len(working)} маршрутов")
+    elif not reasons:
         reasons.append(f"на всех {len(working)} маршрутах интервал в пределах плана")
 
     head = _answer("Что с интервалами" + (f" в {_at(t)}" if t is not None else " за день"),
@@ -227,7 +229,7 @@ def why_vehicle(day: Day, plan: Plan, duty_id: str) -> dict:
     vehicle = day.vehicles[vehicle_id]
     classes = allowed_classes(day, duty)
     reasons = [f"Автобус {vehicle.board_number}: класс «{CLASS_NAMES[vehicle.cls]}», исправен, "
-               f"парк {vehicle.park_id} - подходит наряду (нужен класс "
+               f"{day.parks[vehicle.park_id].name} - подходит наряду (нужен класс "
                f"{', '.join(CLASS_NAMES[c] for c in classes)})"]
     own = duty.route_id is not None and vehicle.home_route_id == duty.route_id
     if own:
@@ -461,13 +463,14 @@ def why_emptied(day: Day, plan: Plan, state, item_id: str, reason: str, log: lis
         else:
             fate = f"{name} снят с наряда"
         emptied = "Утром был закрыт, после событий дня остался без автобуса"
-    answer = "Диспетчер снял ресурс вручную" if reason == "removed_by_dispatcher" else emptied
+    removed = "Диспетчер снял автобус вручную" if item_id in day.duties else "Диспетчер снял водителя вручную"
+    answer = removed if reason == "removed_by_dispatcher" else emptied
     related = [entry for entry in log
                if item_id in (entry.get("duty_id"), entry.get("shift_id"))
                or (morning and morning in (entry.get("vehicle_id"), entry.get("driver_id")))]
     reasons = [f"Утром: {name}", fate[0].upper() + fate[1:]]
     reasons += [_log_line(entry) for entry in related]
-    reasons.append("Закрыть можно правкой: кого законно поставить, подскажет edits/options")
+    reasons.append("Закрыть можно ручной правкой: кого законно поставить, подскажет окно «Изменить»")
     return _answer(question, answer, reasons,
                    {"reason": reason, "reason_text": STATE_REASONS.get(reason, ""),
                     "morning": morning})

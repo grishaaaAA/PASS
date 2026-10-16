@@ -305,13 +305,18 @@ def read_csv_text(text: str, name: str = "CSV") -> list:
     ошибка реестра, а не сервиса, поэтому ValueError с понятным текстом.
     """
     text = text.lstrip("﻿")
+    if "\x00" in text or text.startswith("PK\x03\x04"):
+        raise ValueError(f"файл «{name}» - не таблица CSV, а двоичный файл; книгу Excel загружайте "
+                         f"файлом .xlsx, а таблицу сохраняйте как «CSV (разделители - точка с запятой)»")
+    # концы строк одной CR («CSV для Macintosh») csv сам не делит на строки
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
     first = next((line for line in text.splitlines() if line.strip()), "")
+    reader = csv.reader(io.StringIO(text), delimiter=_sniff(first))
     try:
-        rows = [[cell.strip() for cell in row]
-                for row in csv.reader(io.StringIO(text), delimiter=_sniff(first))]
-    except csv.Error as error:
-        raise ValueError(f"файл «{name}» не разбирается как CSV: незакрытая кавычка или "
-                         f"слишком длинное поле ({error})") from None
+        rows = [[cell.strip() for cell in row] for row in reader]
+    except csv.Error:
+        raise ValueError(f"файл «{name}» не разбирается как CSV около строки {reader.line_num}: "
+                         f"незакрытая кавычка или слишком длинное поле") from None
     return _trim(rows)
 
 

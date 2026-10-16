@@ -443,7 +443,7 @@ class TestEvents(unittest.TestCase):
                  ({"type": "breakdown", "vehicle_id": self.vehicle, "at": "8-40"}, 400, "ЧЧ:ММ"),
                  ({"type": "breakdown", "vehicle_id": "P07-V9999", "at": "08:40"}, 404, "автобуса"),
                  ({"type": "breakdown", "vehicle_id": self.vehicle, "at": "03:00"}, 400, "не на линии"),
-                 ({"type": "breakdown", "vehicle_id": self.vehicle, "at": "08:40", "duration_min": 0}, 400, "duration_min"),
+                 ({"type": "breakdown", "vehicle_id": self.vehicle, "at": "08:40", "duration_min": 0}, 400, "Длительность схода"),
                  ({"type": "no_show", "driver_id": "P07-D9999", "at": "08:40"}, 404, "водителя"))
         for body, status, word in cases:
             got, payload = self.engine.handle("POST", "/api/days/day-1/events/options", None, body)
