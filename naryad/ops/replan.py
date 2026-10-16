@@ -415,14 +415,21 @@ def _replacement_options(state: OpsState, duty_id: str, t: int, labor: dict,
     drive_end = min(shift.end, gap_end) if shift else gap_end
     if shift_id:
         drive_end = _free_until(state.drivers, shift_id, t, drive_end)
-    options = [Option("none", "Не заменять", losses.cost(duty_id, t, gap_end), gap_end - t, [],
-                      "маршрут работает без этого автобуса" +
+    # Резервный наряд на линии не работает: его сход - потеря запаса, а не простой маршрута.
+    # Снимать ради него автобус с линии или из другого резерва незачем, остаётся автобус из парка.
+    spare = duty.type == "reserve"
+    options = [Option("none", "Не заменять", losses.cost(duty_id, t, gap_end), 0 if spare else gap_end - t, [],
+                      ("в резерве на один автобус меньше" if spare else "маршрут работает без этого автобуса") +
                       ("" if back is None else f", автобус вернётся через {back} мин"))]
     classes = _classes(state, duty)
     arrive = t + SUPPLY_MIN
+    # Смена кончается раньше, чем подъедет замена: водитель замены не нужен, автобус примет
+    # следующая смена наряда по плану. Иначе вариант называл бы водителя, которого не ставит.
+    drive = shift is not None and arrive < drive_end
+    planned = "водитель - следующей смены по плану"
 
     # 1. Резервный наряд: автобус и водитель резерва едут на линию.
-    for reserve in day.duties.values() if arrive < gap_end else ():
+    for reserve in day.duties.values() if arrive < gap_end and not spare else ():
         if reserve.type != "reserve" or reserve.park_id != duty.park_id or not reserve.start <= t < reserve.end:
             continue
         rv = state.vehicle_at(reserve.id, t)
@@ -438,7 +445,9 @@ def _replacement_options(state: OpsState, duty_id: str, t: int, labor: dict,
                    ("vehicle", reserve.id, Segment(home, reserve.end, rv))]
         r_shift = state.shift_at(reserve.id, t)
         rd = state.driver_at(r_shift.id, t) if r_shift else None
-        if (rd is not None and rd not in state.down_drivers
+        if not drive:
+            who = planned
+        elif (rd is not None and rd not in state.down_drivers
                 and rv_cls in day.drivers[rd].classes
                 and can_drive(day.drivers[rd], day.vehicles[rv], duty.route_id)
                 and _day_fits(state, rd, arrive, drive_end, labor)
@@ -478,22 +487,27 @@ def _replacement_options(state: OpsState, duty_id: str, t: int, labor: dict,
         tried.add((x.cls, normal_make(x.make)))
         if not _taken_over(state, x.id, duty, arrive, gap_end, shift_id, drive_end):
             continue
-        free = free_drivers(state, duty, arrive, drive_end, labor, x.cls, vehicles=[x.id])
-        if free:
+        free = free_drivers(state, duty, arrive, drive_end, labor, x.cls, vehicles=[x.id]) if drive else []
+        if free or not drive:
             v = x
             break
-    if free:
+    if v is not None and drive:
         options.append(Option(
             "idle", f"Автобус из парка {v.board_number} + водитель {day.drivers[free[0]].tab_number}",
-            losses.cost(duty_id, t, arrive), SUPPLY_MIN,
+            losses.cost(duty_id, t, arrive), 0 if spare else SUPPLY_MIN,
             [("vehicle", duty_id, Segment(arrive, gap_end, v.id)),
              ("driver", shift_id, Segment(arrive, drive_end, free[0]))],
             f"подача из парка ~{SUPPLY_MIN} мин, резерв не тратится"))
+    elif v is not None:
+        options.append(Option(
+            "idle", f"Автобус из парка {v.board_number}", losses.cost(duty_id, t, arrive),
+            0 if spare else SUPPLY_MIN, [("vehicle", duty_id, Segment(arrive, gap_end, v.id))],
+            f"подача из парка ~{SUPPLY_MIN} мин, {planned}, резерв не тратится"))
 
     # 3. Снять автобус с другого маршрута (где его потеря дешевле).
     move_in = t + TRANSFER_MIN
     best = None
-    for donor in day.duties.values() if shift and move_in < gap_end else ():
+    for donor in day.duties.values() if shift and move_in < gap_end and not spare else ():
         if (donor.type != "line" or donor.id == duty_id or donor.park_id != duty.park_id
                 or donor.route_id == duty.route_id or not donor.start <= t < donor.end):
             continue
@@ -1096,8 +1110,9 @@ def check_state(state: OpsState, labor: dict | None = None) -> list:
         if kind == "водитель":
             start, end = min(i[0] for i in items), max(i[1] for i in items)
             if work_minutes(end - start, labor) > shift_limit(labor):
-                bad("driver_overtime", f"водитель {who}: рабочий день {end - start} мин "
-                                       f"больше нормы", who)
+                work, limit = work_minutes(end - start, labor), shift_limit(labor)
+                bad("driver_overtime", f"водитель {who}: рабочий день {work // 60} ч {work % 60:02d} мин "
+                                       f"больше нормы {limit // 60} ч {limit % 60:02d} мин", who)
             if rest_status(state.history.peek(who), day_base(day) + start, labor) is None:
                 bad("daily_rest", f"водитель {who}: не отдохнул после прошлой смены", who)
             month = day.meta["date"][:7]

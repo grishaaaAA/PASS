@@ -89,10 +89,15 @@ def hm(t: int) -> str:
     return f"{t // 60:02d}:{t % 60:02d}"
 
 
+# Ошибку времени видит диспетчер (окно события, «Изменить»): поле называется словами, а не именем в JSON
+TIME_FIELDS = {"at": "Время события", "from": "Начало окна", "to": "Конец окна", "t": "Момент"}
+
+
 def parse_time(text, what: str = "время") -> int:
     found = TIME.match(str(text or ""))
     if not found or int(found.group(2)) >= 60:
-        raise ApiError(BAD, f"{what}: в виде ЧЧ:ММ, после полуночи часы идут дальше 24")
+        raise ApiError(BAD, f"{TIME_FIELDS.get(what, what)}: нужно в виде ЧЧ:ММ, после полуночи часы "
+                            f"идут дальше 24 (01:30 - это 25:30)")
     return int(found.group(1)) * 60 + int(found.group(2))
 
 
@@ -341,7 +346,7 @@ class Engine:
         try:
             raw, report = registry.load(files=files, workbook=workbook, meta=meta)
         except ValueError as error:
-            raise ApiError(BAD, f"реестр не прочитан: {error}") from None
+            raise ApiError(BAD, f"Реестр не прочитан: {error}") from None
         if report["errors"]:
             raise ApiError(BAD, "реестр прочитан с ошибками, день не принят", report=report)
         counts = {line["entity"]: line["rows"] for line in report["entities"]}
@@ -616,7 +621,7 @@ class Engine:
             if driver_id not in record.day.drivers:
                 raise ApiError(NOT_FOUND, f"Нет водителя {driver_id}")
             if not any(s.who == driver_id and s.end > at for segs in state.drivers.values() for s in segs):
-                raise ApiError(BAD, f"Водитель {driver_id} после {hm(at)} не на смене")
+                raise ApiError(BAD, f"Водитель {record.day.drivers[driver_id].tab_number} после {hm(at)} не на смене")
             return NoShow(driver_id, at)
         if kind == "late":
             driver_id = body.get("driver_id")
@@ -640,7 +645,7 @@ class Engine:
         if vehicle_id not in record.day.vehicles:
             raise ApiError(NOT_FOUND, f"Нет автобуса {vehicle_id}")
         if state.duty_of_vehicle(vehicle_id, at) is None:
-            raise ApiError(BAD, f"Автобус {vehicle_id} в {hm(at)} не на линии")
+            raise ApiError(BAD, f"Автобус {record.day.vehicles[vehicle_id].board_number} в {hm(at)} не на линии")
         if kind == "accident":
             return Accident(vehicle_id, at)
         duration = body.get("duration_min")
@@ -648,9 +653,9 @@ class Engine:
             try:
                 duration = int(duration)
             except (TypeError, ValueError):
-                raise ApiError(BAD, "duration_min: целое число минут или без него") from None
+                raise ApiError(BAD, "Длительность схода: целое число минут или пусто, если до конца дня") from None
             if duration <= 0:
-                raise ApiError(BAD, "duration_min: больше нуля")
+                raise ApiError(BAD, "Длительность схода: больше нуля")
         return Breakdown(vehicle_id, at, duration)
 
     def event_options(self, day_id, query, body):
@@ -710,9 +715,11 @@ class Engine:
         whole = (start, end) == (item.start, item.end)
         when = "" if whole else f" с {hm(start)} до {hm(end)}"
         if kind == "set_vehicle":
-            title = f"Диспетчер поставил автобус {day.vehicles[who].board_number} на наряд {key}{when}"
+            noun = "резервный наряд" if day.duties[key].type == "reserve" else "наряд"
+            title = f"Диспетчер поставил автобус {day.vehicles[who].board_number} на {noun} {key}{when}"
         elif kind == "clear_vehicle":
-            title = f"Диспетчер снял автобус с наряда {key}{when}"
+            noun = "резервного наряда" if day.duties[key].type == "reserve" else "наряда"
+            title = f"Диспетчер снял автобус с {noun} {key}{when}"
         elif kind == "set_driver":
             title = f"Диспетчер поставил водителя {day.drivers[who].tab_number} на смену {key}{when}"
         else:
@@ -739,7 +746,7 @@ class Engine:
         start = parse_time(body["from"], "from") if body.get("from") is not None else item.start
         end = parse_time(body["to"], "to") if body.get("to") is not None else item.end
         if not item.start <= start < end <= item.end:
-            raise ApiError(BAD, f"окно {hm(start)}-{hm(end)} пустое или выходит за время "
+            raise ApiError(BAD, f"Окно {hm(start)}-{hm(end)} пустое или выходит за время "
                                 f"{'наряда' if what == 'наряд' else 'смены'} "
                                 f"({hm(item.start)}-{hm(item.end)})")
         return start, end
