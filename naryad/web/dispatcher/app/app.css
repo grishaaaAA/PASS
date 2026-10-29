@@ -88,12 +88,18 @@ body { display: grid; grid-template-rows: 60px 1fr; height: 100vh; overflow: hid
 .ln { width: 22px; height: 0; border-top: 2px solid #227b81; opacity: .7; }
 .busy { position: absolute; inset: 0; z-index: 900; display: grid; place-content: center; grid-auto-flow: column; gap: var(--space-3); align-items: center;
   background: color-mix(in srgb, var(--bg) 70%, transparent); font: var(--text-title); }
-.drawer { position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 800; background: var(--surface); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
-  max-height: 62%; display: grid; grid-template-rows: auto 1fr; overflow: hidden; animation: up 320ms var(--easing-standard); }
-@keyframes up { from { transform: translateY(30px); opacity: 0; } }
+/* Открыт маршрут: экран пополам - слева статистика и карта, справа панель маршрута */
+.layout.is-split { grid-template-columns: minmax(340px, 24vw) minmax(0, 1fr) 50%; }
+.drawer { position: relative; z-index: 800; background: var(--surface); border-left: 1px solid var(--border); min-height: 0; min-width: 0;
+  display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; container-type: inline-size; }
 .drawer__head { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-5); border-bottom: 1px solid var(--border); }
 .drawer__title { font: var(--text-title); }
-.drawer__body { display: grid; grid-template-columns: 1fr 320px; min-height: 0; }
+.drawer__body { display: grid; grid-template-columns: minmax(0, 1fr) 320px; min-height: 0; }
+/* узкая панель (половина небольшого экрана): объяснение наряда - под диаграммой, а не сбоку */
+@container (max-width: 880px) {
+  .drawer__body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  .drawer__side { border-left: 0; border-top: 1px solid var(--border); max-height: 42vh; }
+}
 .drawer__main { overflow-y: auto; padding: var(--space-3) var(--space-5); display: grid; gap: var(--space-3); align-content: start; }
 .drawer__side { border-left: 1px solid var(--border); padding: var(--space-4); overflow-y: auto; display: grid; gap: var(--space-3); align-content: start; }
 .drawer__acts { display: flex; flex-wrap: wrap; gap: var(--space-2); }
@@ -153,7 +159,8 @@ body { display: grid; grid-template-rows: 60px 1fr; height: 100vh; overflow: hid
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; grid-template-rows: 45vh 1fr; }
   .side { border-right: 0; border-bottom: 1px solid var(--border); }
-  .drawer__body { grid-template-columns: 1fr; }
+  .layout.is-split { grid-template-columns: 1fr; }
+  .drawer { position: fixed; left: 0; right: 0; bottom: 0; height: 62vh; z-index: 1000; border-left: 0; border-radius: var(--radius-lg) var(--radius-lg) 0 0; box-shadow: var(--shadow-lg); }
   .ev__form { grid-template-columns: 1fr 1fr; }
   .ed__form { grid-template-columns: 1fr 1fr; }
   .ed__form > :first-child { grid-column: 1 / -1; }
