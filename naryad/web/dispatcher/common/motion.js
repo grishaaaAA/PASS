@@ -19,6 +19,7 @@
     down: { opacity: 0, transform: "translateY(-8px)" },
     scale: { opacity: 0, transform: "scale(0.96)" },
     side: { opacity: 0, transform: "translateX(-8px)" },
+    right: { opacity: 0, transform: "translateX(16px)" },
     sheet: { opacity: 0, transform: "translateY(24px)" }
   };
   // Конец появления - собственная прозрачность элемента, а не 1: недоступное (0,45) проявляется

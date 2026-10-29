@@ -24,7 +24,7 @@
     }).then(function (r) {
       S.plan = r.plan;
       onShown && onShown();  // экран расчёта видим - теперь карта узнает свой размер
-      $("#drawer").hidden = true;
+      $("#drawer").hidden = true; $("#scrResult").classList.remove("is-split");
       S.run = r.plan.run || null;
       S.m = D.build(S.day, S.plan, r.state, r.intervals);
       var handlers = { onPark: openPark, onRoute: routeCard, parkTip: parkTip };
@@ -45,7 +45,7 @@
   function draw(state, iv) {
     S.m = D.build(S.day, S.plan, state, iv);
     S.map.redraw(S.m);
-    if (S.route && S.route.indexOf("res:") !== 0) S.map.selectRoute(S.route, Math.round($("#drawer").offsetHeight + 30));
+    if (S.route && S.route.indexOf("res:") !== 0) S.map.selectRoute(S.route);
     renderSummary(); renderList(); renderProbs();
     if (S.route) openRoute(S.route, true);
     // Открытый наряд - заново по новому состоянию: иначе в панели остаётся то, что стояло до события или правки
@@ -310,10 +310,10 @@
     if (id.indexOf("res:") === 0) return openReserve(id.slice(4), keepSide);
     var m = S.m, r = m.routes[id]; if (!r) return;
     S.route = id;
-    M.show($("#drawer"), "sheet");
+    openPanel();
     $("#drCov").parentNode.hidden = false;  // график покрытия есть только у маршрута
     S.map.select(r.park);
-    if (!keepSide) S.map.selectRoute(id, Math.round($("#drawer").offsetHeight + 30));
+    if (!keepSide) S.map.selectRoute(id);
     $("#drTitle").textContent = "Маршрут " + r.number + " · " + D.parkShort(m, r.park);
     $("#drSub").textContent = "Важность " + D.PRIORITY[r.priority] + " · на линии " + r.filled + " из " + r.total + " нарядов · круг " + r.turn + " мин" +
       (r.worst ? " · интервал " + D.worstText(r.worst) : "");
@@ -334,7 +334,7 @@
   function openReserve(parkId, keepSide) {
     var m = S.m, list = reserveOf(m, parkId); if (!list.length) return;
     S.route = "res:" + parkId;
-    M.show($("#drawer"), "sheet");
+    openPanel();
     S.map.select(parkId);
     S.map.selectRoute(null);
     var on = list.filter(function (d) { return d.segs.length; }).length;
@@ -355,7 +355,24 @@
     dutyClick(duty, duty.start);
   }
 
-  $("#drClose").addEventListener("click", function () { M.hide($("#drawer"), "sheet"); S.route = null; S.duty = null; S.map.selectRoute(null); });
+  // Панель маршрута - правая половина экрана: при открытии карта сжимается до своей половины, при закрытии - обратно
+  function openPanel() {
+    var d = $("#drawer");
+    if (d._out) { d._out.cancel(); d._out = null; }  // панель ещё уезжала - остаётся открытой
+    if (!d.hidden) return;
+    $("#scrResult").classList.add("is-split");
+    M.show($("#drawer"), "right");
+    S.map.resize();
+  }
+  function closePanel() {
+    S.route = null; S.duty = null;
+    document.querySelectorAll("[data-route].is-on").forEach(function (x) { x.classList.remove("is-on"); });
+    M.hide($("#drawer"), "right", function () { $("#scrResult").classList.remove("is-split"); S.map.resize(); S.map.selectRoute(null); });
+  }
+  $("#drClose").addEventListener("click", closePanel);
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && !$("#drawer").hidden && !document.querySelector(".modal")) closePanel();
+  });
 
   function dutyClick(duty, t) {
     var side = $("#drSide"), m = S.m, day = S.info.day_id;

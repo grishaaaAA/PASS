@@ -120,7 +120,10 @@
       <div class="probs__body" id="probsBody"></div>
     </section>
     <div class="busy" id="busy" hidden><span class="spinner"></span><span id="busyText">Считаю…</span></div>
-    <section class="drawer" id="drawer" hidden>
+  </main>
+
+  <!-- Маршрут или резерв: правая половина экрана, слева остаются статистика и карта -->
+    <section class="drawer" id="drawer" hidden aria-label="Наряды маршрута">
       <header class="drawer__head">
         <div>
           <div class="drawer__title" id="drTitle"></div>
@@ -137,7 +140,6 @@
         <div class="drawer__side" id="drSide"><p class="caption muted">Нажмите на наряд, чтобы узнать, почему на нём этот автобус и водитель, или отметить сход.</p></div>
       </div>
     </section>
-  </main>
 </div>
 
 <script src="ds/bundle.js"></script>
