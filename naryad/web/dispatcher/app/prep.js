@@ -9,6 +9,8 @@
   "use strict";
   var D = window.Disp, $ = D.$, esc = D.esc, toast = D.events.toast;
   var M = window.Motion;
+  var signedIn = false;
+  var entryHash = location.hash;
   // file - название реестра, загруженного файлом (иначе null: реестр парка с сервера), fileParks - его парки
   var P = { parks: [], sel: [], ids: [], park: null, date: null, base: null, file: null, fileParks: {}, ov: null, open: {}, tab: null, filter: { veh: "all", drv: "all" }, st: null, saved: null,
     sort: { veh: { key: "route", dir: 1 }, drv: { key: "name", dir: 1 } }, q: { veh: "", drv: "" } };
@@ -20,13 +22,16 @@
   // ---------- экраны и адрес ----------
   var current = null;
   function go(name, silent) {
+    if (!signedIn && ["dashboard", "parks", "prep", "result"].indexOf(name) >= 0) name = "login";
     var changed = current !== name; current = name;
     $("#scrWelcome").hidden = name !== "welcome";
+    $("#scrLogin").hidden = name !== "login";
     $("#scrDashboard").hidden = name !== "dashboard";
     $("#scrParks").hidden = name !== "parks"; $("#scrPrep").hidden = name !== "prep"; $("#scrResult").hidden = name !== "result";
     document.body.classList.toggle("is-welcome", name === "welcome");
+    $("#btnLogout").hidden = !signedIn || name === "welcome" || name === "login";
     if (changed && name !== "welcome") {
-      var target = { dashboard: "#scrDashboard .scr__in", parks: "#scrParks .scr__in", prep: "#scrPrep .scr__in", result: "#scrResult" }[name];
+      var target = { login: "#loginForm", dashboard: "#scrDashboard .scr__in", parks: "#scrParks .scr__in", prep: "#scrPrep .scr__in", result: "#scrResult" }[name];
       M.enter($(target), "up");
     }
     document.body.classList.toggle("is-result", name === "result");
@@ -39,9 +44,9 @@
     var scr = $(name === "dashboard" ? "#scrDashboard" : name === "parks" ? "#scrParks" : name === "prep" ? "#scrPrep" : "#scrResult");
     if (scr && name !== "prep") scr.scrollTop = 0;
     if (changed && name !== "welcome" && name !== "result") {
-      var heading = $("h1", scr);
+      var heading = name === "login" ? $("#loginName") : $("h1", scr);
       if (heading) {
-        heading.tabIndex = -1;
+        if (heading.tagName === "H1") heading.tabIndex = -1;
         heading.focus({ preventScroll: true });
       }
     }
@@ -49,18 +54,18 @@
   // Крошки показывают путь от истории рабочих дней к расчёту.
   function renderCrumbs(name) {
     var no = window.App && window.App.runNo && window.App.runNo();
-    if (name === "welcome") { $("#crumbs").innerHTML = ""; return; }
+    if (name === "welcome" || name === "login") { $("#crumbs").innerHTML = ""; return; }
     var crumbs = [['<button data-go="dashboard">Рабочие дни</button>', name === "dashboard"]];
     if (name !== "dashboard") crumbs.push(['<button data-go="parks">Выбор парков</button>', name === "parks"]);
     if ((name === "prep" || name === "result") && P.ids.length) crumbs.push(['<button data-go="prep">Подготовка дня</button>', name === "prep"]);
     if (name === "result") crumbs.push(["<span>Расчёт" + (no ? " № " + no : "") + "</span>", true]);
     $("#crumbs").innerHTML = crumbs.map(function (c) { return '<span class="crumb' + (c[1] ? ' is-on" aria-current="page' : "") + '">' + c[0] + "</span>"; }).join('<span class="crumb__sep" aria-hidden="true">/</span>');
   }
-  // Логотип возвращает к готовому расчёту или к приветствию.
+  // Логотип возвращает к рабочим дням после входа.
   $("#btnHome").addEventListener("click", function () {
-    var to = P.calculated ? "result" : "welcome";
+    var to = signedIn ? "dashboard" : "welcome";
     if (to === current) return;
-    confirmLeave().then(function (ok) { if (!ok) return; go(to); if (to === "welcome") showWelcome(); });
+    confirmLeave().then(function (ok) { if (!ok) return; go(to); if (to === "dashboard") loadDashboard(); });
   });
   window.addEventListener("autodisp:run", function () { if (current === "result") renderCrumbs("result"); });
   document.addEventListener("click", function (e) {
@@ -84,12 +89,13 @@
   // и «file» ведёт на выбор парков, а не подменяет загруженное реестром парка с сервера.
   function key() { return P.file ? "file" : P.ids.join(","); }
   function route() {
+    if (!signedIn) return go("login", true);
     var h = location.hash.slice(1).split("/");
     if ((h[0] === "prep" || h[0] === "result") && h[1]) {
       if (key() === h[1] && P.base) return go(h[0] === "result" && P.calculated ? "result" : "prep", true);
       return openParks(h[1].split(","), true);
     }
-    var name = h[0] === "dashboard" ? "dashboard" : !h[0] || h[0] === "welcome" ? "welcome" : "parks";
+    var name = ["parks", "dashboard"].indexOf(h[0]) >= 0 ? h[0] : "dashboard";
     go(name, true); if (name === "dashboard") loadDashboard();
   }
   // Каждое открытие приложения начинается с приветствия, даже если в адресе сохранён экран.
@@ -106,11 +112,29 @@
   function showWelcome() {
     $("#welcomeHello").textContent = hello();
   }
-  // После приветствия сразу открывается выбор парков.
+  // После заставки открывается форма входа.
   $("#btnStart").addEventListener("click", function () {
-    go("parks");
-    M.stagger($("#parks").querySelectorAll(".kind"));
-    M.stagger($("#parks").querySelectorAll(".pc"));
+    go("login"); $("#loginName").focus();
+  });
+
+  $("#loginForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    if (!$("#loginName").value.trim() || !$("#loginPassword").value) return;
+    signedIn = true;
+    $("#loginPassword").value = "";
+    if (/^#prep\//.test(entryHash)) {
+      history.replaceState(null, "", entryHash);
+      entryHash = "";
+      route();
+    } else { go("dashboard"); loadDashboard(); }
+  });
+  $("#btnLogout").addEventListener("click", function () {
+    confirmLeave().then(function (ok) {
+      if (!ok) return;
+      signedIn = false; P.calculated = false;
+      $("#loginName").value = ""; $("#loginPassword").value = "";
+      go("welcome"); showWelcome();
+    });
   });
   $("#btnNewDay").addEventListener("click", function () { go("parks"); });
 
