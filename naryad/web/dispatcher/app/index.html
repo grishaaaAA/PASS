@@ -20,10 +20,9 @@
 </div>
 
 <header class="bar">
-  <button class="bar__home" id="btnHome" type="button" aria-label="AUTODISP: к рабочим дням"><img class="bar__logo" src="ds/logo.svg" alt=""></button>
+  <button class="bar__home" id="btnHome" type="button" aria-label="AUTODISP: в начало"><img class="bar__logo" src="ds/logo.svg" alt=""></button>
   <nav class="crumbs" id="crumbs" aria-label="Где вы"></nav>
   <span class="bar__grow"></span>
-  <button class="ad-btn ad-btn--ghost ad-btn--sm" id="btnLogout" type="button" hidden>Выйти</button>
 </header>
 
 <!-- 0. Приветствие -->
@@ -33,22 +32,9 @@
       <img class="welcome__logo" src="ds/logo.svg" alt="AUTODISP">
       <h1 class="welcome__h" id="welcomeHello">Здравствуйте</h1>
       <p class="welcome__sub">Рабочее место диспетчера</p>
-      <button class="ad-btn ad-btn--primary ad-btn--lg welcome__go" id="btnStart" type="button">Войти<i class="arr"></i></button>
+      <button class="ad-btn ad-btn--primary ad-btn--lg welcome__go" id="btnStart" type="button">Начать<i class="arr"></i></button>
     </div>
   </div>
-</main>
-
-<!-- Демонстрационный вход: проверка только в браузере -->
-<main class="scr auth" id="scrLogin" hidden>
-  <form class="auth__card" id="loginForm">
-    <h1 class="scr__h">Вход</h1>
-    <label for="loginName">Логин</label>
-    <input class="ad-input" id="loginName" name="username" autocomplete="username" required>
-    <label for="loginPassword">Пароль</label>
-    <input class="ad-input" id="loginPassword" name="password" type="password" autocomplete="current-password" required>
-    <p class="auth__note">Демонстрационный вход: подойдут любые непустые логин и пароль. Данные пока не защищены.</p>
-    <button class="ad-btn ad-btn--primary ad-btn--lg" type="submit">Войти</button>
-  </form>
 </main>
 
 <!-- Главная страница до расчёта -->

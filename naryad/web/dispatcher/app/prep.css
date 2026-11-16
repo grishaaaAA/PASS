@@ -225,12 +225,7 @@ main.scr.welcome { display: grid; place-items: center; background: var(--bg); }
 .welcome__go { margin-top: var(--space-4); }
 .welcome__go:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 3px; }
 
-/* Вход и история дней */
-main.scr.auth { display: grid; place-items: center; }
-.auth__card { width: min(440px, calc(100% - 32px)); display: grid; gap: var(--space-3); padding: var(--space-6); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); }
-.auth__card label { font: var(--text-label); }
-.auth__card input { width: 100%; box-sizing: border-box; }
-.auth__note { margin: var(--space-2) 0; font: var(--text-caption); color: var(--ink-muted); }
+/* История дней */
 .dashboard { width: 100%; }
 .dashboard__head { display: flex; justify-content: space-between; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
 .dashboard__stats, .dashboard__facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
@@ -245,7 +240,7 @@ main.scr.auth { display: grid; place-items: center; }
 .dashboard__day { display: grid; gap: var(--space-1); width: 100%; text-align: left; padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); cursor: pointer; transition: transform var(--duration-fast) var(--easing-standard), box-shadow var(--duration-base) var(--easing-standard); }
 .dashboard__day:hover { box-shadow: var(--shadow-md); }
 .dashboard__day:active { transform: scale(.97); }
-.dashboard__day:focus-visible, #btnLogout:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 3px; }
+.dashboard__day:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 3px; }
 .dashboard__day.is-on { border-color: var(--accent-deep); box-shadow: 0 0 0 1px var(--accent-deep); }
 .dashboard__day b { font: var(--text-body-strong); }
 .dashboard__day span { font: var(--text-caption); color: var(--ink-muted); }
