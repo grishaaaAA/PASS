@@ -1,6 +1,6 @@
 /* Экраны «Парки» и «Подготовка дня» */
 .scr { min-height: 0; }
-main.scr { overflow-y: auto; position: relative; display: flex; flex-direction: column; }
+main.scr:not(.layout) { overflow-y: auto; position: relative; display: flex; flex-direction: column; }
 main.scr > .scr__in { flex: 1 0 auto; width: 100%; }
 /* align-content: start - иначе свободная высота окна раздаётся между блоками и появляются пустоты */
 .scr__in { max-width: 1200px; margin: 0 auto; padding: var(--space-5) var(--space-5) var(--space-6); display: grid; gap: var(--space-5); align-content: start; }
@@ -211,42 +211,52 @@ button.pc:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 
 .grp--flat { border: 0; background: none; }
 .grp--flat .grp__rows { padding: 0; }
 
-/* 0. Приветствие: слева текст и шаги, справа прорисовываются трассы маршрутов */
+/* Вводный экран без карты и движения */
 body.is-welcome .bar { display: none; }
 body.is-welcome { grid-template-rows: 1fr; }
 main.scr.welcome { display: grid; place-items: center; background: var(--bg); }
-.welcome__in { width: min(1120px, 100%); padding: var(--space-6) var(--space-5); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: var(--space-7); align-items: center; }
-.welcome__text { display: grid; gap: var(--space-4); justify-items: start; position: relative; z-index: 1; }
+.welcome__in { width: min(1120px, 100%); padding: var(--space-6) var(--space-5); display: grid; place-items: center; }
+.welcome__text { display: grid; gap: var(--space-4); justify-items: center; text-align: center; }
 .welcome__logo { height: 30px; margin-bottom: var(--space-3); }
 .welcome__h { font: var(--text-heading-1); margin: 0; letter-spacing: -.01em; }
 .welcome__sub { margin: -8px 0 var(--space-2); font: var(--text-body-lg); color: var(--ink-muted); }
-.welcome__steps { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); counter-reset: st; }
-.welcome__steps li { display: grid; grid-template-columns: auto 1fr; gap: var(--space-3); align-items: center; }
-.welcome__steps li > span:last-child { display: grid; font: var(--text-caption); color: var(--ink-muted); }
-.welcome__steps b { font: var(--text-body-strong); color: var(--ink); }
-.welcome__ic { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--surface); color: var(--accent-text); box-shadow: var(--shadow-sm); border: 1px solid var(--border); }
 .welcome__go .arr { margin-left: 4px; }
 .welcome__go:hover .arr { transform: translateX(3px); }
-.welcome__art { position: relative; aspect-ratio: 1 / 1; }
-/* Карта растворяется к краям в фон страницы */
-.welcome__map { position: absolute; inset: 0; background: transparent; border-radius: 50%;
-  -webkit-mask-image: radial-gradient(closest-side, #000 62%, transparent 100%); mask-image: radial-gradient(closest-side, #000 62%, transparent 100%); }
-.welcome__map.leaflet-container { background: transparent; }
-/* Парк на карте приветствия - значок автобуса без текста (bus-mark в core.css) */
-.wl-park { background: none; border: 0; }
-/* «Начать»: без обводки, за кнопкой мягко пульсирует свечение (на обёртке - кнопка обрезает всё, что за её краями) */
-.welcome__cta { position: relative; display: inline-block; isolation: isolate; margin-top: var(--space-4); }
-.welcome__cta::before { content: ""; position: absolute; inset: 2px 6px; z-index: -1; border-radius: var(--radius-md); background: var(--accent); filter: blur(16px);
-  opacity: .35; animation: wl-glow 2.8s ease-in-out infinite; pointer-events: none; }
-.welcome__go { margin-top: 0; }
-.welcome__go:focus-visible { outline: none; }
-.welcome__cta:focus-within::before { opacity: .75; }
-@keyframes wl-glow { 0%, 100% { opacity: .25; transform: scale(.94); } 50% { opacity: .65; transform: scale(1.06); } }
-@media (prefers-reduced-motion: reduce) { .welcome__cta::before { animation: none; opacity: .4; } }
-@media (max-width: 900px) {
-  .welcome__in { grid-template-columns: 1fr; gap: 0; }
-  .welcome__art { position: fixed; inset: 0; opacity: .14; pointer-events: none; z-index: 0; }
-}
+.welcome__go { margin-top: var(--space-4); }
+.welcome__go:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 3px; }
+
+/* Вход и история дней */
+main.scr.auth { display: grid; place-items: center; }
+.auth__card { width: min(440px, calc(100% - 32px)); display: grid; gap: var(--space-3); padding: var(--space-6); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); }
+.auth__card label { font: var(--text-label); }
+.auth__card input { width: 100%; box-sizing: border-box; }
+.auth__note { margin: var(--space-2) 0; font: var(--text-caption); color: var(--ink-muted); }
+.dashboard { width: 100%; }
+.dashboard__head { display: flex; justify-content: space-between; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
+.dashboard__stats, .dashboard__facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
+.dashboard__stat { display: grid; gap: var(--space-2); align-content: start; padding: var(--space-5); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
+.dashboard__stat b { font: var(--text-heading-3); font-variant-numeric: tabular-nums; }
+.dashboard__stat span { font: var(--text-caption); color: var(--ink-muted); }
+.dashboard__layout { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(0, 1.5fr); gap: var(--space-4); align-items: start; }
+.dashboard__list, .dashboard__detail { min-width: 0; padding: var(--space-5); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
+.dashboard__list h2, .dashboard__detail h2 { margin: 0 0 var(--space-4); font: var(--text-heading-3); }
+.dashboard__detail h3 { margin: var(--space-5) 0 var(--space-3); font: var(--text-title); }
+#dashboardDays { display: grid; gap: var(--space-2); }
+.dashboard__day { display: grid; gap: var(--space-1); width: 100%; text-align: left; padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); cursor: pointer; transition: transform var(--duration-fast) var(--easing-standard), box-shadow var(--duration-base) var(--easing-standard); }
+.dashboard__day:hover { box-shadow: var(--shadow-md); }
+.dashboard__day:active { transform: scale(.97); }
+.dashboard__day:focus-visible, #btnLogout:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 3px; }
+.dashboard__day.is-on { border-color: var(--accent-deep); box-shadow: 0 0 0 1px var(--accent-deep); }
+.dashboard__day b { font: var(--text-body-strong); }
+.dashboard__day span { font: var(--text-caption); color: var(--ink-muted); }
+.dashboard__facts { margin-top: var(--space-5); }
+.dashboard__facts .dashboard__stat { background: var(--bg); box-shadow: none; padding: var(--space-4); }
+.dashboard__logs { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--space-2); }
+.dashboard__log { display: grid; grid-template-columns: 60px 1fr; gap: var(--space-3); padding: var(--space-3); border-bottom: 1px solid var(--border); font: var(--text-caption); }
+.dashboard__log time { color: var(--ink-muted); }
+.dashboard__log span, .dashboard__log small { display: grid; gap: var(--space-1); }
+.dashboard__log small { color: var(--ink-muted); }
+@media (max-width: 700px) { .dashboard__layout { grid-template-columns: 1fr; } .dashboard__stats, .dashboard__facts { grid-template-columns: 1fr; } .dashboard__head .ad-btn { width: 100%; justify-content: center; } }
 
 /* Маршруты: строка нажимается целиком, выделения строки нет */
 .tbl--routes tbody tr { cursor: pointer; }

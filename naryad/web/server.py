@@ -36,6 +36,7 @@ from ..data.generate import day_numbers, generate
 from ..data.presets import CITY_PARKS, CLASS_LABELS, CLASSES, PARK7
 
 STATIC = Path(__file__).parent / "static"
+MOTION = STATIC.parent / "dispatcher" / "common" / "motion.js"
 # Меняется вместе со страницей: страница сверяет его и просит перезапустить старый сервер.
 VERSION = "2026-10-02.2"
 # Типы файлов задаём сами: на Windows системный реестр бывает неверным,
@@ -229,6 +230,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _static(self, path: str):
         relative = "index.html" if path in ("", "/") else path.lstrip("/")
+        if relative == "common/motion.js":
+            return self._send(HTTPStatus.OK, MOTION.read_bytes(), TYPES[".js"])
         try:
             target = (STATIC / relative).resolve()
             inside = STATIC.resolve() in target.parents and target.is_file()

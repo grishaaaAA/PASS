@@ -12,7 +12,7 @@
 <body>
 <header class="top">
   <img class="top__logo" src="ds/logo.svg" alt="AUTODISP">
-  <span class="top__title">Генератор данных на день</span>
+  <h1 class="top__title">Генератор данных на день</h1>
   <div class="top__controls">
     <label class="inline"><span class="label">Дата</span>
       <input class="ad-input" type="date" id="date" required>
@@ -41,11 +41,11 @@
   <section class="ad-card parks">
     <div class="parks__head">
       <h2 class="heading-3">Парки</h2>
-      <span class="caption muted">Отметьте парки и при необходимости поправьте их вводные. Клик по строке - что не хватает в этом парке.</span>
+      <span class="caption muted">Выберите парки и задайте параметры. Выберите строку, чтобы увидеть результат по парку.</span>
       <button type="button" class="ad-btn ad-btn--ghost ad-btn--sm" id="reset">Вернуть вводные кейса</button>
     </div>
     <p class="error" id="error" role="alert" hidden></p>
-    <div class="ad-table-wrap">
+    <div class="ad-table-wrap" role="region" aria-label="Параметры и результаты по паркам" tabindex="0">
       <table class="ad-table" id="table">
         <thead>
           <tr class="group">
@@ -79,6 +79,7 @@
 </main>
 
 <script src="ds/bundle.js"></script>
+<script src="common/motion.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

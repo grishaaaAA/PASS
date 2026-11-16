@@ -23,7 +23,7 @@ from ..data.check import SCHEMA
 from ..data.generate import FORMAT_VERSION
 from ..data.presets import (ASSUMPTIONS, CASE, CASE_ASSUMPTIONS, CITY_PARKS, CLASS_LABELS, CLASSES,
                             DYNAMICS, PARK7)
-from .server import VERSION
+from .server import MOTION, VERSION
 
 STATIC = Path(__file__).parent / "static"
 OUT = Path(__file__).resolve().parents[2] / "dist" / "autodisp_generator.html"
@@ -68,15 +68,20 @@ def build(out: Path = OUT) -> Path:
     body = body.replace('src="ds/logo.svg"', f'src="data:image/svg+xml;base64,{logo}"')
     payload = json.dumps(data(), ensure_ascii=False)
     html = "\n".join([
+        '<!doctype html><html lang="ru"><head><meta charset="utf-8">',
+        '<meta name="viewport" content="width=device-width, initial-scale=1">',
         "<title>Генератор AUTODISP</title>",
         FONTS,
         "<style>\n" + tokens + read("ds/bundle.css") + read("app.css") + "\n</style>",
+        "</head><body>",
         body.strip(),
         script(read("ds/bundle.js")),
+        script(MOTION.read_text(encoding="utf-8")),
         script("window.AUTODISP_DATA = " + payload + ";"),
         script(read("generator.js")),
         script(read("artifact-api.js")),
         script(read("app.js")),
+        "</body></html>",
     ])
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(html, encoding="utf-8")

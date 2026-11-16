@@ -20,9 +20,10 @@
 </div>
 
 <header class="bar">
-  <button class="bar__home" id="btnHome" type="button" aria-label="AUTODISP: к расчёту или в начало"><img class="bar__logo" src="ds/logo.svg" alt=""></button>
+  <button class="bar__home" id="btnHome" type="button" aria-label="AUTODISP: к рабочим дням"><img class="bar__logo" src="ds/logo.svg" alt=""></button>
   <nav class="crumbs" id="crumbs" aria-label="Где вы"></nav>
   <span class="bar__grow"></span>
+  <button class="ad-btn ad-btn--ghost ad-btn--sm" id="btnLogout" type="button" hidden>Выйти</button>
 </header>
 
 <!-- 0. Приветствие -->
@@ -32,14 +33,30 @@
       <img class="welcome__logo" src="ds/logo.svg" alt="AUTODISP">
       <h1 class="welcome__h" id="welcomeHello">Здравствуйте</h1>
       <p class="welcome__sub">Рабочее место диспетчера</p>
-      <ol class="welcome__steps">
-        <li><span class="welcome__ic"><i class="ad-icon ad-icon--map-trifold ad-icon--sm"></i></span><span><b>Выберите парки</b>один или несколько</span></li>
-        <li><span class="welcome__ic"><i class="ad-icon ad-icon--check-circle ad-icon--sm"></i></span><span><b>Отметьте рабочие процессы</b>маршруты, автобусы, водители</span></li>
-        <li><span class="welcome__ic"><i class="ad-icon ad-icon--lightning ad-icon--sm"></i></span><span><b>Рассчитайте</b>расстановка автобусов и водителей с объяснением каждого решения</span></li>
-      </ol>
-      <span class="welcome__cta"><button class="ad-btn ad-btn--primary ad-btn--lg welcome__go" id="btnStart" type="button">Начать<i class="arr"></i></button></span>
+      <button class="ad-btn ad-btn--primary ad-btn--lg welcome__go" id="btnStart" type="button">Войти<i class="arr"></i></button>
     </div>
-    <div class="welcome__art" aria-hidden="true"><div class="welcome__map" id="welcomeMap"></div></div>
+  </div>
+</main>
+
+<!-- Демонстрационный вход: проверка только в браузере -->
+<main class="scr auth" id="scrLogin" hidden>
+  <form class="auth__card" id="loginForm">
+    <h1 class="scr__h">Вход</h1>
+    <label for="loginName">Логин</label>
+    <input class="ad-input" id="loginName" name="username" autocomplete="username" required>
+    <label for="loginPassword">Пароль</label>
+    <input class="ad-input" id="loginPassword" name="password" type="password" autocomplete="current-password" required>
+    <p class="auth__note">Демонстрационный вход: подойдут любые непустые логин и пароль. Данные пока не защищены.</p>
+    <button class="ad-btn ad-btn--primary ad-btn--lg" type="submit">Войти</button>
+  </form>
+</main>
+
+<!-- Главная страница до расчёта -->
+<main class="scr" id="scrDashboard" hidden>
+  <div class="scr__in dashboard">
+    <div class="dashboard__head"><div><h1 class="scr__h">Рабочие дни</h1><p class="scr__sub muted">Сохранённые расчёты и журнал событий</p></div><button class="ad-btn ad-btn--primary ad-btn--lg" id="btnNewDay" type="button">Подготовить день<i class="arr"></i></button></div>
+    <div class="dashboard__stats" id="dashboardStats"></div>
+    <div class="dashboard__layout"><section class="dashboard__list"><h2>История дней</h2><div id="dashboardDays"></div></section><section class="dashboard__detail" id="dashboardDetail" aria-live="polite"><h2>День</h2><p class="muted">Выберите день в списке.</p></section></div>
   </div>
 </main>
 
@@ -69,7 +86,7 @@
       </div>
       <a class="ad-btn ad-btn--sm btn-plain" id="btnGeo" href="/routes" target="_blank" rel="noopener"><i class="ad-icon ad-icon--map-pin ad-icon--sm"></i>Маршруты и остановки</a>
     </div>
-    <div class="ready" id="ready" role="tablist" aria-label="Маршруты, автобусы, водители"></div>
+    <div class="ready" id="ready" role="group" aria-label="Маршруты, автобусы, водители"></div>
     <div class="list-panel" id="sections"></div>
   </div>
   <div class="go">
@@ -79,11 +96,11 @@
       <button class="ad-btn ad-btn--primary ad-btn--lg" id="btnCalc"><i class="ad-icon ad-icon--lightning"></i>Рассчитать</button>
     </div>
   </div>
-  <div class="busy busy--page" id="prepBusy" hidden><span class="spinner"></span><span id="prepBusyText"></span></div>
+  <div class="busy busy--page" id="prepBusy" role="status" hidden><span class="spinner" aria-hidden="true"></span><span id="prepBusyText"></span></div>
 </main>
 
 <!-- 3. Расчёт -->
-<div class="layout scr" id="scrResult" hidden>
+<main class="layout scr" id="scrResult" aria-label="Результат расчёта" hidden>
   <aside class="side" id="side">
     <section class="pane pane--top">
       <button class="ad-btn ad-btn--ghost ad-btn--sm back" data-go="prep"><i class="arr arr--left"></i>К подготовке дня</button>
@@ -91,18 +108,18 @@
     <!-- 3. Результат -->
     <section class="pane pane--result" id="paneResult" hidden>
       <div class="res-head">
-        <div class="res-title"><h2 class="res-h" id="resTitle">Расчёт</h2>
+        <div class="res-title"><h1 class="res-h" id="resTitle" tabindex="-1">Расчёт</h1>
           <button type="button" class="res-alert" id="resAlert" hidden><i class="ad-icon ad-icon--warning-circle ad-icon--sm"></i><span id="resAlertN"></span></button></div>
         <div class="res-parks" id="resParks"></div>
       </div>
-      <div class="kpis" id="kpis" role="tablist" aria-label="Показатели"></div>
-      <nav class="tabs" role="tablist">
+      <div class="kpis" id="kpis" role="group" aria-label="Показатели"></div>
+      <div class="tabs" role="tablist" aria-label="Разделы расчёта">
         <button role="tab" class="tab is-on" data-tab="routes">Маршруты</button>
         <button role="tab" class="tab" data-tab="shifts">Смены</button>
         <button role="tab" class="tab" data-tab="reserve">Резерв</button>
         <button role="tab" class="tab" data-tab="log">Журнал <span class="tab__n" id="nLog"></span></button>
-      </nav>
-      <div class="list" id="list"></div>
+      </div>
+      <div class="list" id="list" role="tabpanel" tabindex="0"></div>
     </section>
 
     <!-- Объяснение выбранного -->
@@ -112,15 +129,16 @@
     </section>
   </aside>
 
-  <main class="stage">
+  <section class="stage" aria-label="Карта расчёта">
     <div class="map" id="map"></div>
+    <p class="map-fallback caption muted" id="mapFallback" role="status" hidden>Карта недоступна. Маршруты, смены и резерв доступны в списке расчёта.</p>
     <!-- Проблемы дня: окошко поверх карты, появляется, только когда они есть -->
     <section class="probs is-collapsed" id="probs" hidden aria-label="Проблемы">
-      <button type="button" class="probs__head" id="probsHead" aria-expanded="false"><i class="ad-icon ad-icon--warning-circle ad-icon--sm"></i><span>Проблемы</span><span class="probs__kinds" id="probsKinds"></span><b id="probsN"></b><i class="ad-icon ad-icon--caret-down ad-icon--sm probs__car"></i></button>
+      <button type="button" class="probs__head" id="probsHead" aria-expanded="false" aria-controls="probsBody"><i class="ad-icon ad-icon--warning-circle ad-icon--sm"></i><span>Проблемы</span><span class="probs__kinds" id="probsKinds"></span><b id="probsN"></b><i class="ad-icon ad-icon--caret-down ad-icon--sm probs__car"></i></button>
       <div class="probs__body" id="probsBody"></div>
     </section>
-    <div class="busy" id="busy" hidden><span class="spinner"></span><span id="busyText">Считаю…</span></div>
-  </main>
+    <div class="busy" id="busy" role="status" hidden><span class="spinner" aria-hidden="true"></span><span id="busyText">Расчёт…</span></div>
+  </section>
 
   <!-- Маршрут или резерв: правая половина экрана, слева остаются статистика и карта -->
     <section class="drawer" id="drawer" hidden aria-label="Наряды маршрута">
@@ -140,7 +158,7 @@
         <div class="drawer__side" id="drSide"><p class="caption muted">Нажмите на наряд, чтобы узнать, почему на нём этот автобус и водитель, или отметить сход.</p></div>
       </div>
     </section>
-</div>
+</main>
 
 <script src="ds/bundle.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>

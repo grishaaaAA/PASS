@@ -8,7 +8,8 @@
  */
 (function () {
   "use strict";
-  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var motionPreference = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)");
+  function reduced() { return !!(motionPreference && motionPreference.matches); }
   var EASE = "cubic-bezier(0.32, 0.72, 0, 1)";    // мягкое появление
   var EASE_EXIT = "cubic-bezier(0.4, 0, 0.2, 1)";   // мягкий уход, без резкого старта
   var FAST = 220, BASE = 320, OPEN = 420, CLOSE = 300;
@@ -32,7 +33,7 @@
   }
   function frames(kind, el) {
     var f = FROM[kind] || FROM.fade, to = rest(el);
-    if (reduce) return [{ opacity: 0 }, { opacity: to }];
+    if (reduced()) return [{ opacity: 0 }, { opacity: to }];
     return [f, { opacity: to, transform: f.transform ? "none" : undefined }].map(clean);
   }
   function clean(o) { var r = {}; Object.keys(o).forEach(function (k) { if (o[k] !== undefined) r[k] = o[k]; }); return r; }
@@ -52,26 +53,30 @@
     opts = opts || {};
     var was = el.hidden;
     el.hidden = false;
-    if (!canAnimate(el) || (!was && !opts.force)) return;
+    if (!canAnimate(el) || (!was && !opts.force && !el._out)) return;
     if (el._out) { el._out.cancel(); el._out = null; }
-    el.animate(frames(kind, el), { duration: opts.duration || BASE, easing: EASE, delay: opts.delay || 0, fill: "backwards" });
+    enter(el, kind, opts.delay, opts.duration);
   }
   // Спрятать элемент: сначала уход, потом [hidden]. Уход быстрее появления.
   function hide(el, kind, done) {
     if (!el || el.hidden) { if (done) done(); return; }
     if (!canAnimate(el)) { el.hidden = true; if (done) done(); return; }
+    if (el._out) el._out.cancel();
+    if (el._in) { el._in.cancel(); el._in = null; }
     var a = el.animate(frames(kind, el).reverse(), { duration: FAST, easing: EASE_EXIT, fill: "forwards" });
     el._out = a;
     after(a, FAST, function () { if (el._out !== a) return; el._out = null; el.hidden = true; a.cancel(); if (done) done(); });
   }
   // Вставить элемент (создан кодом) с появлением
-  function enter(el, kind, delay) {
+  function enter(el, kind, delay, duration) {
     if (!canAnimate(el)) return;
-    el.animate(frames(kind, el), { duration: BASE, easing: EASE, delay: delay || 0, fill: "backwards" });
+    if (el._in) el._in.cancel();
+    el._in = el.animate(frames(kind, el), { duration: duration || BASE, easing: EASE, delay: delay || 0, fill: "backwards" });
   }
   // Убрать вставленный элемент с уходом
   function leave(el, kind) {
     if (!el || !canAnimate(el)) { if (el) el.remove(); return; }
+    if (el._in) { el._in.cancel(); el._in = null; }
     var a = el.animate(frames(kind, el).reverse(), { duration: FAST, easing: EASE_EXIT, fill: "forwards" });
     after(a, FAST, function () { el.remove(); });
   }
@@ -94,7 +99,7 @@
     else d.classList.add("is-closing");  // стрелка поворачивается сразу, не дожидаясь конца анимации
     var border = d.offsetHeight - d.clientHeight;
     var end = opening ? d.offsetHeight : sum.offsetHeight + border;
-    if (!canAnimate(d) || reduce) { if (!opening) { d.open = false; d.classList.remove("is-closing"); } return; }
+    if (!canAnimate(d) || reduced()) { d.style.overflow = ""; if (!opening) { d.open = false; d.classList.remove("is-closing"); } return; }
     d.style.overflow = "hidden";
     var a = d.animate([{ height: start + "px" }, { height: end + "px" }], { duration: opening ? OPEN : CLOSE, easing: opening ? EASE : EASE_EXIT });
     d._anim = a;
@@ -123,7 +128,7 @@
     }
     if (!box || box === document.body) return;
     var delta = sum.getBoundingClientRect().top - box.getBoundingClientRect().top - 12;
-    if (Math.abs(delta) > 4) box.scrollBy({ top: delta, behavior: reduce ? "auto" : "smooth" });
+    if (Math.abs(delta) > 4) box.scrollBy({ top: delta, behavior: reduced() ? "auto" : "smooth" });
   }
   document.addEventListener("click", function (e) {
     var sum = e.target.closest("summary");
@@ -135,5 +140,5 @@
     toggleDetails(d);
   });
 
-  window.Motion = { after: after, reduce: reduce, show: show, hide: hide, enter: enter, leave: leave, stagger: stagger, swap: swap, toggleDetails: toggleDetails, EASE: EASE, EASE_EXIT: EASE_EXIT, BASE: BASE, FAST: FAST };
+  window.Motion = { after: after, get reduce() { return reduced(); }, show: show, hide: hide, enter: enter, leave: leave, stagger: stagger, swap: swap, toggleDetails: toggleDetails, EASE: EASE, EASE_EXIT: EASE_EXIT, BASE: BASE, FAST: FAST };
 })();

@@ -13,6 +13,10 @@
     "#11a579", "#e73f74", "#a6761d", "#00585f", "#7a7a00", "#3d5a80"];  // запас: у парка №7 19 маршрутов, первые 19 заняты
 
   // ---------- карта ----------
+  if (!window.L) {
+    $("#routeStatus").textContent = "Не удалось загрузить карту. Проверьте подключение и обновите страницу.";
+    return;
+  }
   var map = D.makeMap("map", [59.85, 30.32], 11);
   var canvas = L.canvas({ padding: 0.3 });
   var ctxLayer = L.layerGroup().addTo(map), editLayer = L.layerGroup().addTo(map), parkLayer = L.layerGroup().addTo(map);
@@ -67,6 +71,22 @@
       d.line.forEach(function (p, i) {
         var end = i === 0 || i === d.line.length - 1;
         var mk = L.marker(p, { draggable: true, icon: L.divIcon({ className: "", html: '<div class="vx' + (end ? " vx--end" : "") + '"></div>', iconSize: [0, 0] }), title: "Точка " + (i + 1) + ": тащите; правый клик - удалить" }).addTo(editLayer);
+        var control = mk.getElement();
+        control.dataset.vertex = i;
+        control.setAttribute("aria-label", "Точка " + (i + 1) + ". Стрелки перемещают точку, Delete удаляет");
+        control.addEventListener("keydown", function (e) {
+          var step = { ArrowUp: [0, -8], ArrowDown: [0, 8], ArrowLeft: [-8, 0], ArrowRight: [8, 0] }[e.key];
+          if (!step && e.key !== "Delete") return;
+          e.preventDefault();
+          e.stopPropagation();
+          change();
+          if (step) {
+            d.line[i] = ll(map.layerPointToLatLng(map.latLngToLayerPoint(p).add(L.point(step))));
+          } else d.line.splice(i, 1);
+          refresh();
+          var next = $('#map [data-vertex="' + Math.min(i, d.line.length - 1) + '"]');
+          (next || $("#tCenter")).focus({ preventScroll: true });
+        });
         mk.on("dragstart", change);
         mk.on("dragend", function () { d.line[i] = ll(mk.getLatLng()); refresh(); });
         mk.on("contextmenu", function () { change(); d.line.splice(i, 1); refresh(); });
@@ -162,12 +182,12 @@
     return best;
   }
 
-  map.on("click", function (e) {
+  function addAt(latlng) {
     var d = dir(); if (!d || !mode) return;
     change();
-    if (mode === "line") d.line.push(ll(e.latlng));
+    if (mode === "line") d.line.push(ll(latlng));
     else if (mode === "stop") {
-      var at0 = d.line.length > 1 ? snap(d.line, e.latlng) : e.latlng;  // новая остановка - сразу на трассе
+      var at0 = d.line.length > 1 ? snap(d.line, latlng) : latlng;  // новая остановка - сразу на трассе
       var s = { id: "m-" + Date.now(), name: "Новая остановка", lat: r6(at0.lat), lon: r6(at0.lng) };
       var at = d.line.length > 1 ? placeAt(d, along(d.line, [s.lat, s.lon])) : d.stops.length;
       d.stops.splice(at, 0, s);
@@ -176,11 +196,13 @@
       return;
     }
     refresh();
-  });
+  }
+  map.on("click", function (e) { addAt(e.latlng); });
+  $("#tCenter").addEventListener("click", function () { addAt(map.getCenter()); });
 
   // ---------- список ----------
   function load() {
-    return D.loadGeo().then(function (g) {
+    return D.loadGeo(true).then(function (g) {
       G = g;
       var parks = {}; parks.P07 = 1; G.routes.forEach(function (r) { parks[r.park_id] = 1; });
       $("#park").innerHTML = Object.keys(parks).sort().map(function (p) { return '<option value="' + p + '">Парк ' + p.replace("P0", "№").replace("P", "№") + "</option>"; }).join("");
@@ -195,16 +217,17 @@
     var q = $("#q").value.trim().toLowerCase();
     var list = G.routes.filter(function (r) { return r.park_id === park && (!q || (r.number + " " + r.name).toLowerCase().indexOf(q) >= 0); });
     var all = G.routes.filter(function (r) { return r.park_id === park; });
+    $("#routeStatus").textContent = q ? "Найдено: " + list.length : "";
+    $("#routeStatus").classList.toggle("is-sr-only", !q);
     $("#stat").textContent = all.length + " " + D.plural(all.length, "маршрут", "маршрута", "маршрутов") + ", остановок " +
       all.reduce(function (n, r) { return n + r.directions.reduce(function (m, d) { return m + d.stops.length; }, 0); }, 0);
     $("#list").innerHTML = list.map(function (r) {
       var empty = !r.directions.some(function (d) { return d.line.length > 1; });
       var st = r.directions.reduce(function (n, d) { return n + d.stops.length; }, 0);
-      return '<button class="ri" data-id="' + esc(r.id) + '"><span class="ri__n" style="background:' + r.color + '">' + esc(r.number) + '</span><span><div class="ri__t">' + esc(r.name || "без названия") +
+      return '<button class="ri" data-id="' + esc(r.id) + '"><span class="ri__n" style="background:' + D.routeBadgeColor(r.color) + '">' + esc(r.number) + '</span><span><div class="ri__t">' + esc(r.name || "без названия") +
         '</div><div class="ri__s' + (empty ? " ri__warn" : "") + '">' + (empty ? "нет трассы - нарисуйте" : r.directions.length + " " + D.plural(r.directions.length, "направление", "направления", "направлений") + ", остановок " + st) +
         "</div></span></button>";
-    }).join("") || '<p class="muted caption">Ничего не найдено</p>';
-    if (!renderList.done) { renderList.done = true; window.Motion.stagger($("#list").children); }
+    }).join("") || '<p class="muted caption">' + (q ? "Попробуйте другой номер или название." : "В этом парке пока нет маршрутов.") + '</p>';
     $("#list").querySelectorAll("[data-id]").forEach(function (b) { b.addEventListener("click", function () { tryOpen(b.getAttribute("data-id")); }); });
   }
 
@@ -223,6 +246,7 @@
     $("#paneList").hidden = true; $("#err").hidden = true; window.Motion.show($("#paneEdit"), "side", { force: true });
     $("#btnDel").hidden = fresh;
     renderEdit(); drawContext(); drawEdit();
+    $("#btnBack").focus();
     var b = null; cur.directions.forEach(function (d) { d.line.concat(d.stops.map(function (s) { return [s.lat, s.lon]; })).forEach(function (p) { b = b ? b.extend(p) : L.latLngBounds(p, p); }); });
     if (b) D.flyBounds(map, b, { padding: [40, 40], maxZoom: 15 });
   }
@@ -231,7 +255,13 @@
     $("#paneEdit").hidden = true; window.Motion.show($("#paneList"), "side", { force: true });
     editLayer.clearLayers(); drawContext(); renderList();
   }
-  $("#btnBack").addEventListener("click", function () { if (confirmLeave()) close(); });
+  $("#btnBack").addEventListener("click", function () {
+    if (!confirmLeave()) return;
+    var id = cur && !isNew ? cur.id : null;
+    close();
+    var row = id && $('#list [data-id="' + CSS.escape(id) + '"]');
+    (row || $("#btnAdd")).focus();
+  });
   $("#btnAdd").addEventListener("click", function () {
     if (!confirmLeave()) return;
     var used = G.routes.filter(function (r) { return r.park_id === park; }).map(function (r) { return r.color.toLowerCase(); });
@@ -344,10 +374,13 @@
   $("#tStop").addEventListener("click", function () { setMode(mode === "stop" ? null : "stop"); });
   function setMode(m) {
     mode = m;
+    $("#tCenter").hidden = !m;
+    $("#mapCrosshair").hidden = !m;
+    $("#tCenter").textContent = m === "line" ? "Добавить точку в центре карты" : "Добавить остановку в центре карты";
     $("#tLine").setAttribute("aria-pressed", m === "line"); $("#tStop").setAttribute("aria-pressed", m === "stop");
     $("#map").classList.toggle("is-tool", !!m);
     if (m) window.Motion.show($("#hint"), "down"); else window.Motion.hide($("#hint"), "fade");
-    $("#hint").textContent = m === "line" ? "Клик по карте - продолжить трассу. Клик по линии - вставить точку. Точки можно тащить, правый клик - удалить точку."
+    $("#hint").textContent = m === "line" ? "Нажмите на карту, чтобы продолжить трассу, или на линию, чтобы вставить точку. Выбранную точку можно переместить стрелками и удалить клавишей Delete."
       : m === "stop" ? "Клик по карте - новая остановка на трассе, по порядку. Клик по остановке - название, порядок, удаление." : "";
     drawEdit();
   }
@@ -395,13 +428,20 @@
 
   // Адрес: /routes#park=P07 - справочник парка, /routes#P07-R01 - сразу карточка маршрута.
   load().then(function () {
-    var h = decodeURIComponent(location.hash.slice(1));
+    var h = location.hash.slice(1);
+    try { h = decodeURIComponent(h); } catch (error) { h = ""; }
     var r = h && G.routes.filter(function (x) { return x.id === h; })[0];
     if (h.indexOf("park=") === 0) park = h.slice(5) || park;
     else if (r) park = r.park_id;
     if ($("#park").querySelector('option[value="' + park + '"]')) $("#park").value = park;
     $("#toPark").href = "/#prep/" + park;
     renderList(); drawContext();
+    window.Motion.stagger(Array.from($("#list").children).slice(0, 8));
+    $("#btnAdd").disabled = false;
+    $("#q").disabled = false;
     if (r) tryOpen(h); else fitAll();
+  }).catch(function () {
+    $("#routeStatus").classList.remove("is-sr-only");
+    $("#routeStatus").textContent = "Не удалось загрузить маршруты. Обновите страницу.";
   });
 })();

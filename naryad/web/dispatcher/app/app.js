@@ -28,12 +28,16 @@
       S.run = r.plan.run || null;
       S.m = D.build(S.day, S.plan, r.state, r.intervals);
       var handlers = { onPark: openPark, onRoute: routeCard, parkTip: parkTip };
-      if (!S.map) S.map = D.parkMap($("#map"), S.m, handlers);
-      else { S.map.resize(); S.map.refit(); S.map.redraw(S.m, handlers); }
-      S.map.selectRoute(null);
+      if (window.L) {
+        if (!S.map) S.map = D.parkMap($("#map"), S.m, handlers);
+        else { S.map.resize(); S.map.refit(); S.map.redraw(S.m, handlers); }
+        S.map.selectRoute(null);
+      }
+      $("#mapFallback").hidden = !!S.map;
       setTab("routes");
       S.probsOpen = false;  // окно проблем по умолчанию свёрнуто - открывается по заголовку или строке состояния
       renderSummary(); renderProbs(); show("paneResult");
+      $("#resTitle").focus({ preventScroll: true });
     });
   }
   window.App = { run: run, resize: function () { S.map && S.map.resize(); }, runNo: function () { return S.run ? S.run.id : null; } };
@@ -44,8 +48,10 @@
   }
   function draw(state, iv) {
     S.m = D.build(S.day, S.plan, state, iv);
-    S.map.redraw(S.m);
-    if (S.route && S.route.indexOf("res:") !== 0) S.map.selectRoute(S.route);
+    if (S.map) {
+      S.map.redraw(S.m);
+      if (S.route && S.route.indexOf("res:") !== 0) S.map.selectRoute(S.route);
+    }
     renderSummary(); renderList(); renderProbs();
     if (S.route) openRoute(S.route, true);
     // Открытый наряд - заново по новому состоянию: иначе в панели остаётся то, что стояло до события или правки
@@ -71,7 +77,8 @@
     var d = (S.run && S.run.day || m.meta.date).split("-");
     $("#resTitle").innerHTML = "Расчёт" + (S.run ? " № " + S.run.id : "") + ' <small>' + (+d[2]) + " " + MONTHS[+d[1] - 1] + "</small>";
     $("#resParks").innerHTML = m.parkList.map(function (p) {
-      return '<button type="button" class="res-park" data-park="' + p.id + '"><b>' + esc(p.name) + "</b><span>" + esc(p.address || "") + "</span></button>";
+      var label = "<b>" + esc(p.name) + "</b><span>" + esc(p.address || "") + "</span>";
+      return S.map && p.coords ? '<button type="button" class="res-park" data-park="' + p.id + '">' + label + "</button>" : '<div class="res-park-label">' + label + "</div>";
     }).join("");
     $("#resParks").querySelectorAll("[data-park]").forEach(function (b) { b.addEventListener("click", function () { openPark(b.getAttribute("data-park")); }); });
     // Всё хорошо - никакого уведомления; есть проблемы - маленький красный значок с числом
@@ -87,7 +94,7 @@
     ];
     if (m.parkList.length > 1) k.push(["routes", "Переброски", m.transfers.length, null, ""]);
     $("#kpis").innerHTML = k.map(function (x) {
-      return '<button type="button" role="tab" class="kpi' + (x[4] ? " kpi--" + x[4] : "") + (S.tab === x[0] ? " is-on" : "") + '" data-view="' + x[0] + '"><span class="kpi__v">' + D.num(x[2]) +
+      return '<button type="button" aria-controls="list" aria-pressed="' + (S.tab === x[0]) + '" class="kpi' + (x[4] ? " kpi--" + x[4] : "") + (S.tab === x[0] ? " is-on" : "") + '" data-view="' + x[0] + '"><span class="kpi__v">' + D.num(x[2]) +
         (x[3] != null ? " <small>из " + D.num(x[3]) + "</small>" : "") + '</span><span class="kpi__l">' + x[1] + "</span></button>";
     }).join("");
     $("#kpis").querySelectorAll("[data-view]").forEach(function (b) { b.addEventListener("click", function () { setTab(b.getAttribute("data-view")); }); });
@@ -97,12 +104,37 @@
   $("#resAlert").addEventListener("click", function () { S.probsOpen = true; renderProbs(true); });
 
   function setTab(t) {
+    var changed = S.tab !== t;
     S.tab = t;
-    document.querySelectorAll(".tab").forEach(function (x) { x.classList.toggle("is-on", x.getAttribute("data-tab") === t); });
-    document.querySelectorAll("#kpis [data-view]").forEach(function (x) { x.classList.toggle("is-on", x.getAttribute("data-view") === t); });
+    resultTabs.forEach(function (x) {
+      var selected = x.getAttribute("data-tab") === t;
+      x.classList.toggle("is-on", selected);
+      x.setAttribute("aria-selected", String(selected));
+      x.tabIndex = selected ? 0 : -1;
+      if (selected) $("#list").setAttribute("aria-labelledby", x.id);
+    });
+    document.querySelectorAll("#kpis [data-view]").forEach(function (x) {
+      var selected = x.getAttribute("data-view") === t;
+      x.classList.toggle("is-on", selected);
+      x.setAttribute("aria-pressed", String(selected));
+    });
     if (S.m) renderList();
+    if (changed) M.swap($("#list"));
   }
-  document.querySelectorAll(".tab").forEach(function (b) { b.addEventListener("click", function () { setTab(b.getAttribute("data-tab")); }); });
+  var resultTabs = Array.from(document.querySelectorAll(".tab[data-tab]"));
+  resultTabs.forEach(function (b, index) {
+    b.id = "result-tab-" + b.getAttribute("data-tab");
+    b.setAttribute("aria-controls", "list");
+    b.addEventListener("click", function () { setTab(b.getAttribute("data-tab")); });
+    b.addEventListener("keydown", function (e) {
+      var next = { ArrowLeft: index - 1, ArrowRight: index + 1, Home: 0, End: resultTabs.length - 1 }[e.key];
+      if (next === undefined) return;
+      e.preventDefault();
+      var tab = resultTabs[(next + resultTabs.length) % resultTabs.length];
+      tab.focus();
+      setTab(tab.getAttribute("data-tab"));
+    });
+  });
 
   function renderList() {
     var m = S.m, el = $("#list"), html = "";
@@ -146,7 +178,7 @@
   function collate(a, b) { return collator.compare(a, b); }
   // Компактная строка списка: номер в цвете маршрута, главное число, пояснение мелко, состояние точкой
   function routeItem(r, main, tone, sub) {
-    var c = r.geo ? r.geo.color : "var(--accent-deep)";
+    var c = D.routeBadgeColor(r.geo && r.geo.color);
     return '<button class="row' + (S.route === r.id ? " is-on" : "") + '" data-route="' + r.id + '"><span class="chip chip--route" style="--c:' + c + '">' + esc(r.number) + "</span>" +
       '<span class="row__main">' + main + '</span><span class="row__sub">' + esc(sub) + "</span>" +
       '<span class="item__dot item__dot--' + tone + '" aria-hidden="true"></span></button>';
@@ -175,7 +207,7 @@
         : list.slice(0, 60).map(function (u) {
             var r = u.route, what = u.kind === "shift" ? "смена " + m.shifts[u.id].order : "наряд " + D.dutyNo(m, u.duty);
             return '<button type="button" class="probs__it" data-problem="' + esc(u.id) + '"><span class="pk-ic pk-ic--sm pk-ic--' + k.tone + '"><i class="ad-icon ad-icon--' + k.icon + '"></i></span>' +
-              '<span class="probs__txt"><span class="probs__row"><span class="chip chip--route" style="--c:' + (r && r.geo ? r.geo.color : "var(--accent-deep)") + '">' + (r ? esc(r.number) : "Р") + "</span>" +
+              '<span class="probs__txt"><span class="probs__row"><span class="chip chip--route" style="--c:' + D.routeBadgeColor(r && r.geo && r.geo.color) + '">' + (r ? esc(r.number) : "Р") + "</span>" +
               "<b>" + esc(what) + '</b><span class="probs__time">' + D.hm(u.start) + "–" + D.hm(u.end) + "</span></span>" +
               "<small>" + esc(D.REASONS[u.reason] || u.reason) + "</small></span></button>";
           }).join("") + (list.length > 60 ? '<div class="probs__more">и ещё ' + (list.length - 60) + "</div>" : "");
@@ -281,7 +313,7 @@
       return '<div class="rc__dir' + (on ? " is-on" : "") + '"><span class="rc__dk">' + esc(d.id) + '</span><span>' + esc(from) + ' <i class="arr"></i> ' + esc(to) +
         "<small>" + st.length + " " + D.plural(st.length, "остановка", "остановки", "остановок") + (d.line.length > 1 ? " · " + kmText(lineKm(d.line)) : "") + "</small></span></div>";
     }).join("") + "</div>" : "";
-    var html = '<div class="rc"><div class="rc__head"><span class="rc__n" style="background:' + (g ? g.color : "var(--accent-deep)") + '">' + esc(r.number) + "</span>" +
+    var html = '<div class="rc"><div class="rc__head"><span class="rc__n" style="background:' + D.routeBadgeColor(g && g.color) + '">' + esc(r.number) + "</span>" +
       '<div class="rc__ht"><div class="rc__t">Маршрут ' + esc(r.number) + '</div><div class="rc__s">' + esc(ends) + "</div></div>" + (status ? '<div class="rc__status">' + status + "</div>" : "") + "</div>" +
       '<div class="rc__cols"><div class="rc__col">' + dirsHtml + '<div class="rc__why" id="rcWhy"></div></div>' +
       '<div class="rc__col"><dl class="rc__dl">' + rows.filter(function (x) { return x[0] !== "Остановок" && x[0] !== "Длина рейса"; }).concat([["Длина рейса", kmText(r.length) + " по справке"]])
@@ -312,8 +344,10 @@
     S.route = id;
     openPanel();
     $("#drCov").parentNode.hidden = false;  // график покрытия есть только у маршрута
-    S.map.select(r.park);
-    if (!keepSide) S.map.selectRoute(id);
+    if (S.map) {
+      S.map.select(r.park);
+      if (!keepSide) S.map.selectRoute(id);
+    }
     $("#drTitle").textContent = "Маршрут " + r.number + " · " + D.parkShort(m, r.park);
     $("#drSub").textContent = "Важность " + D.PRIORITY[r.priority] + " · на линии " + r.filled + " из " + r.total + " нарядов · круг " + r.turn + " мин" +
       (r.worst ? " · интервал " + D.worstText(r.worst) : "");
@@ -335,8 +369,7 @@
     var m = S.m, list = reserveOf(m, parkId); if (!list.length) return;
     S.route = "res:" + parkId;
     openPanel();
-    S.map.select(parkId);
-    S.map.selectRoute(null);
+    if (S.map) { S.map.select(parkId); S.map.selectRoute(null); }
     var on = list.filter(function (d) { return d.segs.length; }).length;
     $("#drTitle").textContent = "Резерв · " + D.parkShort(m, parkId);
     $("#drSub").textContent = "Выпущено " + on + " из " + list.length + " " + D.plural(list.length, "наряда", "нарядов", "нарядов");
@@ -356,18 +389,28 @@
   }
 
   // Панель маршрута - правая половина экрана: при открытии карта сжимается до своей половины, при закрытии - обратно
+  var drawerTrigger;
   function openPanel() {
     var d = $("#drawer");
     if (d._out) { d._out.cancel(); d._out = null; }  // панель ещё уезжала - остаётся открытой
     if (!d.hidden) return;
+    drawerTrigger = document.activeElement;
     $("#scrResult").classList.add("is-split");
     M.show($("#drawer"), "right");
-    S.map.resize();
+    $("#drClose").focus({ preventScroll: true });
+    window.App.resize();
   }
   function closePanel() {
     S.route = null; S.duty = null;
     document.querySelectorAll("[data-route].is-on").forEach(function (x) { x.classList.remove("is-on"); });
-    M.hide($("#drawer"), "right", function () { $("#scrResult").classList.remove("is-split"); S.map.resize(); S.map.selectRoute(null); });
+    if ($("#drawer").contains(document.activeElement)) {
+      var target = drawerTrigger && drawerTrigger.isConnected && drawerTrigger !== document.body ? drawerTrigger : $("#resTitle");
+      target.focus({ preventScroll: true });
+    }
+    M.hide($("#drawer"), "right", function () {
+      $("#scrResult").classList.remove("is-split");
+      if (S.map) { S.map.resize(); S.map.selectRoute(null); }
+    });
   }
   $("#drClose").addEventListener("click", closePanel);
   document.addEventListener("keydown", function (e) {

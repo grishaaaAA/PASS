@@ -18,6 +18,20 @@
   function clock(m) { return hm(m % 1440); }
   function num(n) { return Number(n).toLocaleString("ru-RU"); }
   function pct(a, b) { return b ? Math.round(1000 * a / b) / 10 : 100; }
+  function routeBadgeColor(color) {
+    if (!/^#[\da-f]{6}$/i.test(color || "")) return "var(--accent-deep)";
+    var rgb = color.slice(1).match(/../g).map(function (part) { return parseInt(part, 16); });
+    function linear(value) {
+      var s = value / 255;
+      return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    }
+    function whiteContrast() {
+      return 1.05 / (0.05 + 0.2126 * linear(rgb[0]) + 0.7152 * linear(rgb[1]) + 0.0722 * linear(rgb[2]));
+    }
+    if (whiteContrast() >= 4.5) return color;
+    do { rgb = rgb.map(function (value) { return Math.floor(value * 0.94); }); } while (whiteContrast() < 4.5);
+    return "rgb(" + rgb.join(", ") + ")";
+  }
   function plural(n, one, few, many) {
     var a = Math.abs(n) % 100, b = a % 10;
     if (a > 10 && a < 20) return many;
@@ -95,8 +109,11 @@
   }
   // Справочник маршрутов на карте (data/geo/routes.json). Без него карта показывает только парки.
   var GEO = { routes: [], parks: {} };
-  function loadGeo() {
-    return api("GET", "/x/geo").then(function (g) { GEO = g; return g; }, function () { return GEO; });
+  function loadGeo(required) {
+    return api("GET", "/x/geo").then(function (g) { GEO = g; return g; }, function (error) {
+      if (required) throw error;
+      return GEO;
+    });
   }
   function geoFor(parkId, number) {
     var n = String(number).toLowerCase();
@@ -413,11 +430,10 @@
   }
 
   // ---------- плавная карта (как в PROJECT POLET) ----------
-  var REDUCE = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   // Масштаб дробный и без затухания плиток: жест идёт непрерывно, карта не мутнеет.
   // Штатные кнопки и подпись Leaflet выключены - свои, в стиле AUTODISP (mapControls ниже).
   var MAP_OPTIONS = { zoomControl: false, attributionControl: false, scrollWheelZoom: false,
-    zoomSnap: 0, zoomDelta: 1, fadeAnimation: false, zoomAnimation: !REDUCE, markerZoomAnimation: !REDUCE };
+    zoomSnap: 0, zoomDelta: 1, fadeAnimation: false };
   // Плитки тянем на ходу, с запасом в шесть плиток по краю: при резком сдвиге не видно серых дыр.
   // Во время масштабирования плитки не перестраиваются - старые просто растягиваются.
   var ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/";
@@ -477,7 +493,8 @@
 
   function makeMap(el, center, zoom) {
     if (typeof el === "string") el = document.getElementById(el);
-    var map = L.map(el, MAP_OPTIONS).setView(center, zoom);
+    var animate = !window.Motion.reduce;
+    var map = L.map(el, Object.assign({ zoomAnimation: animate, markerZoomAnimation: animate }, MAP_OPTIONS)).setView(center, zoom);
     map._bases = baseLayers();
     map._bases[BASEMAPS[0].name].addTo(map);
     smoothWheel(map, el);
@@ -508,7 +525,7 @@
     el.appendChild(credit);
     L.DomEvent.disableClickPropagation(box); L.DomEvent.disableScrollPropagation(box);
     box.querySelectorAll("[data-z]").forEach(function (b) {
-      b.addEventListener("click", function () { map.setZoom(Math.round(map.getZoom()) + +b.getAttribute("data-z"), { animate: !REDUCE }); });
+      b.addEventListener("click", function () { map.setZoom(Math.round(map.getZoom()) + +b.getAttribute("data-z"), { animate: !window.Motion.reduce }); });
     });
     // Всплывающие панели «Слои» и «Легенда»: открыта одна, клик по карте закрывает
     function setPanel(name, on) {
@@ -559,10 +576,10 @@
     };
   }
   // Вписать область: обычной анимацией масштаба, без перелёта по дуге.
-  function flyBounds(map, b, opt) { map.fitBounds(b, Object.assign({ animate: !REDUCE }, opt || {})); }
+  function flyBounds(map, b, opt) { map.fitBounds(b, Object.assign({ animate: !window.Motion.reduce }, opt || {})); }
   function flyTo(map, p, zoom) {
-    if (zoom == null) map.panTo(p, { animate: !REDUCE });
-    else map.setView(p, zoom, { animate: !REDUCE });
+    if (zoom == null) map.panTo(p, { animate: !window.Motion.reduce });
+    else map.setView(p, zoom, { animate: !window.Motion.reduce });
   }
 
   // Карта парков. opts: {onPark(id)}. Отдаёт {select(id), redraw(m)}.
@@ -678,7 +695,7 @@
             placed.push(box);
             var on = selRoute === r.id, dim = selRoute && !on;
             L.marker(ll, { interactive: false, keyboard: false, zIndexOffset: on ? 400 : 0,
-              icon: L.divIcon({ className: "rl-wrap", iconSize: [0, 0], html: '<span class="rl' + (dim ? " is-dim" : "") + (on ? " is-on" : "") + '" style="--c:' + r.geo.color + '">' + esc(r.number) + "</span>" }) }).addTo(labelLayer);
+              icon: L.divIcon({ className: "rl-wrap", iconSize: [0, 0], html: '<span class="rl' + (dim ? " is-dim" : "") + (on ? " is-on" : "") + '" style="--c:' + routeBadgeColor(r.geo.color) + '">' + esc(r.number) + "</span>" }) }).addTo(labelLayer);
             return;
           }
         }
@@ -789,7 +806,7 @@
   }
 
   window.Disp = {
-    $: $, esc: esc, toMin: toMin, hm: hm, clock: clock, num: num, pct: pct, plural: plural,
+    $: $, esc: esc, toMin: toMin, hm: hm, clock: clock, num: num, pct: pct, plural: plural, routeBadgeColor: routeBadgeColor,
     REASONS: REASONS, VIOLATIONS: VIOLATIONS, PRIORITY: PRIORITY, CLASSES: CLASSES, KINDS: KINDS,
     api: api, loadGeo: loadGeo, geoFor: geoFor, geoAll: function () { return GEO; }, loadParks: loadParks, loadRegistry: loadRegistry, loadMarks: loadMarks, saveMarks: saveMarks, submitDay: submitDay, calculate: calculate, explain: explain, changedSinceMorning: changedSinceMorning,
     eventOptions: eventOptions, eventApply: eventApply, editOptions: editOptions, editApply: editApply, intervals: intervals,

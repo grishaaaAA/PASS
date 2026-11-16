@@ -134,9 +134,7 @@
     var files = [], checked = false, working = false;
     dateIn.value = today(); dtSel.value = dayType(dateIn.value);
 
-    var close = function () { window.Motion.leave(box.firstChild, "scale"); window.Motion.leave(box, "fade"); document.removeEventListener("keydown", onKey); };
-    var onKey = function (e) { if (e.key === "Escape" && !working) close(); };
-    document.addEventListener("keydown", onKey);
+    var close = D.events.bindDialog(box, function () { if (!working) close(); });
     box.addEventListener("click", function (e) { if (!working && (e.target === box || e.target.closest("[data-close]"))) close(); });
 
     function sync() {

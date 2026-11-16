@@ -75,9 +75,7 @@
     var chosen = null, token = 0, asking = false, working = false;
     var cur = function () { return list[+what.value]; };
 
-    var close = function () { window.Motion.leave(box.firstChild, "scale"); window.Motion.leave(box, "fade"); document.removeEventListener("keydown", onKey); };
-    var onKey = function (e) { if (e.key === "Escape" && !asking) close(); };
-    document.addEventListener("keydown", onKey);
+    var close = D.events.bindDialog(box, function () { if (!asking) close(); });
     box.addEventListener("click", function (e) { if (e.target === box || e.target.closest("[data-close]")) close(); });
 
     function showErr(text) { err.textContent = text || ""; err.hidden = !text; }
@@ -216,18 +214,12 @@
         '<button type="button" class="ad-btn ad-btn--sm ad-btn--danger" data-yes>Применить всё равно</button></div></div>';
       document.body.appendChild(box);
       window.Motion.enter(box, "fade"); window.Motion.enter(box.firstChild, "scale");
-      var done = function (v) {
-        document.removeEventListener("keydown", onKey);
-        window.Motion.leave(box.firstChild, "scale"); window.Motion.leave(box, "fade");
-        resolve(v);
-      };
-      var onKey = function (e) { if (e.key === "Escape") done(null); };
-      document.addEventListener("keydown", onKey);
+      var close = D.events.bindDialog(box, function () { done(null); }, "[data-no]");
+      var done = function (v) { if (close()) resolve(v); };
       box.addEventListener("click", function (e) {
         if (e.target === box || e.target.closest("[data-no]")) done(null);
         else if (e.target.closest("[data-yes]")) done(box.querySelector("[name=why]").value.trim());
       });
-      box.querySelector("[data-no]").focus();
     });
   }
 

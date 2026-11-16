@@ -14,23 +14,24 @@
 <body>
 <header class="bar">
   <a class="bar__home" href="/" aria-label="AUTODISP: в начало"><img class="bar__logo" src="ds/logo.svg" alt=""></a>
-  <span class="bar__title">Маршруты и остановки</span>
+  <h1 class="bar__title">Маршруты и остановки</h1>
   <select class="ad-input bar__park" id="park" aria-label="Парк"></select>
   <span class="bar__grow"></span>
   <span class="caption muted" id="stat"></span>
   <a class="ad-btn ad-btn--ghost ad-btn--sm" id="toPark" href="/"><i class="arr arr--left"></i>К подготовке дня</a>
 </header>
 
-<div class="layout">
+<main class="layout">
   <aside class="side">
     <!-- Список -->
     <section class="pane" id="paneList">
       <div class="row">
-        <input class="ad-input grow" id="q" placeholder="Номер или конечная" aria-label="Поиск маршрута">
-        <button class="ad-btn ad-btn--primary ad-btn--sm" id="btnAdd"><i class="ad-icon ad-icon--plus-circle ad-icon--sm"></i>Новый</button>
+        <input class="ad-input grow" id="q" placeholder="Номер или конечная" aria-label="Поиск маршрута" disabled>
+        <button class="ad-btn ad-btn--primary ad-btn--sm" id="btnAdd" disabled><i class="ad-icon ad-icon--plus-circle ad-icon--sm"></i>Добавить маршрут</button>
       </div>
+      <p class="caption muted" id="routeStatus" role="status">Загрузка маршрутов…</p>
       <div class="list" id="list"></div>
-      <p class="caption muted">Первичные трассы и остановки - из OpenStreetMap (© участники OpenStreetMap, ODbL). Всё можно поправить: изменения сохраняются в data/geo/routes.json, прошлая версия - в routes.json.bak.</p>
+      <p class="caption muted">Трассы и остановки: © участники OpenStreetMap, ODbL.</p>
     </section>
 
     <!-- Карточка маршрута -->
@@ -62,6 +63,7 @@
           <button class="tool" id="tLine" aria-pressed="false"><i class="ad-icon ad-icon--path ad-icon--sm"></i>Править трассу</button>
           <button class="tool" id="tStop" aria-pressed="false"><i class="ad-icon ad-icon--map-pin ad-icon--sm"></i>Поставить остановку</button>
         </div>
+        <button type="button" class="ad-btn ad-btn--sm btn-plain" id="tCenter" hidden></button>
         <div class="tools tools--small">
           <button class="ad-btn ad-btn--ghost ad-btn--sm" id="tReverse" title="Создать обратное направление из этого">Сделать обратное</button>
           <button class="ad-btn ad-btn--ghost ad-btn--sm" id="tFlip">Развернуть</button>
@@ -79,15 +81,16 @@
         <span class="grow"></span>
         <button class="ad-btn ad-btn--ghost danger" id="btnDel"><i class="ad-icon ad-icon--trash ad-icon--sm"></i>Удалить</button>
       </div>
-      <p class="err" id="err" hidden></p>
+      <p class="err" id="err" role="alert" hidden></p>
     </section>
   </aside>
 
-  <main class="stage">
-    <div class="map" id="map"></div>
+  <section class="stage" aria-label="Карта маршрутов">
+    <div class="map" id="map" aria-label="Карта маршрутов. Стрелки перемещают карту"></div>
+    <span class="map-crosshair" id="mapCrosshair" aria-hidden="true" hidden></span>
     <div class="hint" id="hint" hidden></div>
-  </main>
-</div>
+  </section>
+</main>
 
 <script src="ds/bundle.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>

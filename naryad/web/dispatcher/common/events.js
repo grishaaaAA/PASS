@@ -12,6 +12,7 @@
     document.querySelectorAll(".toast").forEach(gone);
     var t = document.createElement("div");
     t.className = "toast" + (bad ? " toast--bad" : "");
+    t.setAttribute("role", bad ? "alert" : "status");
     t.textContent = text;
     document.body.appendChild(t);
     window.Motion.enter(t, "up");
@@ -60,9 +61,7 @@
       '<div class="ev__opts"></div></div>';
     document.body.appendChild(box);
     window.Motion.enter(box, "fade"); window.Motion.enter(box.firstChild, "scale");
-    var close = function () { window.Motion.leave(box.firstChild, "scale"); window.Motion.leave(box, "fade"); document.removeEventListener("keydown", onKey); };
-    var onKey = function (e) { if (e.key === "Escape") close(); };
-    document.addEventListener("keydown", onKey);
+    var close = bindDialog(box, function () { close(); });
     box.addEventListener("click", function (e) { if (e.target === box || e.target.closest("[data-close]")) close(); });
     if (!seg && !drv && !lates.length) { box.querySelector(".ev__opts").innerHTML = '<p class="muted">На этом наряде нет ни автобуса, ни водителя - событию не к чему относиться.</p>'; box.querySelector("[data-find]").disabled = true; }
     var typeSel = box.querySelector("[name=type]"), atIn = box.querySelector("[name=at]"), atDefault = atIn.value;
@@ -120,13 +119,49 @@
         '<button type="button" class="ad-btn ad-btn--sm ' + (o.danger ? "ad-btn--danger" : "ad-btn--primary") + '" data-yes>' + esc(o.ok) + "</button></div></div>";
       document.body.appendChild(box);
       window.Motion.enter(box, "fade"); window.Motion.enter(box.firstChild, "scale");
-      var done = function (v) { document.removeEventListener("keydown", onKey); window.Motion.leave(box.firstChild, "scale"); window.Motion.leave(box, "fade"); resolve(v); };
-      var onKey = function (e) { if (e.key === "Escape") done(false); };
-      document.addEventListener("keydown", onKey);
+      var close = bindDialog(box, function () { done(false); }, "[data-no]");
+      var done = function (v) { if (close()) resolve(v); };
       box.addEventListener("click", function (e) { if (e.target === box || e.target.closest("[data-no]")) done(false); else if (e.target.closest("[data-yes]")) done(true); });
-      box.querySelector("[data-no]").focus();
     });
   }
 
-  D.events = { open: open, toast: toast, title: eventTitle, confirm: confirm };
+  var dialogs = [];
+  function bindDialog(box, onEscape, initial) {
+    var panel = box.firstElementChild, previous = document.activeElement;
+    var motion = window.Motion, entry = { box: box };
+    dialogs.push(entry);
+    panel.tabIndex = -1;
+    function focusable() {
+      return Array.from(panel.querySelectorAll("button, input, select, textarea, a[href], [tabindex]"))
+        .filter(function (el) { return el.tabIndex >= 0 && !el.matches(":disabled") && el.getClientRects().length && getComputedStyle(el).visibility === "visible"; });
+    }
+    function key(e) {
+      if (dialogs[dialogs.length - 1] !== entry) return;
+      if (e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); onEscape(); return; }
+      if (e.key !== "Tab") return;
+      var items = focusable(), first = items[0], last = items[items.length - 1];
+      var active = document.activeElement;
+      if (!items.includes(active) || (e.shiftKey ? active === first : active === last)) {
+        e.preventDefault();
+        ((e.shiftKey ? last : first) || panel).focus();
+      }
+    }
+    document.addEventListener("keydown", key, true);
+    (panel.querySelector(initial || "[data-close]") || focusable()[0] || panel).focus();
+    return function close() {
+      var index = dialogs.indexOf(entry);
+      if (index === -1) return false;
+      var wasTop = index === dialogs.length - 1;
+      dialogs.splice(index, 1);
+      document.removeEventListener("keydown", key, true);
+      box.inert = true;
+      box.style.pointerEvents = "none";
+      motion.leave(panel, "scale");
+      motion.leave(box, "fade");
+      if (wasTop && previous && previous.isConnected) previous.focus();
+      return true;
+    };
+  }
+
+  D.events = { open: open, toast: toast, title: eventTitle, confirm: confirm, bindDialog: bindDialog };
 })();

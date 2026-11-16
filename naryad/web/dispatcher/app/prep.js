@@ -9,6 +9,8 @@
   "use strict";
   var D = window.Disp, $ = D.$, esc = D.esc, toast = D.events.toast;
   var M = window.Motion;
+  var signedIn = false;
+  var entryHash = location.hash;
   // file - название реестра, загруженного файлом (иначе null: реестр парка с сервера), fileParks - его парки
   var P = { parks: [], sel: [], ids: [], park: null, date: null, base: null, file: null, fileParks: {}, ov: null, open: {}, tab: null, filter: { veh: "all", drv: "all" }, st: null, saved: null,
     sort: { veh: { key: "route", dir: 1 }, drv: { key: "name", dir: 1 } }, q: { veh: "", drv: "" } };
@@ -20,44 +22,59 @@
   // ---------- экраны и адрес ----------
   var current = null;
   function go(name, silent) {
+    if (!signedIn && ["dashboard", "parks", "prep", "result"].indexOf(name) >= 0) name = "login";
     var changed = current !== name; current = name;
     $("#scrWelcome").hidden = name !== "welcome";
+    $("#scrLogin").hidden = name !== "login";
+    $("#scrDashboard").hidden = name !== "dashboard";
     $("#scrParks").hidden = name !== "parks"; $("#scrPrep").hidden = name !== "prep"; $("#scrResult").hidden = name !== "result";
     document.body.classList.toggle("is-welcome", name === "welcome");
-    // смена экрана - мягкое появление нового (приветствие анимирует себя само)
-    if (changed && name !== "welcome") M.enter($(name === "parks" ? "#scrParks .scr__in" : name === "prep" ? "#scrPrep .scr__in" : "#scrResult"), "up");
+    $("#btnLogout").hidden = !signedIn || name === "welcome" || name === "login";
+    if (changed && name !== "welcome") {
+      var target = { login: "#loginForm", dashboard: "#scrDashboard .scr__in", parks: "#scrParks .scr__in", prep: "#scrPrep .scr__in", result: "#scrResult" }[name];
+      M.enter($(target), "up");
+    }
     document.body.classList.toggle("is-result", name === "result");
     renderCrumbs(name);
     if (!silent) {
-      var hash = name === "parks" ? "#parks" : name === "welcome" ? "#" : "#" + name + "/" + key();
+      var hash = name === "welcome" ? "#" : name === "prep" || name === "result" ? "#" + name + "/" + key() : "#" + name;
       if (location.hash !== hash) history.pushState(null, "", hash);
     }
     if (name === "result") window.App.resize();
-    var scr = $(name === "parks" ? "#scrParks" : name === "prep" ? "#scrPrep" : "#scrResult");
+    var scr = $(name === "dashboard" ? "#scrDashboard" : name === "parks" ? "#scrParks" : name === "prep" ? "#scrPrep" : "#scrResult");
     if (scr && name !== "prep") scr.scrollTop = 0;
+    if (changed && name !== "welcome" && name !== "result") {
+      var heading = name === "login" ? $("#loginName") : $("h1", scr);
+      if (heading) {
+        if (heading.tagName === "H1") heading.tabIndex = -1;
+        heading.focus({ preventScroll: true });
+      }
+    }
   }
-  // Крошки: шаги работы, а не названия парков (парков может быть несколько): «Выбор парков / Подготовка дня / Расчёт № 12»
+  // Крошки показывают путь от истории рабочих дней к расчёту.
   function renderCrumbs(name) {
     var no = window.App && window.App.runNo && window.App.runNo();
-    var crumbs = [['<button data-go="parks">Выбор парков</button>', name === "parks"]];
-    if (name !== "parks" && name !== "welcome" && P.ids.length) crumbs.push(['<button data-go="prep">Подготовка дня</button>', name === "prep"]);
+    if (name === "welcome" || name === "login") { $("#crumbs").innerHTML = ""; return; }
+    var crumbs = [['<button data-go="dashboard">Рабочие дни</button>', name === "dashboard"]];
+    if (name !== "dashboard") crumbs.push(['<button data-go="parks">Выбор парков</button>', name === "parks"]);
+    if ((name === "prep" || name === "result") && P.ids.length) crumbs.push(['<button data-go="prep">Подготовка дня</button>', name === "prep"]);
     if (name === "result") crumbs.push(["<span>Расчёт" + (no ? " № " + no : "") + "</span>", true]);
-    $("#crumbs").innerHTML = crumbs.map(function (c) { return '<span class="crumb' + (c[1] ? " is-on" : "") + '">' + c[0] + "</span>"; }).join('<span class="crumb__sep">/</span>');
+    $("#crumbs").innerHTML = crumbs.map(function (c) { return '<span class="crumb' + (c[1] ? ' is-on" aria-current="page' : "") + '">' + c[0] + "</span>"; }).join('<span class="crumb__sep" aria-hidden="true">/</span>');
   }
-  // Логотип: есть расчёт - к нему, нет - в самое начало, к приветствию
+  // Логотип возвращает к рабочим дням после входа.
   $("#btnHome").addEventListener("click", function () {
-    var to = P.calculated ? "result" : "welcome";
+    var to = signedIn ? "dashboard" : "welcome";
     if (to === current) return;
-    confirmLeave().then(function (ok) { if (!ok) return; go(to); if (to === "welcome") showWelcome(); });
+    confirmLeave().then(function (ok) { if (!ok) return; go(to); if (to === "dashboard") loadDashboard(); });
   });
   window.addEventListener("autodisp:run", function () { if (current === "result") renderCrumbs("result"); });
   document.addEventListener("click", function (e) {
     var b = e.target.closest("[data-go]"); if (!b) return;
     var to = b.getAttribute("data-go");
-    if (["parks", "prep", "result", "welcome"].indexOf(to) < 0) return;  // только переходы между экранами
+    if (["dashboard", "parks", "prep", "result", "welcome"].indexOf(to) < 0) return;
     if (to === "result" && !P.calculated) return;
     if (to === current) return;
-    confirmLeave().then(function (ok) { if (ok) go(to); });
+    confirmLeave().then(function (ok) { if (ok) { go(to); if (to === "dashboard") loadDashboard(); } });
   });
   window.addEventListener("popstate", function () {
     if (current === "prep" && pending().length && location.hash.indexOf("#prep/") !== 0) {
@@ -72,15 +89,16 @@
   // и «file» ведёт на выбор парков, а не подменяет загруженное реестром парка с сервера.
   function key() { return P.file ? "file" : P.ids.join(","); }
   function route() {
+    if (!signedIn) return go("login", true);
     var h = location.hash.slice(1).split("/");
     if ((h[0] === "prep" || h[0] === "result") && h[1]) {
       if (key() === h[1] && P.base) return go(h[0] === "result" && P.calculated ? "result" : "prep", true);
       return openParks(h[1].split(","), true);
     }
-    go(h[0] === "welcome" || !h[0] ? "welcome" : "parks", true);
+    var name = ["parks", "dashboard"].indexOf(h[0]) >= 0 ? h[0] : "dashboard";
+    go(name, true); if (name === "dashboard") loadDashboard();
   }
-  // Каждое открытие приложения начинается с приветствия, даже если в адресе сохранён экран
-  // (браузер обычно открывает последний адрес, например #prep/P07). После «Начать» - выбор парков.
+  // Каждое открытие приложения начинается с приветствия, даже если в адресе сохранён экран.
   function firstRoute() {
     history.replaceState(null, "", location.pathname);
     go("welcome", true);
@@ -91,56 +109,98 @@
     var h = new Date().getHours();
     return h >= 5 && h < 12 ? "Доброе утро" : h >= 12 && h < 17 ? "Добрый день" : h >= 17 && h < 23 ? "Добрый вечер" : "Доброй ночи";
   }
-  // Справа - карта, на которой прорисовываются настоящие трассы маршрутов доступных парков.
-  // Порядок: карта проявляется кругом от парка (из размытия), затем линии маршрутов рисуются по очереди.
-  var welcomeMap = null;
-  function drawWelcomeArt() {
-    var el = $("#welcomeMap");
-    var routes = (D.geoAll ? D.geoAll().routes : []).filter(function (r) { return r.directions.length && r.directions[0].line.length > 1; });
-    if (!window.L || !routes.length) return;
-    if (welcomeMap) { welcomeMap.remove(); welcomeMap = null; }
-    var map = welcomeMap = L.map(el, { zoomControl: false, attributionControl: false, dragging: false, scrollWheelZoom: false, doubleClickZoom: false,
-      boxZoom: false, keyboard: false, touchZoom: false, zoomSnap: 0, fadeAnimation: false });
-    var bounds = L.latLngBounds([]);
-    routes.forEach(function (r) { r.directions[0].line.forEach(function (p) { bounds.extend(p); }); });
-    map.fitBounds(bounds, { padding: [24, 24], animate: false });
-    var tiles = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}", { maxNativeZoom: 16 }).addTo(map);
-    var svg = L.svg({ padding: 0.3 }).addTo(map), paths = [];
-    routes.forEach(function (r) { paths.push(L.polyline(r.directions[0].line, { renderer: svg, color: r.color, weight: 3, opacity: 0.9, lineCap: "round", lineJoin: "round", interactive: false }).addTo(map)); });
-    var parks = D.geoAll().parks || {}, park = Object.keys(parks)[0];
-    var center = park ? map.latLngToContainerPoint([parks[park].lat, parks[park].lon]) : map.getSize().divideBy(2);
-    if (park) L.marker([parks[park].lat, parks[park].lon], { interactive: false, icon: L.divIcon({ className: "wl-park", html: '<span class="bus-mark bus-mark--sm"><i class="ad-icon ad-icon--bus"></i></span>', iconSize: [30, 30] }) }).addTo(map);
-    // линии спрятаны до своей очереди
-    paths.forEach(function (pl) { var p = pl.getElement(), len = p.getTotalLength(); p.style.strokeDasharray = len; p.style.strokeDashoffset = M.reduce ? 0 : len; pl._len = len; });
-    if (M.reduce) return;
-    el.style.opacity = 0;
-    var started = false;
-    function reveal() {
-      if (started) return; started = true;
-      el.style.opacity = "";
-      var at = Math.round(center.x) + "px " + Math.round(center.y) + "px";
-      el.animate([
-        { clipPath: "circle(0% at " + at + ")", filter: "blur(10px)", transform: "scale(1.06)", opacity: 0.3 },
-        { clipPath: "circle(140% at " + at + ")", filter: "blur(0)", transform: "scale(1)", opacity: 1 }
-      ], { duration: 1300, easing: "cubic-bezier(0.32, 0.72, 0, 1)", fill: "backwards" });
-      paths.forEach(function (pl, i) {
-        pl.getElement().animate([{ strokeDashoffset: pl._len }, { strokeDashoffset: 0 }],
-          { duration: 1400, delay: 650 + i * 90, easing: "cubic-bezier(0.65, 0, 0.35, 1)", fill: "forwards" });
-      });
-    }
-    // ждём подложку, чтобы проявлялась карта, а не серые квадраты; но не дольше секунды
-    tiles.once("load", reveal); setTimeout(reveal, 1000);
-  }
   function showWelcome() {
     $("#welcomeHello").textContent = hello();
-    M.stagger($("#scrWelcome .welcome__text").children, "up");
-    drawWelcomeArt();
   }
-  // «Начать» всегда ведёт в выбор парков
+  // После заставки открывается форма входа.
   $("#btnStart").addEventListener("click", function () {
-    go("parks");
-    M.stagger($("#parks").querySelectorAll(".kind")); M.stagger($("#parks").querySelectorAll(".pc"));
+    go("login"); $("#loginName").focus();
   });
+
+  $("#loginForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    if (!$("#loginName").value.trim() || !$("#loginPassword").value) return;
+    signedIn = true;
+    $("#loginPassword").value = "";
+    if (/^#prep\//.test(entryHash)) {
+      history.replaceState(null, "", entryHash);
+      entryHash = "";
+      route();
+    } else { go("dashboard"); loadDashboard(); }
+  });
+  $("#btnLogout").addEventListener("click", function () {
+    confirmLeave().then(function (ok) {
+      if (!ok) return;
+      signedIn = false; P.calculated = false;
+      $("#loginName").value = ""; $("#loginPassword").value = "";
+      go("welcome"); showWelcome();
+    });
+  });
+  $("#btnNewDay").addEventListener("click", function () { go("parks"); });
+
+  var dashboardDays = [], dashboardSelected = null;
+  function dateLabel(s) {
+    var d = new Date(s + "T12:00:00");
+    return isNaN(d.getTime()) ? s : new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric" }).format(d);
+  }
+  function stat(value, label) { return '<div class="dashboard__stat"><b>' + value + '</b><span>' + label + "</span></div>"; }
+  function loadDashboard() {
+    $("#dashboardDays").innerHTML = '<p class="muted">Загружаю историю…</p>';
+    return D.api("GET", "/api/days").then(function (r) {
+      if (current !== "dashboard") return;
+      dashboardDays = (r.days || []).slice().sort(function (a, b) { return b.date.localeCompare(a.date) || b.day_id.localeCompare(a.day_id, undefined, { numeric: true }); });
+      var done = dashboardDays.filter(function (d) { return d.planned; });
+      $("#dashboardStats").innerHTML = stat(done.length, "дней с расчётом") + stat(done.reduce(function (n, d) { return n + d.events; }, 0), "событий") + stat(done.reduce(function (n, d) { return n + d.edits; }, 0), "ручных правок");
+      $("#dashboardDays").innerHTML = dashboardDays.length ? dashboardDays.map(function (d) {
+        return '<button class="dashboard__day' + (d.day_id === dashboardSelected ? " is-on" : "") + '" type="button" data-day="' + esc(d.day_id) + '"><b>' + esc(dateLabel(d.date)) + '</b><span>' + (d.planned ? "Расчёт выполнен" : "Без расчёта") + ' · событий: ' + d.events + ' · правок: ' + d.edits + "</span></button>";
+      }).join("") : '<p class="muted">Сохранённых дней пока нет.</p>';
+      if (dashboardDays.length) selectDashboardDay(dashboardDays.some(function (d) { return d.day_id === dashboardSelected; }) ? dashboardSelected : dashboardDays[0].day_id);
+      else $("#dashboardDetail").innerHTML = '<h2>День</h2><p class="muted">После первого расчёта здесь появится история.</p>';
+    }, function (e) { if (current === "dashboard") $("#dashboardDays").innerHTML = '<p class="err">Не удалось загрузить историю: ' + esc(e.message) + "</p>"; });
+  }
+  $("#dashboardDays").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-day]"); if (b) selectDashboardDay(b.getAttribute("data-day"));
+  });
+  function selectDashboardDay(id) {
+    var entry = dashboardDays.filter(function (d) { return d.day_id === id; })[0];
+    if (!entry) return;
+    dashboardSelected = id;
+    $("#dashboardDays").querySelectorAll("[data-day]").forEach(function (b) { b.classList.toggle("is-on", b.getAttribute("data-day") === id); });
+    var box = $("#dashboardDetail");
+    box.innerHTML = '<h2>' + esc(dateLabel(entry.date)) + '</h2><p class="muted">Загружаю данные дня…</p>';
+    var base = "/api/days/" + encodeURIComponent(id);
+    Promise.all([D.api("GET", base), entry.planned ? D.api("GET", base + "/state") : Promise.resolve(null)]).then(function (r) {
+      if (current !== "dashboard" || dashboardSelected !== id) return;
+      var day = r[0], state = r[1], logs = state ? state.log || [] : [];
+      var parks = (day.parks || []).map(function (p) { return p.name; });
+      var parkIds = (day.parks || []).map(function (p) { return p.id; });
+      return D.api("GET", "/x/marks/journal?date=" + encodeURIComponent(entry.date) + "&parks=" + parkIds.map(encodeURIComponent).join(",")).then(function (marks) {
+        return { day: day, state: state, logs: logs, parks: parks, marks: marks.journal || [] };
+      }, function () { return { day: day, state: state, logs: logs, parks: parks, marks: [] }; });
+    }).then(function (data) {
+      if (!data || current !== "dashboard" || dashboardSelected !== id) return;
+      var day = data.day, state = data.state, logs = data.logs, parks = data.parks;
+      var duties = (day.duties || []).filter(function (d) { return d.type === "line"; }).length;
+      var shifts = (day.shifts || []).length;
+      var names = {};
+      (day.drivers || []).forEach(function (d) { names[d.id] = "Водитель " + (d.full_name || d.tab_number || d.id); });
+      (day.vehicles || []).forEach(function (v) { names[v.id] = "Автобус " + (v.number || v.garage_number || v.id); });
+      (day.routes || []).forEach(function (r) { names[r.id] = "Маршрут " + (r.number || r.id); });
+      var logHtml = logs.slice().reverse().map(function (l) {
+        var title = l.title || l.type || "Событие";
+        var time = l.at || l.from || "";
+        return '<li class="dashboard__log"><time>' + esc(time) + '</time><span><b>' + esc(title) + '</b>' + (l.reason ? '<small>' + esc(l.reason) + "</small>" : "") + "</span></li>";
+      }).join("");
+      logHtml += data.marks.map(function (m) {
+        var label = names[m.id] || m.id;
+        var stateText = m.kind === "route" ? (m.value ? "работает" : "не работает") : m.kind === "veh" ? (m.value ? "исправен" : "неисправен") : (m.value ? "выходит" : "не выходит");
+        var time = new Date(m.at);
+        return '<li class="dashboard__log"><time>' + esc(isNaN(time.getTime()) ? m.at : new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" }).format(time)) + '</time><span><b>' + esc(label) + '</b><small>' + esc(stateText) + "</small></span></li>";
+      }).join("");
+      if (!logHtml) logHtml = '<li class="muted">Записей пока нет.</li>';
+      box.innerHTML = '<h2>' + esc(dateLabel(entry.date)) + '</h2><p class="muted">' + esc(parks.join(", ") || "Парк не указан") + '</p><div class="dashboard__facts">' + stat(duties, "нарядов на линии") + stat(shifts, "смен") + stat(state ? state.unfilled.length : "—", "незакрытых назначений") + '</div><h3>Журнал дня</h3><ol class="dashboard__logs">' + logHtml + "</ol>";
+    }, function (e) { if (current === "dashboard" && dashboardSelected === id) box.innerHTML = '<h2>' + esc(dateLabel(entry.date)) + '</h2><p class="err">Не удалось открыть день: ' + esc(e.message) + "</p>"; });
+  }
 
   // ---------- 1. Выбор парков ----------
   // Клик по карточке отмечает парк; можно выбрать несколько и рассчитать их одним днём.
@@ -250,6 +310,8 @@
     $("#btnGeo").href = "/routes#park=" + ids[0];
     go("prep", silent);
     $("#ready").innerHTML = ""; $("#sections").innerHTML = '<div class="lp__load"><span class="spinner"></span> Загружаю ' + (ids.length > 1 ? "реестры парков" : "реестр парка") + "…</div>";
+    $("#sections").inert = false;
+    $("#sections").firstElementChild.setAttribute("role", "status");
   }
   function ready(base, saved) {
     P.base = base;
@@ -261,7 +323,7 @@
     $("#sections").innerHTML = "";
     refresh(); renderPanel();
   }
-  function failed(e) { $("#sections").innerHTML = '<p class="err">' + esc(e.message) + "</p>"; }
+  function failed(e) { $("#sections").innerHTML = '<p class="err" role="alert">' + esc(e.message) + "</p>"; }
   function merge(days) {
     var out = JSON.parse(JSON.stringify(days[0]));
     days.slice(1).forEach(function (d) {
@@ -361,7 +423,7 @@
     };
     if (!$("#ready").childElementCount) {
       $("#ready").innerHTML = CARDS.map(function (k) {
-        return '<button type="button" class="rc-card" role="tab" data-card="' + k[0] + '" aria-selected="false"><span class="rc-card__head"><span class="rc-card__ic"><i class="ad-icon ad-icon--' + k[1] + '"></i></span>' +
+        return '<button type="button" class="rc-card" data-card="' + k[0] + '" aria-expanded="false" aria-controls="sections"><span class="rc-card__head"><span class="rc-card__ic"><i class="ad-icon ad-icon--' + k[1] + '"></i></span>' +
           '<span class="rc-card__l">' + k[2] + '</span><i class="ad-icon ad-icon--caret-down ad-icon--sm rc-card__car"></i></span><span class="rc-card__stats"></span></button>';
       }).join("");
       M.stagger($("#ready").children);
@@ -372,7 +434,7 @@
     CARDS.forEach(function (k) {
       var el = $('[data-card="' + k[0] + '"]'), bad = stats[k[0]].some(function (x) { return x[2] === "bad"; });
       el.className = "rc-card" + (bad ? " rc-card--bad" : "") + (P.tab === k[0] ? " is-on" : "");
-      el.setAttribute("aria-selected", String(P.tab === k[0]));
+      el.setAttribute("aria-expanded", String(P.tab === k[0]));
       el.querySelector(".rc-card__stats").innerHTML = stats[k[0]].map(function (x) {
         return '<span class="rc-st' + (x[2] ? " rc-st--" + x[2] : "") + '"><b>' + esc(typeof x[1] === "number" ? D.num(x[1]) : x[1]) + "</b><span>" + esc(x[0]) + "</span></span>";
       }).join("");
@@ -388,6 +450,7 @@
   function renderPanel() {
     var el = $("#sections"), wasOpen = el.classList.contains("is-open");
     refresh();
+    el.inert = !P.tab;
     if (!P.tab) {
       // закрытие: панель уходит вверх и гаснет, потом очищается
       if (!wasOpen) { el.innerHTML = ""; el.className = "list-panel"; return; }
@@ -408,7 +471,7 @@
     var dutiesToday = P.base.duties.filter(function (d) { return d.route_id === r.id; });
     return { g: g, duties: dutiesToday.length, shifts: P.base.shifts.filter(function (s) { return dutiesToday.some(function (d) { return d.id === s.duty_id; }); }).length };
   }
-  function chip(r, g) { return '<span class="num" style="background:' + (g ? g.color : "var(--accent-deep)") + '">' + esc(r.number) + "</span>"; }
+  function chip(r, g) { return '<span class="num" style="background:' + D.routeBadgeColor(g && g.color) + '">' + esc(r.number) + "</span>"; }
 
   // Маршруты: переключатель в каждой строке (клик по строке - тоже), общий переключатель в заголовке:
   // все включены -> выключает все, иначе включает все.

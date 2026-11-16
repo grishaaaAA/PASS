@@ -12,8 +12,7 @@ body { display: flex; flex-direction: column; background: var(--bg); }
 .top { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap;
   padding: var(--space-2) var(--space-6); background: var(--surface); border-bottom: 1px solid var(--border); }
 .top__logo { height: 28px; width: auto; display: block; }
-.top__title { font: var(--text-title); color: var(--ink-muted); padding-left: var(--space-4); border-left: 1px solid var(--border); }
-@media (max-width: 1500px) { .top__title { display: none; } }
+.top__title { font: var(--text-title); color: var(--ink); margin: 0; }
 .top__controls { margin-left: auto; display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 .inline { display: flex; align-items: center; gap: var(--space-2); }
 .top .ad-input { width: auto; }
@@ -69,6 +68,7 @@ input[type="checkbox"] { width: 20px; height: 20px; margin: 0; accent-color: var
 .issues p { margin: 0; }
 .issues details summary { cursor: pointer; font: var(--text-label); color: var(--accent-text); margin-top: var(--space-2); }
 .issues details ul { font: var(--text-caption); color: var(--ink); max-width: 110ch; }
+.parks .ad-table-wrap:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: -3px; }
 
 /* Узкие ноутбуки: меньше полей по краям, чтобы таблица помещалась без прокрутки вбок */
 @media (max-width: 1320px) {
@@ -83,4 +83,10 @@ input[type="checkbox"] { width: 20px; height: 20px; margin: 0; accent-color: var
 .fatal p { margin: var(--space-2) 0 0; font: var(--text-body); }
 .fatal code { font: 500 16px/24px var(--font-sans); background: var(--surface); color: var(--ink); padding: 0 var(--space-2); border-radius: var(--radius-sm); }
 .name strong { overflow: hidden; text-overflow: ellipsis; }
-@media (max-width: 600px) { .stats { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 600px) {
+  .stats { grid-template-columns: minmax(0, 1fr); }
+  .stat { grid-template-columns: minmax(0, 1fr); grid-template-areas: "label" "value" "sub"; }
+  .stat__sub { text-align: left; white-space: normal; }
+  .top__controls { margin-left: 0; }
+  .inline { flex-wrap: wrap; }
+}

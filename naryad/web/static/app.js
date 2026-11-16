@@ -180,6 +180,7 @@
       put("status", p.issues.length ? badge("warning", "Нехватка") : badge("success", "В норме"));
     });
     renderIssues();
+    window.Motion.swap($("sBus").closest(".stats"));
   }
 
   function renderIssues() {
@@ -232,6 +233,7 @@
     var request = collect(), btn = $("run");
     showError("");
     btn.disabled = true;
+    table.setAttribute("aria-busy", "true");
     btn.querySelector("span").textContent = "Генерируем…";
     API.generate(request)
       .then(function (body) {
@@ -241,7 +243,7 @@
         markStale();
       })
       .catch(function (err) { showError(err.message === "Failed to fetch" ? "сервер генератора не запущен" : err.message); })
-      .then(function () { btn.disabled = false; btn.querySelector("span").textContent = "Сгенерировать"; });
+      .then(function () { table.removeAttribute("aria-busy"); btn.disabled = false; btn.querySelector("span").textContent = "Сгенерировать"; });
   });
 
   function download(format, btn) {
