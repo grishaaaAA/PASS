@@ -124,23 +124,25 @@
 <main class="scr" id="scrCreate" aria-labelledby="createTitle" hidden>
   <div class="scr__in dashboard">
     <h1 class="scr__h" id="createTitle">Создание</h1>
-    <section class="dashboard-panel dashboard-create">
-      <div class="dashboard-create__visual" aria-hidden="true"><span></span><i></i><b></b></div>
-      <div class="dashboard-panel__head">
-        <div><h2>Создание расчёта</h2><p class="muted">Сформируйте план выпуска на рабочий день с учётом доступных автобусов, водителей и маршрутов.</p></div>
-        <button class="ad-btn ad-btn--primary ad-btn--lg" id="btnNewDay" type="button">Создать расчёт<i class="arr"></i></button>
-      </div>
-    </section>
-    <section class="dashboard-panel">
-      <div class="dashboard-panel__head">
-        <div><h2>Редактирование существующего расчёта</h2><p class="muted">Откройте сохранённый план, чтобы изменить назначения автобусов и водителей.</p></div>
-        <button class="ad-btn ad-btn--sm btn-plain" id="btnEditDay" type="button" aria-controls="savedRuns" aria-expanded="false">Выбрать расчёт<i class="ad-icon ad-icon--caret-down ad-icon--sm" aria-hidden="true"></i></button>
-      </div>
-      <div id="savedRuns" class="saved-runs" hidden>
-        <p class="caption muted" id="savedRunsStatus" role="status"></p>
-        <div id="savedRunsList"></div>
-      </div>
-    </section>
+    <div class="dashboard-create-rows">
+      <section class="dashboard-panel dashboard-create">
+        <div class="dashboard-create__visual" aria-hidden="true"><span></span><i></i><b></b></div>
+        <div class="dashboard-panel__head">
+          <div><h2>Создание расчёта</h2><p class="muted">Сформируйте план выпуска на рабочий день с учётом доступных автобусов, водителей и маршрутов.</p></div>
+          <button class="ad-btn ad-btn--primary ad-btn--lg" id="btnNewDay" type="button">Создать расчёт<i class="arr"></i></button>
+        </div>
+      </section>
+      <section class="dashboard-panel">
+        <div class="dashboard-panel__head">
+          <div><h2>Редактирование существующего расчёта</h2><p class="muted">Откройте сохранённый план, чтобы изменить назначения автобусов и водителей.</p></div>
+          <button class="ad-btn ad-btn--sm btn-plain" id="btnEditDay" type="button" aria-controls="savedRuns" aria-expanded="false">Выбрать расчёт<i class="ad-icon ad-icon--caret-down ad-icon--sm" aria-hidden="true"></i></button>
+        </div>
+      </section>
+    </div>
+    <div id="savedRuns" class="saved-runs" hidden>
+      <p class="caption muted" id="savedRunsStatus" role="status"></p>
+      <div id="savedRunsList"></div>
+    </div>
   </div>
 </main>
 

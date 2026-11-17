@@ -393,7 +393,9 @@ main.scr.auth { display: grid; place-items: center; }
 .dashboard-panel.dashboard__layout { grid-template-columns: minmax(260px, .8fr) minmax(0, 1.2fr); }
 .dashboard-panel .dashboard__list, .dashboard-panel .dashboard__detail { box-shadow: none; padding: var(--space-4); background: var(--bg); }
 .dashboard-panel .dashboard__list h3, .dashboard-panel .dashboard__detail h3 { margin: 0 0 var(--space-4); font: var(--text-title); }
-.dashboard-create { grid-template-columns: 180px 1fr; align-items: center; min-height: 250px; overflow: hidden; }
+.dashboard-create-rows { display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-rows: 1fr; gap: var(--space-5); }
+.dashboard-create-rows > .dashboard-panel { align-items: center; }
+.dashboard-create { grid-template-columns: 180px 1fr; min-height: 250px; overflow: hidden; }
 .dashboard-create__visual { position: relative; display: grid; place-items: center; height: 180px; border-radius: var(--radius-md); background: linear-gradient(145deg, var(--accent-deep), var(--accent)); overflow: hidden; }
 .dashboard-create__visual::before, .dashboard-create__visual::after { content: ""; position: absolute; border: 1px solid rgba(255,255,255,.45); border-radius: 50%; }
 .dashboard-create__visual::before { width: 130px; height: 130px; }
