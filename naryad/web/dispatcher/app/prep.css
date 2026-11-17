@@ -354,7 +354,7 @@ main.scr.auth { display: grid; place-items: center; }
 .dashboard__log time { color: var(--ink-muted); }
 .dashboard__log span, .dashboard__log small { display: grid; gap: var(--space-1); }
 .dashboard__log small { color: var(--ink-muted); }
-.history-plan { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: var(--space-3); }
+.history-plan { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: var(--space-3); }
 .history-plan details { min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .history-plan summary { position: relative; display: grid; gap: var(--space-2); min-height: 90px; box-sizing: border-box; padding: var(--space-4) var(--space-6) var(--space-4) var(--space-4); cursor: pointer; font: var(--text-label); transition: box-shadow var(--duration-base) var(--easing-standard), transform var(--duration-fast) var(--easing-standard); }
 .history-plan summary::after { content: "+"; position: absolute; top: var(--space-4); right: var(--space-4); color: var(--accent-text); }
@@ -369,7 +369,6 @@ main.scr.auth { display: grid; place-items: center; }
 .history-plan__duties > li { display: grid; gap: var(--space-1); padding-block: var(--space-2); border-top: 1px solid var(--border); }
 .history-plan__duties ul { padding-inline-start: var(--space-5); }
 @media (max-width: 700px) { .dashboard__layout { grid-template-columns: 1fr; } .dashboard__stats, .dashboard__facts { grid-template-columns: 1fr; } .dashboard__head .ad-btn { width: 100%; justify-content: center; } }
-@media (max-width: 520px) { .history-plan { grid-template-columns: minmax(0, 1fr); } }
 
 /* Профиль в шапке */
 .profile-trigger { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 4px 8px 4px 5px; border: 1px solid transparent; border-radius: var(--radius-pill); background: none; color: var(--ink); cursor: pointer; font: var(--text-label); transition: background-color 220ms var(--easing-standard), border-color 220ms var(--easing-standard); }

@@ -629,39 +629,15 @@
     var planRequest = entry.planned ? D.api("GET", base + "/plan").catch(function () { return null; }) : Promise.resolve(null);
     Promise.all([D.api("GET", base), stateRequest, planRequest]).then(function (r) {
       if (current !== "history" || dashboardSelected !== id) return;
-      var day = r[0], state = r[1], plan = r[2], logs = state ? state.log || [] : [];
+      var day = r[0], state = r[1], plan = r[2];
       var parks = (day.parks || []).map(function (p) { return p.name; });
-      var parkIds = (day.parks || []).map(function (p) { return p.id; });
-      return D.api("GET", "/x/marks/journal?date=" + encodeURIComponent(entry.date) + "&parks=" + parkIds.map(encodeURIComponent).join(",")).then(function (marks) {
-        return { day: day, state: state, plan: plan, logs: logs, parks: parks, marks: marks.journal || [] };
-      }, function () { return { day: day, state: state, plan: plan, logs: logs, parks: parks, marks: [] }; });
-    }).then(function (data) {
-      if (!data || current !== "history" || dashboardSelected !== id) return;
-      var day = data.day, state = data.state, logs = data.logs, parks = data.parks;
       var duties = (day.duties || []).filter(function (d) { return d.type === "line"; }).length;
       var shifts = (day.shifts || []).length;
-      var names = {};
-      (day.drivers || []).forEach(function (d) { names[d.id] = "Водитель " + (d.full_name || d.tab_number || d.id); });
-      (day.vehicles || []).forEach(function (v) { names[v.id] = "Автобус " + (v.board_number || v.id); });
-      (day.routes || []).forEach(function (r) { names[r.id] = "Маршрут " + (r.number || r.id); });
-      var logHtml = logs.slice().reverse().map(function (l) {
-        var title = l.title || l.type || "Событие";
-        var time = l.at || l.from || "";
-        return '<li class="dashboard__log"><time>' + esc(time) + '</time><span><b>' + esc(title) + '</b>' + (l.reason ? '<small>' + esc(l.reason) + "</small>" : "") + "</span></li>";
-      }).join("");
-      logHtml += data.marks.map(function (m) {
-        var label = names[m.id] || m.id;
-        var stateText = m.kind === "route" ? (m.value ? "работает" : "не работает") : m.kind === "veh" ? (m.value ? "исправен" : "неисправен") : (m.value ? "выходит" : "не выходит");
-        var time = new Date(m.at);
-        return '<li class="dashboard__log"><time>' + esc(isNaN(time.getTime()) ? m.at : new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" }).format(time)) + '</time><span><b>' + esc(label) + '</b><small>' + esc(stateText) + "</small></span></li>";
-      }).join("");
-      if (!logHtml) logHtml = '<li class="muted">Записей пока нет.</li>';
-      var planHtml = data.plan ? historyPlan(day, data.plan) :
+      var planHtml = plan ? historyPlan(day, plan) :
         '<p class="muted">' + (entry.planned ? "Утренний план не загрузился." : "Утренний план для этого дня не построен.") + '</p>';
       box.innerHTML = '<h2>' + esc((D.runCode(entry.run) || "Расчёт") + ' · ' + dateLabel(entry.date)) + '</h2><p class="muted">' + esc(parks.join(", ") || "Парк не указан") +
         '</p><div class="dashboard__facts">' + stat(duties, "нарядов на линии") + stat(shifts, "смен") +
-        stat(state ? state.unfilled.length : "—", "незакрытых назначений") + '</div><h3>Колонны</h3>' + planHtml +
-        '<h3>Журнал дня</h3><ol class="dashboard__logs">' + logHtml + '</ol>';
+        stat(state ? state.unfilled.length : "—", "незакрытых назначений") + '</div><h3>Колонны</h3>' + planHtml;
     }, function (e) { if (current === "history" && dashboardSelected === id) box.innerHTML = '<h2>' + esc(dateLabel(entry.date)) + '</h2><p class="err">Не удалось открыть день: ' + esc(e.message) + "</p>"; });
   }
   function historyTime(minutes) {
