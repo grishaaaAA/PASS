@@ -664,6 +664,10 @@
         '<h3>Журнал дня</h3><ol class="dashboard__logs">' + logHtml + '</ol>';
     }, function (e) { if (current === "history" && dashboardSelected === id) box.innerHTML = '<h2>' + esc(dateLabel(entry.date)) + '</h2><p class="err">Не удалось открыть день: ' + esc(e.message) + "</p>"; });
   }
+  function historyTime(minutes) {
+    var rounded = Math.round(minutes), dayOffset = Math.floor(rounded / (24 * 60));
+    return D.hm(rounded % (24 * 60)) + (dayOffset ? ' (+' + dayOffset + ' ' + D.plural(dayOffset, "день", "дня", "дней") + ')' : '');
+  }
   function historyPlan(day, envelope) {
     var m = D.build(day, envelope, null, null), groups = new Map();
     var vehicles = new Map(envelope.plan.vehicle_assignments.map(function (a) { return [a.duty_id, a.vehicle_id]; }));
@@ -691,10 +695,10 @@
         var vehicle = vehicles.get(duty.id);
         var shifts = duty.shifts.map(function (shift) {
           var driver = drivers.get(shift.id);
-          return "<li>Смена " + esc(shift.order) + " · " + D.hm(shift.start) + "–" + D.hm(shift.end) + " · " +
+          return "<li>Смена " + esc(shift.order) + " · " + historyTime(shift.start) + "–" + historyTime(shift.end) + " · " +
             (driver ? esc(D.driverName(m, driver)) : "Без водителя") + "</li>";
         }).join("");
-        return '<li><b>Наряд ' + esc(D.dutyNo(m, duty)) + ' · ' + D.hm(duty.start) + '–' + D.hm(duty.end) +
+        return '<li><b>Наряд ' + esc(D.dutyNo(m, duty)) + ' · ' + historyTime(duty.start) + '–' + historyTime(duty.end) +
           '</b><span>' + (vehicle ? "Автобус " + esc(D.vehicleName(m, vehicle)) : "Без автобуса") + (m.routes[duty.route] ? ' · маршрут ' + esc(m.routes[duty.route].number) : '') + '</span>' +
           (shifts ? "<ul>" + shifts + "</ul>" : "") + "</li>";
       }).join("");
