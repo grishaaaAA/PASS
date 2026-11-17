@@ -8,12 +8,154 @@
 (function () {
   "use strict";
   var D = window.Disp, $ = D.$, esc = D.esc, toast = D.events.toast;
-  var M = window.Motion;
+  var M = window.Motion, Ops = window.Operations;
   var signedIn = false;
   var entryHash = location.hash;
   // file - название реестра, загруженного файлом (иначе null: реестр парка с сервера), fileParks - его парки
   var P = { parks: [], sel: [], ids: [], park: null, date: null, base: null, file: null, fileParks: {}, ov: null, open: {}, tab: null, filter: { veh: "all", drv: "all" }, st: null, saved: null,
     sort: { veh: { key: "route", dir: 1 }, drv: { key: "name", dir: 1 } }, q: { veh: "", drv: "" } };
+
+  var aiButton = $("#btnAi"), aiChat = $("#aiChat"), aiInput = $("#aiChatInput"), aiMessages = $("#aiChatMessages");
+  var aiForm = $("#aiChatForm"), aiSend = $("#btnAiSend");
+  var aiDate = new Intl.DateTimeFormat("ru", { day: "numeric", month: "long" });
+  var aiTime = new Intl.DateTimeFormat("ru", { hour: "2-digit", minute: "2-digit" });
+  function closeAiChat(restoreFocus) {
+    if (!aiChat.open) return;
+    aiChat.close();
+    aiButton.setAttribute("aria-expanded", "false");
+    if (restoreFocus) aiButton.focus();
+  }
+  aiButton.addEventListener("click", function () {
+    if (aiChat.open) { closeAiChat(true); return; }
+    aiChat.show();
+    aiButton.setAttribute("aria-expanded", "true");
+    if (!aiMessages.firstChild) appendAiMessage("Здравствуйте! Подскажу, как начать расчёт, открыть историю или выбрать парк на карте.", false);
+    M.enter(aiChat, "fade");
+    if (window.matchMedia("(pointer: fine)").matches) aiInput.focus();
+    else $("#btnAiClose").focus();
+  });
+  $("#btnAiClose").addEventListener("click", function () { closeAiChat(true); });
+  aiChat.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    e.stopPropagation();
+    closeAiChat(true);
+  });
+  function appendAiMessage(text, fromUser) {
+    var now = new Date(), day = now.toDateString();
+    if (aiMessages.dataset.day !== day) {
+      var divider = document.createElement("p");
+      divider.className = "ai-chat__date";
+      divider.textContent = aiDate.format(now);
+      aiMessages.appendChild(divider);
+      aiMessages.dataset.day = day;
+    }
+    var bubble = document.createElement("div");
+    bubble.className = "ai-chat__message" + (fromUser ? " ai-chat__message--user" : "");
+    var message = document.createElement("p"), meta = document.createElement("div"), time = document.createElement("time");
+    message.textContent = text;
+    meta.className = "ai-chat__meta";
+    time.dateTime = now.toISOString();
+    time.textContent = aiTime.format(now);
+    meta.appendChild(time);
+    if (fromUser) {
+      var status = document.createElement("span");
+      status.className = "ad-icon ad-icon--check";
+      status.setAttribute("role", "img");
+      status.setAttribute("aria-label", "Отправлено");
+      status.title = "Отправлено";
+      meta.appendChild(status);
+    }
+    bubble.append(message, meta);
+    aiMessages.appendChild(bubble);
+    aiMessages.scrollTop = aiMessages.scrollHeight;
+  }
+  function aiHelp(message) {
+    if (/истори|прошл|журнал/.test(message)) return "Откройте «История» в верхнем меню и выберите рабочий день. События внутри расчёта собраны на вкладке «Журнал».";
+    if (/карт|маршрут/.test(message)) return "На карте расчёта откройте список «Все парки» и выберите нужный парк. Нажмите на линию маршрута, чтобы открыть его карточку.";
+    if (/расч[её]т|созда|новый день|подготов/.test(message)) return "Откройте «Создание» и нажмите «Создать расчёт». Выберите парк, проверьте дату, автобусы и водителей, затем нажмите «Рассчитать».";
+    return "Пока я отвечаю на вопросы о работе в AUTODISP. Спросите, как открыть историю расчётов, создать рабочий день или выбрать парк на карте.";
+  }
+  aiInput.addEventListener("input", function () { aiSend.disabled = !aiInput.value.trim(); });
+  aiInput.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
+    e.preventDefault();
+    if (!aiSend.disabled) aiForm.requestSubmit();
+  });
+  aiForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var message = aiInput.value.trim();
+    if (!message) return;
+    appendAiMessage(message, true);
+    appendAiMessage(aiHelp(message.toLocaleLowerCase("ru")), false);
+    aiInput.value = "";
+    aiSend.disabled = true;
+    aiInput.focus();
+  });
+
+  // Профиль и настройки: локальная оболочка интерфейса, готовая для подключения
+  // серверной авторизации и интеграционного API на следующем этапе.
+  var profileButton = $("#btnProfile"), profileMenu = $("#profileMenu"), settingsDialog = $("#settingsDialog");
+  function profileData() {
+    var data = {}; try { data = JSON.parse(localStorage.getItem("autodisp.profile") || "{}") || {}; } catch (e) { data = {}; }
+    return data;
+  }
+  function paintAvatar(el, image) {
+    el.style.backgroundImage = image ? 'url("' + image + '")' : "";
+    el.classList.toggle("has-image", !!image);
+  }
+  function renderProfile() {
+    var p = profileData(), name = p.name || $("#loginName").value.trim() || "Профиль";
+    $("#profileName").textContent = name;
+    $("#profileMenuName").textContent = name;
+    paintAvatar($("#profileAvatar"), p.avatar);
+    paintAvatar($("#profileMenuAvatar"), p.avatar);
+    paintAvatar($("#settingsAvatar"), p.avatar);
+    $("#profileNameInput").value = name === "Профиль" ? "" : name;
+  }
+  function closeProfile() { profileMenu.hidden = true; profileButton.setAttribute("aria-expanded", "false"); }
+  function openSettings() {
+    closeProfile(); renderProfile(); settingsDialog.hidden = false; $("#settingsTitle").focus({ preventScroll: true });
+  }
+  function closeSettings() { settingsDialog.hidden = true; profileButton.focus({ preventScroll: true }); }
+  profileButton.addEventListener("click", function () {
+    var open = profileMenu.hidden; profileMenu.hidden = !open; profileButton.setAttribute("aria-expanded", String(open));
+  });
+  $("#btnSettings").addEventListener("click", openSettings);
+  $("#btnSettingsClose").addEventListener("click", closeSettings);
+  settingsDialog.addEventListener("click", function (e) { if (e.target.hasAttribute("data-settings-close")) closeSettings(); });
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    if (!settingsDialog.hidden) closeSettings();
+    else if (!profileMenu.hidden) { closeProfile(); profileButton.focus(); }
+  });
+  document.addEventListener("click", function (e) {
+    if (!profileMenu.hidden && !profileMenu.contains(e.target) && e.target !== profileButton && !profileButton.contains(e.target)) closeProfile();
+  });
+  $("#avatarInput").addEventListener("change", function () {
+    var file = this.files && this.files[0]; if (!file) return;
+    var reader = new FileReader(); reader.onload = function () { var p = profileData(); p.avatar = reader.result; localStorage.setItem("autodisp.profile", JSON.stringify(p)); renderProfile(); }; reader.readAsDataURL(file);
+  });
+  $("#btnSettingsSave").addEventListener("click", function () {
+    var p = profileData(), name = $("#profileNameInput").value.trim();
+    if (!name) return toast("Введите имя профиля", true);
+    p.name = name; try { localStorage.setItem("autodisp.profile", JSON.stringify(p)); } catch (e) { /* без памяти */ }
+    renderProfile(); $("#settingsSaved").textContent = "Профиль сохранён"; toast("Профиль сохранён");
+  });
+  $("#passwordForm").addEventListener("submit", function (e) {
+    e.preventDefault(); var a = $("#newPassword").value, b = $("#repeatPassword").value;
+    if (a.length < 6) return toast("Новый пароль должен быть не короче 6 символов", true);
+    if (a !== b) return toast("Пароли не совпадают", true);
+    this.reset(); toast("Пароль обновлён для текущей демо-сессии");
+  });
+  $("#btnOneC").addEventListener("click", function () {
+    $("#oneCStatus").textContent = "Готово к настройке"; this.textContent = "Настройка подключения"; toast("Экран подключения 1С подготовлен");
+  });
+
+  var dashboardNav = $("#dashboardNav");
+  var workspaceScreens = { stats: "#scrStats", history: "#scrHistory", create: "#scrCreate" };
+  var workspaceLinks = Array.from(dashboardNav.querySelectorAll("a"));
+  $("#btnCompareStats").addEventListener("click", function () { toast("Шаблон сравнения готов для выбора периода"); });
 
   function today() { var d = new Date(); return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
   function pad(n) { return (n < 10 ? "0" : "") + n; }
@@ -21,27 +163,74 @@
 
   // ---------- экраны и адрес ----------
   var current = null;
-  function go(name, silent) {
-    if (!signedIn && ["dashboard", "parks", "prep", "result"].indexOf(name) >= 0) name = "login";
+  var welcome = $("#scrWelcome");
+  var film = $("#welcomeFilm");
+  var welcomeDraft = new URLSearchParams(location.search).get("hero") === "draft";
+  var filmBase = welcomeDraft ? "img/welcome-bus" : "img/welcome-bus-preview";
+  var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  function syncFilm() {
+    if (current !== "welcome" || document.hidden || reduceMotion.matches) {
+      film.pause();
+      return;
+    }
+    if (!film.getAttribute("src")) film.src = filmBase + ".mp4";
+    film.play().catch(function () {});
+  }
+  document.addEventListener("visibilitychange", syncFilm);
+  reduceMotion.addEventListener("change", function () {
+    if (reduceMotion.matches) {
+      film.removeAttribute("src");
+      film.load();
+    }
+    syncFilm();
+  });
+  var resultEditId = null;
+  function go(name, silent, editId) {
+    if (!signedIn && ["stats", "history", "create", "parks", "prep", "result"].indexOf(name) >= 0) name = "login";
     var changed = current !== name; current = name;
-    $("#scrWelcome").hidden = name !== "welcome";
+    if (changed && name === "parks") {
+      P.sel = [];
+      renderParks();
+    }
+    welcome.hidden = name !== "welcome";
+    if (name === "welcome" && welcomeDraft) showWelcome();
+    syncFilm();
     $("#scrLogin").hidden = name !== "login";
-    $("#scrDashboard").hidden = name !== "dashboard";
+    resultEditId = name === "result" ? editId || null : null;
+    Object.keys(workspaceScreens).forEach(function (page) { $(workspaceScreens[page]).hidden = name !== page; });
     $("#scrParks").hidden = name !== "parks"; $("#scrPrep").hidden = name !== "prep"; $("#scrResult").hidden = name !== "result";
     document.body.classList.toggle("is-welcome", name === "welcome");
-    $("#btnLogout").hidden = !signedIn || name === "welcome" || name === "login";
+    document.body.classList.toggle("is-dashboard", !!workspaceScreens[name]);
+    dashboardNav.hidden = !workspaceScreens[name];
+    workspaceLinks.forEach(function (link) {
+      if (link.dataset.go === name) link.setAttribute("aria-current", "page");
+      else link.removeAttribute("aria-current");
+    });
+    aiButton.hidden = !signedIn || name === "welcome" || name === "login";
+    $("#barProfile").hidden = aiButton.hidden;
+    if (aiButton.hidden) {
+      closeAiChat(false);
+      aiMessages.replaceChildren();
+      delete aiMessages.dataset.day;
+      aiInput.value = "";
+      aiSend.disabled = true;
+      closeProfile();
+    }
     if (changed && name !== "welcome") {
-      var target = { login: "#loginForm", dashboard: "#scrDashboard .scr__in", parks: "#scrParks .scr__in", prep: "#scrPrep .scr__in", result: "#scrResult" }[name];
+      var target = workspaceScreens[name] || { login: "#loginForm", parks: "#scrParks .scr__in", prep: "#scrPrep .scr__in", result: "#scrResult" }[name];
       M.enter($(target), "up");
     }
     document.body.classList.toggle("is-result", name === "result");
     renderCrumbs(name);
     if (!silent) {
-      var hash = name === "welcome" ? "#" : name === "prep" || name === "result" ? "#" + name + "/" + key() : "#" + name;
+      var hash = "#" + name;
+      if (name === "welcome") hash = "#";
+      else if (resultEditId) hash = "#edit/" + encodeURIComponent(resultEditId);
+      else if (name === "prep" || name === "result") hash += "/" + key();
       if (location.hash !== hash) history.pushState(null, "", hash);
     }
     if (name === "result") window.App.resize();
-    var scr = $(name === "dashboard" ? "#scrDashboard" : name === "parks" ? "#scrParks" : name === "prep" ? "#scrPrep" : "#scrResult");
+    var scr = $(workspaceScreens[name] || (name === "parks" ? "#scrParks" : name === "prep" ? "#scrPrep" : "#scrResult"));
     if (scr && name !== "prep") scr.scrollTop = 0;
     if (changed && name !== "welcome" && name !== "result") {
       var heading = name === "login" ? $("#loginName") : $("h1", scr);
@@ -54,27 +243,31 @@
   // Крошки показывают путь от истории рабочих дней к расчёту.
   function renderCrumbs(name) {
     var no = window.App && window.App.runNo && window.App.runNo();
-    if (name === "welcome" || name === "login") { $("#crumbs").innerHTML = ""; return; }
-    var crumbs = [['<button data-go="dashboard">Рабочие дни</button>', name === "dashboard"]];
-    if (name !== "dashboard") crumbs.push(['<button data-go="parks">Выбор парков</button>', name === "parks"]);
-    if ((name === "prep" || name === "result") && P.ids.length) crumbs.push(['<button data-go="prep">Подготовка дня</button>', name === "prep"]);
-    if (name === "result") crumbs.push(["<span>Расчёт" + (no ? " № " + no : "") + "</span>", true]);
+    if (name === "welcome" || name === "login" || workspaceScreens[name]) { $("#crumbs").innerHTML = ""; return; }
+    var crumbs = [['<button data-go="create">Создание</button>', false]];
+    if (!resultEditId) crumbs.push(['<button data-go="parks">Выбор парков</button>', name === "parks"]);
+    if (!resultEditId && (name === "prep" || name === "result") && P.ids.length) crumbs.push(['<button data-go="prep">Подготовка дня</button>', name === "prep"]);
+    if (name === "result") crumbs.push(["<span>" + (resultEditId ? "Редактирование расчёта" : "Расчёт" + (no ? " № " + no : "")) + "</span>", true]);
     $("#crumbs").innerHTML = crumbs.map(function (c) { return '<span class="crumb' + (c[1] ? ' is-on" aria-current="page' : "") + '">' + c[0] + "</span>"; }).join('<span class="crumb__sep" aria-hidden="true">/</span>');
   }
   // Логотип возвращает к рабочим дням после входа.
   $("#btnHome").addEventListener("click", function () {
-    var to = signedIn ? "dashboard" : "welcome";
+    var to = signedIn ? "stats" : "welcome";
     if (to === current) return;
-    confirmLeave().then(function (ok) { if (!ok) return; go(to); if (to === "dashboard") loadDashboard(); });
+    confirmLeave().then(function (ok) { if (!ok) return; openScreen(to); });
   });
   window.addEventListener("autodisp:run", function () { if (current === "result") renderCrumbs("result"); });
   document.addEventListener("click", function (e) {
     var b = e.target.closest("[data-go]"); if (!b) return;
     var to = b.getAttribute("data-go");
-    if (["dashboard", "parks", "prep", "result", "welcome"].indexOf(to) < 0) return;
+    if (["stats", "history", "create", "parks", "prep", "result", "welcome"].indexOf(to) < 0) return;
+    if (b.tagName === "A") {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+      e.preventDefault();
+    }
     if (to === "result" && !P.calculated) return;
     if (to === current) return;
-    confirmLeave().then(function (ok) { if (ok) { go(to); if (to === "dashboard") loadDashboard(); } });
+    confirmLeave().then(function (ok) { if (ok) { openScreen(to); } });
   });
   window.addEventListener("popstate", function () {
     if (current === "prep" && pending().length && location.hash.indexOf("#prep/") !== 0) {
@@ -95,12 +288,18 @@
       if (key() === h[1] && P.base) return go(h[0] === "result" && P.calculated ? "result" : "prep", true);
       return openParks(h[1].split(","), true);
     }
-    var name = ["parks", "dashboard"].indexOf(h[0]) >= 0 ? h[0] : "dashboard";
-    go(name, true); if (name === "dashboard") loadDashboard();
+    if (h[0] === "edit" && /^day-[0-9]+$/.test(h[1])) {
+      if (current === "result" && resultEditId === h[1]) return;
+      go("create", true);
+      setSavedRunsOpen(true);
+      return editSavedDay(h[1], true);
+    }
+    var name = h[0] === "parks" || workspaceScreens[h[0]] ? h[0] : "stats";
+    openScreen(name, true);
   }
   // Каждое открытие приложения начинается с приветствия, даже если в адресе сохранён экран.
   function firstRoute() {
-    history.replaceState(null, "", location.pathname);
+    history.replaceState(null, "", location.pathname + location.search);
     go("welcome", true);
   }
 
@@ -110,11 +309,18 @@
     return h >= 5 && h < 12 ? "Доброе утро" : h >= 12 && h < 17 ? "Добрый день" : h >= 17 && h < 23 ? "Добрый вечер" : "Доброй ночи";
   }
   function showWelcome() {
-    $("#welcomeHello").textContent = hello();
+    $("#welcomeHello").textContent = "Помогаем вашему нарядчику";
   }
-  // После заставки открывается форма входа.
+  welcome.classList.add("welcome--film");
+  film.poster = filmBase + ".jpg";
+  film.hidden = false;
+  if (welcomeDraft) {
+    welcome.classList.add("welcome--draft");
+    $("#welcomeIntro").hidden = true;
+  }
+  // После приветствия открывается форма входа.
   $("#btnStart").addEventListener("click", function () {
-    go("login"); $("#loginName").focus();
+    go("login");
   });
 
   $("#loginForm").addEventListener("submit", function (e) {
@@ -122,18 +328,21 @@
     if (!$("#loginName").value.trim() || !$("#loginPassword").value) return;
     signedIn = true;
     $("#loginPassword").value = "";
-    if (/^#prep\//.test(entryHash)) {
+    renderProfile();
+    if (/^#(?:prep\/|edit\/|stats$|history$|create$)/.test(entryHash)) {
       history.replaceState(null, "", entryHash);
       entryHash = "";
       route();
-    } else { go("dashboard"); loadDashboard(); }
+    } else openScreen("stats");
   });
-  $("#btnLogout").addEventListener("click", function () {
+  $("#btnProfileLogout").addEventListener("click", function () {
+    closeProfile();
+    profileButton.focus();
     confirmLeave().then(function (ok) {
       if (!ok) return;
       signedIn = false; P.calculated = false;
       $("#loginName").value = ""; $("#loginPassword").value = "";
-      go("welcome"); showWelcome();
+      go("welcome");
     });
   });
   $("#btnNewDay").addEventListener("click", function () { go("parks"); });
@@ -144,19 +353,67 @@
     return isNaN(d.getTime()) ? s : new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric" }).format(d);
   }
   function stat(value, label) { return '<div class="dashboard__stat"><b>' + value + '</b><span>' + label + "</span></div>"; }
-  function loadDashboard() {
-    $("#dashboardDays").innerHTML = '<p class="muted">Загружаю историю…</p>';
+  function openScreen(name, silent) {
+    go(name, silent);
+    if (name === "stats" || name === "history" || (name === "create" && !$("#savedRuns").hidden)) loadDays(name);
+  }
+  function loadDays(page) {
+    if (page === "history") $("#dashboardDays").innerHTML = '<p class="muted">Загружаем историю…</p>';
+    if (page === "create") $("#savedRunsStatus").textContent = "Загружаем расчёты…";
     return D.api("GET", "/api/days").then(function (r) {
-      if (current !== "dashboard") return;
+      if (current !== page) return;
       dashboardDays = (r.days || []).slice().sort(function (a, b) { return b.date.localeCompare(a.date) || b.day_id.localeCompare(a.day_id, undefined, { numeric: true }); });
       var done = dashboardDays.filter(function (d) { return d.planned; });
-      $("#dashboardStats").innerHTML = stat(done.length, "дней с расчётом") + stat(done.reduce(function (n, d) { return n + d.events; }, 0), "событий") + stat(done.reduce(function (n, d) { return n + d.edits; }, 0), "ручных правок");
-      $("#dashboardDays").innerHTML = dashboardDays.length ? dashboardDays.map(function (d) {
-        return '<button class="dashboard__day' + (d.day_id === dashboardSelected ? " is-on" : "") + '" type="button" data-day="' + esc(d.day_id) + '"><b>' + esc(dateLabel(d.date)) + '</b><span>' + (d.planned ? "Расчёт выполнен" : "Без расчёта") + ' · событий: ' + d.events + ' · правок: ' + d.edits + "</span></button>";
-      }).join("") : '<p class="muted">Сохранённых дней пока нет.</p>';
-      if (dashboardDays.length) selectDashboardDay(dashboardDays.some(function (d) { return d.day_id === dashboardSelected; }) ? dashboardSelected : dashboardDays[0].day_id);
-      else $("#dashboardDetail").innerHTML = '<h2>День</h2><p class="muted">После первого расчёта здесь появится история.</p>';
-    }, function (e) { if (current === "dashboard") $("#dashboardDays").innerHTML = '<p class="err">Не удалось загрузить историю: ' + esc(e.message) + "</p>"; });
+      if (page === "stats") {
+        $("#dashboardStats").innerHTML = stat(done.length, "дней с расчётом") + stat(done.reduce(function (n, d) { return n + d.events; }, 0), "событий") + stat(done.reduce(function (n, d) { return n + d.edits; }, 0), "ручных правок");
+      } else if (page === "history") {
+        $("#dashboardDays").innerHTML = dashboardDays.length ? dashboardDays.map(function (d) {
+          return '<button class="dashboard__day" type="button" data-day="' + esc(d.day_id) + '"><b>' + esc(dateLabel(d.date)) + '</b><span>' + (d.planned ? "Расчёт выполнен" : "Без расчёта") + ' · событий: ' + d.events + ' · правок: ' + d.edits + "</span></button>";
+        }).join("") : '<p class="muted">Сохранённых дней пока нет.</p>';
+        if (dashboardDays.length) selectDashboardDay(dashboardDays.some(function (d) { return d.day_id === dashboardSelected; }) ? dashboardSelected : dashboardDays[0].day_id);
+        else $("#dashboardDetail").innerHTML = '<h2>День</h2><p class="muted">После первого расчёта здесь появится история.</p>';
+      } else {
+        $("#savedRunsStatus").textContent = done.length ? "" : "Сохранённых расчётов пока нет.";
+        $("#savedRunsList").innerHTML = done.map(function (d) {
+          return '<button class="dashboard__day" type="button" data-edit-day="' + esc(d.day_id) + '"><b>' + esc(dateLabel(d.date)) + '</b><span>' +
+            esc((d.parks || []).join(", ") || "Сохранённый расчёт") + ' · правок: ' + d.edits + '</span></button>';
+        }).join("");
+      }
+    }, function (e) {
+      if (current !== page) return;
+      var target = { stats: "#dashboardStats", history: "#dashboardDays", create: "#savedRunsStatus" }[page];
+      $(target).textContent = "Не удалось загрузить данные. " + e.message;
+    });
+  }
+  function setSavedRunsOpen(open) {
+    $("#btnEditDay").setAttribute("aria-expanded", String(open));
+    if (open) M.show($("#savedRuns"), "down");
+    else M.hide($("#savedRuns"), "down");
+  }
+  var editRequest = 0;
+  $("#btnEditDay").addEventListener("click", function () {
+    var open = this.getAttribute("aria-expanded") !== "true";
+    setSavedRunsOpen(open);
+    if (open) loadDays("create");
+    else editRequest++;
+  });
+  $("#savedRunsList").addEventListener("click", function (e) {
+    var button = e.target.closest("[data-edit-day]");
+    if (button) editSavedDay(button.dataset.editDay);
+  });
+  function editSavedDay(id, silent) {
+    var request = ++editRequest;
+    var hash = location.hash;
+    function stillHere() { return current === "create" && request === editRequest && location.hash === hash; }
+    $("#savedRunsStatus").textContent = "Открываем расчёт…";
+    return window.App.openSaved(id, function () {
+      if (!stillHere()) return false;
+      $("#savedRunsStatus").textContent = "";
+      P.calculated = false;
+      go("result", silent, id);
+    }).catch(function (e) {
+      if (stillHere()) $("#savedRunsStatus").textContent = "Не удалось открыть расчёт. " + e.message;
+    });
   }
   $("#dashboardDays").addEventListener("click", function (e) {
     var b = e.target.closest("[data-day]"); if (b) selectDashboardDay(b.getAttribute("data-day"));
@@ -170,7 +427,7 @@
     box.innerHTML = '<h2>' + esc(dateLabel(entry.date)) + '</h2><p class="muted">Загружаю данные дня…</p>';
     var base = "/api/days/" + encodeURIComponent(id);
     Promise.all([D.api("GET", base), entry.planned ? D.api("GET", base + "/state") : Promise.resolve(null)]).then(function (r) {
-      if (current !== "dashboard" || dashboardSelected !== id) return;
+      if (current !== "history" || dashboardSelected !== id) return;
       var day = r[0], state = r[1], logs = state ? state.log || [] : [];
       var parks = (day.parks || []).map(function (p) { return p.name; });
       var parkIds = (day.parks || []).map(function (p) { return p.id; });
@@ -178,7 +435,7 @@
         return { day: day, state: state, logs: logs, parks: parks, marks: marks.journal || [] };
       }, function () { return { day: day, state: state, logs: logs, parks: parks, marks: [] }; });
     }).then(function (data) {
-      if (!data || current !== "dashboard" || dashboardSelected !== id) return;
+      if (!data || current !== "history" || dashboardSelected !== id) return;
       var day = data.day, state = data.state, logs = data.logs, parks = data.parks;
       var duties = (day.duties || []).filter(function (d) { return d.type === "line"; }).length;
       var shifts = (day.shifts || []).length;
@@ -199,7 +456,7 @@
       }).join("");
       if (!logHtml) logHtml = '<li class="muted">Записей пока нет.</li>';
       box.innerHTML = '<h2>' + esc(dateLabel(entry.date)) + '</h2><p class="muted">' + esc(parks.join(", ") || "Парк не указан") + '</p><div class="dashboard__facts">' + stat(duties, "нарядов на линии") + stat(shifts, "смен") + stat(state ? state.unfilled.length : "—", "незакрытых назначений") + '</div><h3>Журнал дня</h3><ol class="dashboard__logs">' + logHtml + "</ol>";
-    }, function (e) { if (current === "dashboard" && dashboardSelected === id) box.innerHTML = '<h2>' + esc(dateLabel(entry.date)) + '</h2><p class="err">Не удалось открыть день: ' + esc(e.message) + "</p>"; });
+    }, function (e) { if (current === "history" && dashboardSelected === id) box.innerHTML = '<h2>' + esc(dateLabel(entry.date)) + '</h2><p class="err">Не удалось открыть день: ' + esc(e.message) + "</p>"; });
   }
 
   // ---------- 1. Выбор парков ----------
@@ -216,14 +473,6 @@
     { id: "trolley", name: "Троллейбусы", icon: '<i class="tr-ic tr-ic--trolley"></i>' },
     { id: "tram", name: "Трамваи", icon: '<i class="tr-ic tr-ic--tram"></i>' }
   ];
-  function kindOpen(id) {
-    try { var v = JSON.parse(localStorage.getItem("autodisp.kinds") || "null"); if (v) return !!v[id]; } catch (e) { /* без памяти */ }
-    return id === "bus";
-  }
-  function setKindOpen(id, on) {
-    var v = {}; try { v = JSON.parse(localStorage.getItem("autodisp.kinds") || "{}") || {}; } catch (e) { v = {}; }
-    v[id] = on; try { localStorage.setItem("autodisp.kinds", JSON.stringify(v)); } catch (e) { /* без памяти */ }
-  }
   function num(n) { return n == null ? "?" : D.num(n); }
   function parkCard(p) {
     var on = p.available, tag = on ? "button" : "div", picked = P.sel.indexOf(p.id) >= 0;
@@ -243,23 +492,24 @@
       // Вид транспорта без парков - недоступен: полупрозрачный, не раскрывается
       if (!list.length) return '<div class="kind kind--off" aria-disabled="true"><div class="kind__head">' + head + '<span class="kind__n">парки не подключены</span></div></div>';
       var count = list.length + " " + D.plural(list.length, "парк", "парка", "парков") + (avail < list.length ? ", подключено " + avail : "");
-      return '<details class="kind" data-kind="' + k.id + '"' + (kindOpen(k.id) ? " open" : "") + '><summary class="kind__head">' + head +
+      return '<details class="kind" data-kind="' + k.id + '"><summary class="kind__head">' + head +
         '<span class="kind__n">' + count + '</span><i class="ad-icon ad-icon--caret-down ad-icon--sm kind__car"></i></summary>' +
         '<div class="parks__grid">' + list.map(parkCard).join("") + "</div></details>";
     }).join("");
-    $("#parks").querySelectorAll("details.kind").forEach(function (d) {
-      d.addEventListener("toggle", function () { setKindOpen(d.getAttribute("data-kind"), d.open); });
-    });
     $("#parks").querySelectorAll("[data-park]").forEach(function (b) {
       b.addEventListener("click", function () {
         var id = b.getAttribute("data-park"), i = P.sel.indexOf(id);
         if (i >= 0) P.sel.splice(i, 1); else P.sel.push(id);
         // карточку не перерисовываем - иначе она пересоздаётся под курсором и рамка «прыгает»
-        b.classList.toggle("is-picked", i < 0); b.setAttribute("aria-checked", String(i < 0));
-        saveSel(); updatePick();
+        paintParkPick(b, i < 0);
+        updatePick();
       });
     });
     updatePick();
+  }
+  function paintParkPick(button, picked) {
+    button.classList.toggle("is-picked", picked);
+    button.setAttribute("aria-checked", String(picked));
   }
   function updatePick() {
     var ps = P.sel.map(parkById).filter(Boolean), avail = P.parks.filter(function (p) { return p.available; });
@@ -272,11 +522,11 @@
     $("#btnPickAll").hidden = ps.length === avail.length;
     $("#btnWork").disabled = !ps.length;
   }
-  function saveSel() { try { localStorage.setItem("autodisp.parks", JSON.stringify(P.sel)); } catch (e) { /* без памяти */ } }
-  function loadSel() {
-    try { var v = JSON.parse(localStorage.getItem("autodisp.parks") || "[]"); return v.filter(function (id) { var p = parkById(id); return p && p.available; }); } catch (e) { return []; }
-  }
-  $("#btnPickAll").addEventListener("click", function () { P.sel = P.parks.filter(function (p) { return p.available; }).map(function (p) { return p.id; }); saveSel(); renderParks(); });
+  $("#btnPickAll").addEventListener("click", function () {
+    P.sel = P.parks.filter(function (p) { return p.available; }).map(function (p) { return p.id; });
+    $("#parks").querySelectorAll("[data-park]").forEach(function (b) { paintParkPick(b, true); });
+    updatePick();
+  });
 
   $("#btnUpload").addEventListener("click", function () { D.upload.open(openFile); });
   $("#btnWork").addEventListener("click", function () {
@@ -305,7 +555,7 @@
     Promise.all([D.loadGeo(), D.loadMarks(P.ids, P.date)]).then(function (r) { ready(day, r[1]); }, failed);
   }
   function begin(ids, date, silent) {
-    P.ids = ids; P.date = date; P.calculated = false; P.base = null; P.tab = null;
+    P.ids = ids; P.date = date; P.calculated = false; P.base = null; P.tab = null; P.open = {};
     $("#prepTitle").innerHTML = esc(selTitle(false)) + (P.file ? ' <span class="ad-badge ad-badge--neutral prep-src" title="' + esc(P.file) + '">из файла</span>' : "");
     $("#btnGeo").href = "/routes#park=" + ids[0];
     go("prep", silent);
@@ -315,6 +565,8 @@
   }
   function ready(base, saved) {
     P.base = base;
+    P.vehById = Object.fromEntries(base.vehicles.map(function (v) { return [v.id, v]; }));
+    P.columns = Ops.groupRoutes(base.routes);
     P.st = initState();
     // отметки, сделанные в этот день раньше, - поверх реестра
     ["route", "veh", "drv"].forEach(function (k) { Object.keys(saved[k] || {}).forEach(function (id) { if (id in P.st[k]) P.st[k][id] = saved[k][id]; }); });
@@ -410,14 +662,14 @@
   }
 
   // Три карточки: маршруты, автобусы, водители. Карточка открывает список под собой.
-  var CARDS = [["routes", "path", "Маршруты"], ["veh", "bus", "Автобусы"], ["drv", "users", "Водители"]];
+  var CARDS = [["routes", "path", "Колонны"], ["veh", "bus", "Автобусы"], ["drv", "users", "Водители"]];
   function refresh() {
     if (!P.base) return;
     var c = counts();
     // Карточка: заголовок и подписанные показатели. Красным - то, чего не хватает.
     var lackText = c.lack.map(function (x) { return x[1] + " " + D.CLASSES[x[0]]; }).join(", ");
     var stats = {
-      routes: [["в работе", c.routes + " из " + P.base.routes.length], ["нарядов на линии", c.lineDuties], ["в резерве", c.res]],
+      routes: [["колонн", P.columns.filter(function (g) { return g.demo; }).length], ["маршрутов в работе", c.routes + " из " + P.base.routes.length], ["нарядов на линии", c.lineDuties]],
       veh: [["исправны", c.vehOk + " из " + c.vehAll], ["нужно на наряды", c.lineDuties + c.res], ["не хватает", c.lack.length ? lackText : 0, c.lack.length ? "bad" : ""]],
       drv: [["выходят", c.drvReady + " из " + c.drvAll], ["нужно на смены", c.shifts], ["не хватает", c.drvLack, c.drvLack ? "bad" : ""]]
     };
@@ -473,44 +725,84 @@
   }
   function chip(r, g) { return '<span class="num" style="background:' + D.routeBadgeColor(g && g.color) + '">' + esc(r.number) + "</span>"; }
 
-  // Маршруты: переключатель в каждой строке (клик по строке - тоже), общий переключатель в заголовке:
-  // все включены -> выключает все, иначе включает все.
+  // Колонна содержит несколько маршрутов. Отметка готовности остаётся у маршрута.
   function routesBody(el) {
-    el.innerHTML = '<div class="ad-table-wrap"><table class="ad-table tbl tbl--routes"><thead><tr><th><label class="sw sw--text" title="Все маршруты"><input type="checkbox" data-all-routes aria-label="Все маршруты"><span></span><em>Все</em></label></th>' +
-      "<th>Маршрут</th><th>Конечные</th><th>Важность</th><th class=\"ad-num\">Нарядов сегодня</th><th class=\"ad-num\">Смен</th><th>Класс</th></tr></thead><tbody>" +
-      P.base.routes.map(function (r) {
-        var i = routeInfo(r), on = routeOn(r);
-        return '<tr class="' + (on ? "" : "is-off") + '" data-row="' + r.id + '"><td><label class="sw"><input type="checkbox" data-route="' + r.id + '"' + (on ? " checked" : "") + ' aria-label="Маршрут ' + esc(r.number) + ' в работе"><span></span></label></td>' +
-          "<td>" + chip(r, i.g) + "</td><td>" + esc(i.g ? i.g.name : "") + "</td><td>" + D.PRIORITY[r.priority] + '</td><td class="ad-num">' + i.duties + '</td><td class="ad-num">' + i.shifts + "</td><td>" +
-          r.allowed_classes.map(function (c) { return D.CLASSES[c]; }).join(", ") + "</td></tr>";
-      }).join("") + "</tbody></table></div>";
+    var help = P.columns.some(function (g) { return g.demo; })
+      ? "Демонстрационное закрепление по направлениям парка № 7." : "Для этих маршрутов закрепление за колоннами не задано.";
+    var head = '<div class="ad-table-wrap"><table class="ad-table tbl tbl--routes"><thead><tr><th>В работе</th>' +
+      '<th>Маршрут</th><th>Конечные</th><th>Важность</th><th class="ad-num">Нарядов сегодня</th><th class="ad-num">Смен</th><th>Класс</th></tr></thead><tbody>';
+    el.innerHTML = '<div class="column-tools"><p class="muted">' + help + '</p><label class="sw sw--text"><input type="checkbox" data-all-routes aria-label="Все маршруты"><span></span><em>Все</em></label></div>' +
+      '<div class="column-groups">' + P.columns.map(function (g, index) {
+        var title = g.name + (P.ids.length > 1 ? " · " + shortName(parkById(g.park)) : "");
+        return '<details class="column-group" data-column="' + index + '"' + (P.open["column:" + g.id] ? ' open' : '') +
+          '><summary><span>' + esc(title) + '</span><span class="column-group__meta"></span></summary>' + head +
+          g.routes.map(function (r) {
+            var i = routeInfo(r), on = routeOn(r);
+            return '<tr class="' + (on ? "" : "is-off") + '"><td><label class="sw"><input type="checkbox" data-route="' + esc(r.id) +
+              '"' + (on ? " checked" : "") + ' aria-label="Маршрут ' + esc(r.number) + ' в работе"><span></span></label></td><td>' +
+              Ops.recordButton("route", r.id, r.park_id, r.number) + "</td><td>" + esc(i.g ? i.g.name : "—") +
+              "</td><td>" + D.PRIORITY[r.priority] + '</td><td class="ad-num">' + i.duties + '</td><td class="ad-num">' + i.shifts +
+              "</td><td>" + r.allowed_classes.map(function (c) { return D.CLASSES[c]; }).join(", ") + "</td></tr>";
+          }).join("") + '</tbody></table></div><details class="column-schedule"><summary>Распорядок выпуска</summary><div data-column-schedule></div></details></details>';
+      }).join("") + '</div>';
     var all = el.querySelector("[data-all-routes]");
+    var groups = Array.from(el.querySelectorAll("[data-column]")).map(function (box) {
+      var group = P.columns[Number(box.dataset.column)], ids = new Set(group.routes.map(function (r) { return r.id; }));
+      var duties = P.base.duties.filter(function (d) { return ids.has(d.route_id); });
+      var fleet = P.base.vehicles.filter(function (v) { return ids.has(v.home_route_id); });
+      var drivers = P.base.drivers.filter(function (d) {
+        var v = P.vehById[d.home_vehicle_id]; return v && ids.has(v.home_route_id);
+      });
+      box.addEventListener("toggle", function () { if (box.isConnected) P.open["column:" + group.id] = box.open; });
+      var schedule = box.querySelector(".column-schedule");
+      var data = { box: box, group: group, duties: duties, fleet: fleet, drivers: drivers, schedule: schedule };
+      schedule.addEventListener("toggle", function () { if (schedule.open) paintSchedule(data); });
+      return data;
+    });
+    function paintSchedule(data) {
+      var slots = data.duties.filter(function (d) { return P.st.route[d.route_id]; }).sort(function (a, b) {
+        return a.start.localeCompare(b.start) || a.id.localeCompare(b.id);
+      });
+      var box = data.schedule.querySelector("[data-column-schedule]");
+      if (!slots.length) { box.innerHTML = '<p class="muted">Нет нарядов на включённых маршрутах.</p>'; return; }
+      var byId = new Map(data.group.routes.map(function (r) { return [r.id, r]; }));
+      box.innerHTML = '<div class="ad-table-wrap"><table class="ad-table tbl"><thead><tr><th>На линии</th><th>Маршрут</th><th>Наряд</th><th>Класс</th><th>Смен</th></tr></thead><tbody>' +
+        slots.map(function (d) {
+          var r = byId.get(d.route_id);
+          return "<tr><td>" + esc(d.start) + "–" + esc(d.end) + "</td><td>" +
+            Ops.recordButton("route", r.id, r.park_id, r.number) + "</td><td>" + esc(d.id) +
+            "</td><td>" + esc(D.CLASSES[d.vehicle_class] || d.vehicle_class) + "</td><td>" + d.shift_count + "</td></tr>";
+        }).join("") + "</tbody></table></div>";
+    }
     function syncAll() {
       var ids = Object.keys(P.st.route), on = ids.filter(function (k) { return P.st.route[k]; }).length;
-      all.checked = on === ids.length; all.indeterminate = on > 0 && on < ids.length;
+      all.checked = ids.length > 0 && on === ids.length;
+      all.disabled = !ids.length;
+      all.indeterminate = on > 0 && on < ids.length;
       all.parentNode.querySelector("em").textContent = on === ids.length ? "Все" : on ? on + " из " + ids.length : "Нет";
+      groups.forEach(function (v) {
+        var active = v.group.routes.filter(routeOn).length;
+        v.box.querySelector(".column-group__meta").textContent = active + " из " + v.group.routes.length + " в работе · " +
+          v.duties.filter(function (d) { return P.st.route[d.route_id]; }).length + " нарядов · " +
+          v.fleet.length + " " + D.plural(v.fleet.length, "автобус", "автобуса", "автобусов") + " и " +
+          v.drivers.length + " " + D.plural(v.drivers.length, "водитель", "водителя", "водителей") + " закреплено";
+        if (v.schedule.open) paintSchedule(v);
+      });
+      refresh();
     }
-    function setRow(cb) {
-      var id = cb.getAttribute("data-route");
-      mark("route", [id], cb.checked);
-      cb.closest("tr").classList.toggle("is-off", !cb.checked);
-      syncAll(); refresh();
-    }
-    el.querySelectorAll("[data-route]").forEach(function (cb) { cb.addEventListener("change", function () { setRow(cb); }); });
-    // клик по строке = переключить маршрут; выделять строку незачем
-    el.querySelectorAll("tr[data-row]").forEach(function (tr) {
-      tr.addEventListener("click", function (e) {
-        e.stopPropagation();  // иначе общий обработчик таблиц дизайн-системы «выделяет» строку
-        if (e.target.closest("label, input")) return;
-        var cb = tr.querySelector("[data-route]"); cb.checked = !cb.checked; setRow(cb);
+    el.querySelectorAll("[data-route]").forEach(function (cb) {
+      cb.addEventListener("change", function () {
+        mark("route", [cb.getAttribute("data-route")], cb.checked);
+        cb.closest("tr").classList.toggle("is-off", !cb.checked);
+        syncAll();
       });
     });
     all.addEventListener("change", function () {
-      var ids = Object.keys(P.st.route), allOn = ids.every(function (k) { return P.st.route[k]; });
-      var target = !allOn, change = ids.filter(function (k) { return P.st.route[k] !== target; });
+      var target = all.checked;
+      var change = Object.keys(P.st.route).filter(function (k) { return P.st.route[k] !== target; });
       if (change.length) mark("route", change, target);
       el.querySelectorAll("[data-route]").forEach(function (cb) { cb.checked = target; cb.closest("tr").classList.toggle("is-off", !target); });
-      syncAll(); refresh();
+      syncAll();
     });
     syncAll();
   }
@@ -658,7 +950,7 @@
   function vehCols() {
     var c = [
       { key: "park", title: "Парк", cell: function (v) { return parkNum(v.park_id); }, sort: function (v) { return v.park_id; } },
-      { key: "board", title: "Борт", cell: function (v) { return "<b>" + esc(v.board_number) + "</b>"; }, sort: function (v) { return +v.board_number || v.board_number; } },
+      { key: "board", title: "Борт", cell: function (v) { return Ops.recordButton("veh", v.id, v.park_id, v.board_number); }, sort: function (v) { return +v.board_number || v.board_number; } },
       { key: "route", title: "Маршрут", flatOnly: true, cell: function (v) { return routeCell(v.home_route_id); }, sort: function (v) { return routeSortKey(v.home_route_id); } },
       { key: "plate", title: "Госномер", cell: function (v) { return esc(v.plate); }, sort: function (v) { return v.plate; } },
       { key: "model", title: "Модель", cell: function (v) { return '<span class="muted">' + esc(v.model) + "</span>"; }, sort: function (v) { return v.model; } },
@@ -688,11 +980,11 @@
     var c = [
       { key: "park", title: "Парк", cell: function (d) { return parkNum(d.park_id); }, sort: function (d) { return d.park_id; } },
       { key: "tab", title: "Таб. №", cell: function (d) { return esc(d.tab_number); }, sort: function (d) { return d.tab_number; } },
-      { key: "name", title: "Водитель", cell: function (d) { return "<b>" + esc(d.full_name) + "</b>"; }, sort: function (d) { return d.full_name; } },
+      { key: "name", title: "Водитель", cell: function (d) { return Ops.recordButton("drv", d.id, d.park_id, d.full_name); }, sort: function (d) { return d.full_name; } },
       { key: "route", title: "Маршрут", flatOnly: true, cell: function (d) { return routeCell(drvRoute(d)); }, sort: function (d) { return routeSortKey(drvRoute(d)); } },
       { key: "class", title: "Допуск", cell: function (d) { return d.classes.filter(function (c) { return c !== "medium"; }).map(function (c) { return D.CLASSES[c]; }).join(", "); },
         sort: function (d) { return d.classes.length; } },
-      { key: "bus", title: "Автобус", cell: function (d) { var v = d.home_vehicle_id && P.vehById[d.home_vehicle_id]; return v ? esc(v.board_number) : '<span class="muted">-</span>'; },
+      { key: "bus", title: "Закреплённый автобус", cell: function (d) { var v = d.home_vehicle_id && P.vehById[d.home_vehicle_id]; return v ? Ops.recordButton("veh", v.id, v.park_id, v.board_number) : '<span class="muted">—</span>'; },
         sort: function (d) { var v = d.home_vehicle_id && P.vehById[d.home_vehicle_id]; return v ? +v.board_number : 99999; } },
       { key: "state", title: "Сегодня", cell: function (d) { return toggle("drv", d.id, drvGoes(d), "Выходит", "Не выходит"); }, sort: function (d) { return drvGoes(d) ? 0 : 1; } }
     ];
@@ -709,7 +1001,6 @@
     rows: function (box, items, flat) { renderTable(box, "drv", drvCols(), items, flat); }
   };
   function drvBody(el) {
-    P.vehById = {}; P.base.vehicles.forEach(function (v) { P.vehById[v.id] = v; });
     listBody(el, "drv", DRV);
   }
 
@@ -786,13 +1077,12 @@
       var sp = $("#splash"); sp.classList.add("is-done"); setTimeout(function () { sp.remove(); }, 400);
       // вход: группы и карточки появляются каскадом, когда заставка уходит
       if (current === "parks") { M.stagger($("#parks").querySelectorAll(".kind")); M.stagger($("#parks").querySelectorAll(".pc")); }
-      if (current === "welcome") showWelcome();
     }, Math.max(0, 500 - (Date.now() - started)));
   }
   Promise.all([D.loadParks(), D.loadGeo()]).then(function (r) { var list = r[0];
     // доступные парки - первыми
     P.parks = list.slice().sort(function (a, b) { return (b.available ? 1 : 0) - (a.available ? 1 : 0); });
-    P.sel = loadSel(); renderParks();
+    renderParks();
     firstRoute(); hideSplash();
   }, function (e) { $("#parks").innerHTML = '<p class="err">' + esc(e.message) + "</p>"; hideSplash(); });
 })();

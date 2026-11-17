@@ -1,8 +1,9 @@
 /* Экран расчёта: сводка, проблемы, карта, наряды маршрута, события. День приходит с экрана подготовки (prep.js). */
 (function () {
   "use strict";
-  var D = window.Disp, $ = D.$, esc = D.esc, M = window.Motion;
+  var D = window.Disp, $ = D.$, esc = D.esc, M = window.Motion, Ops = window.Operations;
   var S = { info: null, day: null, plan: null, m: null, map: null, tab: "routes", route: null, duty: null, park: null, probsOpen: false };
+  var mapPark = $("#mapPark"), parkFilter = null, openColumns = new Set();
   // Фото парков для карточки (откуда взяты - app/img/CREDITS.md)
   var PARK_PHOTOS = {
     P07: { src: "img/park-P07.jpg" }
@@ -19,28 +20,42 @@
   // Отдаёт обещание: день проверен, план построен, экран расчёта открыт.
   function run(day, onShown) {
     return D.submitDay(day).then(function (r) {
-      S.info = r.info; S.day = day; S.route = null; S.duty = null; S.park = null;
-      return D.calculate(S.info.day_id);
-    }).then(function (r) {
-      S.plan = r.plan;
-      onShown && onShown();  // экран расчёта видим - теперь карта узнает свой размер
-      $("#drawer").hidden = true; $("#scrResult").classList.remove("is-split");
-      S.run = r.plan.run || null;
-      S.m = D.build(S.day, S.plan, r.state, r.intervals);
-      var handlers = { onPark: openPark, onRoute: routeCard, parkTip: parkTip };
-      if (window.L) {
-        if (!S.map) S.map = D.parkMap($("#map"), S.m, handlers);
-        else { S.map.resize(); S.map.refit(); S.map.redraw(S.m, handlers); }
-        S.map.selectRoute(null);
-      }
-      $("#mapFallback").hidden = !!S.map;
-      setTab("routes");
-      S.probsOpen = false;  // окно проблем по умолчанию свёрнуто - открывается по заголовку или строке состояния
-      renderSummary(); renderProbs(); show("paneResult");
-      $("#resTitle").focus({ preventScroll: true });
+      return D.calculate(r.info.day_id).then(function (result) { showResult(day, r.info, result, false, onShown); });
     });
   }
-  window.App = { run: run, resize: function () { S.map && S.map.resize(); }, runNo: function () { return S.run ? S.run.id : null; } };
+  function openSaved(id, onShown) {
+    var base = "/api/days/" + encodeURIComponent(id);
+    return Promise.all([D.api("GET", base), D.api("GET", base + "/plan"), D.api("GET", base + "/state"), D.intervals(id), D.loadGeo()])
+      .then(function (r) {
+        if (onShown() === false) return;
+        showResult(r[0], { day_id: id }, { plan: r[1], state: r[2], intervals: r[3] }, true);
+      });
+  }
+  function showResult(day, info, r, editing, onShown) {
+    S.info = info; S.day = day; S.route = null; S.duty = null; S.park = null; S.editing = editing;
+    S.plan = r.plan;
+    S.run = r.plan.run || null;
+    onShown && onShown();  // экран расчёта видим - теперь карта узнает свой размер
+    $("#btnResultPrep").hidden = editing;
+    $("#btnResultCreate").hidden = !editing;
+    $("#drawer").hidden = true; $("#scrResult").classList.remove("is-split");
+    S.m = D.build(S.day, S.plan, r.state, r.intervals);
+    parkFilter = null;
+    openColumns.clear();
+    $("#mapScope").hidden = !window.L;
+    renderMapScope();
+    var handlers = { onPark: openPark, onRoute: routeCard, parkTip: parkTip };
+    if (window.L) {
+      if (!S.map) S.map = D.parkMap($("#map"), S.m, handlers);
+      else { S.map.resize(); S.map.closePopup(); S.map.redraw(S.m, handlers); S.map.setPark(null, true); }
+    }
+    $("#mapFallback").hidden = !!S.map;
+    setTab("routes");
+    S.probsOpen = false;  // окно проблем по умолчанию свёрнуто - открывается по заголовку или строке состояния
+    renderSummary(); renderProbs(); show("paneResult");
+    $("#resTitle").focus({ preventScroll: true });
+  }
+  window.App = { run: run, openSaved: openSaved, resize: function () { S.map && S.map.resize(); }, runNo: function () { return S.run ? S.run.id : null; } };
 
   // Состояние после события: интервалы пересчитывает движок, поэтому сначала спросить их
   function apply(state) {
@@ -60,6 +75,36 @@
     if (row) { row.classList.add("is-selected"); dutyClick(duty, S.dutyT); }
   }
 
+  function renderMapScope() {
+    var m = S.m;
+    var counts = {};
+    var total = 0;
+    m.routeList.forEach(function (route) {
+      if (!route.geo || !route.geo.directions.some(function (d) { return d.line.length > 1; })) return;
+      counts[route.park] = (counts[route.park] || 0) + 1;
+      total++;
+    });
+    mapPark.replaceChildren(new Option("Все парки (" + total + ")", ""));
+    m.parkList.slice().sort(function (a, b) { return collate(a.name, b.name); }).forEach(function (park) {
+      mapPark.add(new Option(park.name + " (" + (counts[park.id] || 0) + ")", park.id));
+    });
+    mapPark.value = parkFilter || "";
+    var count = parkFilter ? counts[parkFilter] || 0 : total;
+    $("#mapScopeStatus").textContent = count ? "" : "Нет схем маршрутов";
+  }
+  function setMapPark(id, fit) {
+    parkFilter = id;
+    S.map.closePopup();
+    S.map.setPark(id, fit);
+    renderMapScope();
+    renderList();
+  }
+  mapPark.addEventListener("change", function () {
+    setMapPark(mapPark.value || null, $("#drawer").hidden);
+    if (!$("#drawer").hidden) closePanel();
+    show("paneResult");
+  });
+
   // ---------- Левое меню: парк и состояние, показатели, списки ----------
   function problems() {
     var m = S.m;
@@ -75,7 +120,8 @@
     var m = S.m, t = m.totals, pr = problems();
     // Заголовок - номер расчёта из журнала расчётов; ниже - парки расчёта с адресами
     var d = (S.run && S.run.day || m.meta.date).split("-");
-    $("#resTitle").innerHTML = "Расчёт" + (S.run ? " № " + S.run.id : "") + ' <small>' + (+d[2]) + " " + MONTHS[+d[1] - 1] + "</small>";
+    $("#resTitle").innerHTML = (S.editing ? "Редактирование расчёта" : "Расчёт" + (S.run ? " № " + S.run.id : "")) +
+      ' <small>' + (+d[2]) + " " + MONTHS[+d[1] - 1] + "</small>";
     $("#resParks").innerHTML = m.parkList.map(function (p) {
       var label = "<b>" + esc(p.name) + "</b><span>" + esc(p.address || "") + "</span>";
       return S.map && p.coords ? '<button type="button" class="res-park" data-park="' + p.id + '">' + label + "</button>" : '<div class="res-park-label">' + label + "</div>";
@@ -138,11 +184,23 @@
 
   function renderList() {
     var m = S.m, el = $("#list"), html = "";
-    var routes = m.routeList.slice();
+    var routes = m.routeList.filter(function (r) { return !parkFilter || r.park === parkFilter; });
     if (S.tab === "routes") {
       routes.sort(function (a, b) { return b.unfilled - a.unfilled || a.priority - b.priority || collate(a.number, b.number); });
-      html = '<div class="rows-head"><span>Маршрут</span><span>Наряды</span><span>Интервал, худший</span><span></span></div>' +
-        routes.map(function (r) { return routeItem(r, "<b>" + r.filled + "</b> / " + r.total, r.unfilled ? "bad" : "ok", D.worstShort(r.worst)); }).join("");
+      var groups = Ops.groupRoutes(routes);
+      html = (groups.some(function (g) { return g.demo; }) ? '<p class="result-column-note muted">Демонстрационные колонны парка № 7</p>' : '') +
+        '<div class="column-groups">' + groups.map(function (g) {
+          var filled = g.routes.reduce(function (n, r) { return n + r.filled; }, 0);
+          var total = g.routes.reduce(function (n, r) { return n + r.total; }, 0);
+          var name = g.name + (m.parkList.length > 1 && !parkFilter ? " · " + D.parkShort(m, g.park) : "");
+          return '<details class="column-group" data-result-column="' + esc(g.id) + '"' +
+            (openColumns.has(g.id) ? ' open' : '') + '><summary><span>' + esc(name) +
+            '</span><span class="column-group__meta">' + g.routes.length + ' ' + D.plural(g.routes.length, "маршрут", "маршрута", "маршрутов") +
+            ' · ' + filled + ' из ' + total + ' нарядов</span></summary>' +
+            '<div class="rows-head"><span>Маршрут</span><span>Наряды</span><span>Интервал, худший</span><span></span></div>' +
+            g.routes.map(function (r) { return routeItem(r, "<b>" + r.filled + "</b> / " + r.total, r.unfilled ? "bad" : "ok", D.worstShort(r.worst)); }).join("") +
+            '</details>';
+        }).join("") + '</div>';
     } else if (S.tab === "shifts") {
       routes.sort(function (a, b) { return b.noDriver - a.noDriver || collate(a.number, b.number); });
       html = '<div class="rows-head"><span>Маршрут</span><span>Смены</span><span>Водители</span><span></span></div>' + routes.map(function (r) {
@@ -151,7 +209,9 @@
         return routeItem(r, "<b>" + filled + "</b> / " + total, r.noDriver ? "warn" : "ok", r.noDriver ? "без водителя " + r.noDriver : "");
       }).join("");
     } else if (S.tab === "reserve") {
-      var res = Object.keys(m.duties).map(function (k) { return m.duties[k]; }).filter(function (d) { return d.type !== "line"; }).sort(function (a, b) { return a.start - b.start; });
+      var res = Object.keys(m.duties).map(function (k) { return m.duties[k]; }).filter(function (d) {
+        return d.type !== "line" && (!parkFilter || d.park === parkFilter);
+      }).sort(function (a, b) { return a.start - b.start; });
       // строка резерва нажимается: открывает резерв парка в той же панели, что и маршрут
       html = res.length ? '<div class="rows-head"><span></span><span>Автобус</span><span>Время, класс</span><span></span></div>' + res.map(function (d) {
         var on = d.segs.length > 0;
@@ -169,7 +229,15 @@
         return '<div class="item item--static"><span class="chip">' + esc(l.at) + '</span><span><div class="item__t">' + esc(D.events.title(m, l)) + '</div><div class="item__s">Решение: ' + esc(D.plain(m, l.title)) + "</div></span><span></span></div>";
       }).join("") : '<div class="empty">Событий пока нет. Откройте маршрут, нажмите на наряд и отметьте сход, ДТП, неявку или опоздание.</div>';
     }
+    if ((S.tab === "routes" || S.tab === "shifts") && !routes.length) html = '<div class="empty">Нет маршрутов в расчёте</div>';
     el.innerHTML = html;
+    el.querySelectorAll("[data-result-column]").forEach(function (group) {
+      group.addEventListener("toggle", function () {
+        if (!group.isConnected) return;
+        if (group.open) openColumns.add(group.dataset.resultColumn);
+        else openColumns.delete(group.dataset.resultColumn);
+      });
+    });
     M.stagger(el.children, "up");
     el.querySelectorAll("[data-route]").forEach(function (b) { b.addEventListener("click", function () { openRoute(b.getAttribute("data-route")); }); });
     el.querySelectorAll("[data-res]").forEach(function (b) { b.addEventListener("click", function () { openDuty(m.duties[b.getAttribute("data-res")]); }); });
@@ -257,6 +325,7 @@
   }
   function openPark(id) {
     var m = S.m, p = m && m.parks[id]; if (!p || !p.coords) return;
+    if (parkFilter && parkFilter !== id) setMapPark(id, false);
     S.park = id; S.map.select(id);
     var ph = PARK_PHOTOS[id];
     var html = '<div class="pcard">' + (ph ? '<figure class="pcard__ph"><img src="' + ph.src + '" alt="' + esc(p.name) + '" width="800" height="600"></figure>' : "") +
@@ -265,7 +334,11 @@
       '<button type="button" class="ad-btn ad-btn--sm btn-plain" data-act="routes"><i class="ad-icon ad-icon--path ad-icon--sm"></i>Маршруты парка</button></div></div>';
     var el = S.map.popup(p.coords, html, null, "ppop");
     var b = el && el.querySelector('[data-act="routes"]');
-    b && b.addEventListener("click", function () { S.map.closePopup(); setTab("routes"); show("paneResult"); });
+    b && b.addEventListener("click", function () {
+      setMapPark(id, $("#drawer").hidden);
+      if (!$("#drawer").hidden) closePanel();
+      setTab("routes"); show("paneResult"); mapPark.focus({ preventScroll: true });
+    });
   }
 
   // Подробно о незакрытом: объяснение + переход к маршруту.
@@ -287,6 +360,7 @@
   // ---------- Карточка маршрута по клику на карте ----------
   function routeCard(id, latlng, dirClicked) {
     var m = S.m, r = m.routes[id]; if (!r) return;
+    if (S.map && parkFilter && parkFilter !== r.park) setMapPark(r.park, false);
     var g = r.geo, calc = !!(S.plan && m.state);
     S.map.selectRoute(id, 0, true);
     var stops = g ? g.directions.reduce(function (n, d) { return n + d.stops.length; }, 0) : 0;
@@ -343,7 +417,6 @@
     var m = S.m, r = m.routes[id]; if (!r) return;
     S.route = id;
     openPanel();
-    $("#drCov").parentNode.hidden = false;  // график покрытия есть только у маршрута
     if (S.map) {
       S.map.select(r.park);
       if (!keepSide) S.map.selectRoute(id);
@@ -351,10 +424,15 @@
     $("#drTitle").textContent = "Маршрут " + r.number + " · " + D.parkShort(m, r.park);
     $("#drSub").textContent = "Важность " + D.PRIORITY[r.priority] + " · на линии " + r.filled + " из " + r.total + " нарядов · круг " + r.turn + " мин" +
       (r.worst ? " · интервал " + D.worstText(r.worst) : "");
-    var a = Math.floor(Math.min.apply(null, r.duties.map(function (d) { return d.start; })) / 60) * 60;
-    var b = Math.ceil(Math.max.apply(null, r.duties.map(function (d) { return d.end; })) / 60) * 60;
-    D.coverageChart($("#drCov"), D.coverage(r.duties, a, b, 10), { height: 90 });
-    D.gantt($("#drGantt"), m, r.duties, { onDuty: dutyClick });
+    $("#drSub").insertAdjacentHTML("beforeend", ' · ' + Ops.recordButton("route", r.id, r.park, r.number, "Карточка маршрута"));
+    $("#drCov").parentNode.hidden = !r.duties.length;
+    if (!r.duties.length) $("#drGantt").innerHTML = '<p class="caption muted">Для маршрута в этом расчёте нет нарядов.</p>';
+    else {
+      var a = Math.floor(Math.min.apply(null, r.duties.map(function (d) { return d.start; })) / 60) * 60;
+      var b = Math.ceil(Math.max.apply(null, r.duties.map(function (d) { return d.end; })) / 60) * 60;
+      D.coverageChart($("#drCov"), D.coverage(r.duties, a, b, 10), { height: 90 });
+      D.gantt($("#drGantt"), m, r.duties, { onDuty: dutyClick });
+    }
     if (!keepSide) $("#drSide").innerHTML = '<p class="caption muted">Нажмите на наряд, чтобы узнать, почему на нём этот автобус и водитель, или отметить сход.</p>';
     document.querySelectorAll("[data-route]").forEach(function (x) { x.classList.toggle("is-on", x.getAttribute("data-route") === id); });
   }
@@ -367,6 +445,7 @@
   }
   function openReserve(parkId, keepSide) {
     var m = S.m, list = reserveOf(m, parkId); if (!list.length) return;
+    if (S.map && parkFilter && parkFilter !== parkId) setMapPark(parkId, false);
     S.route = "res:" + parkId;
     openPanel();
     if (S.map) { S.map.select(parkId); S.map.selectRoute(null); }
@@ -409,12 +488,12 @@
     }
     M.hide($("#drawer"), "right", function () {
       $("#scrResult").classList.remove("is-split");
-      if (S.map) { S.map.resize(); S.map.selectRoute(null); }
+      if (S.map) { S.map.resize(); S.map.setPark(parkFilter, true); }
     });
   }
   $("#drClose").addEventListener("click", closePanel);
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape" && !$("#drawer").hidden && !document.querySelector(".modal")) closePanel();
+    if (e.key === "Escape" && !$("#drawer").hidden && !document.querySelector(".modal, dialog[open]")) closePanel();
   });
 
   function dutyClick(duty, t) {
@@ -422,13 +501,24 @@
     S.duty = duty.id; S.dutyT = t;
     side.innerHTML = '<div class="label">' + esc(D.dutyLabel(m, duty)) + '</div><div class="caption muted">' + D.hm(duty.start) + "-" + D.hm(duty.end) + ", класс " + (D.CLASSES[duty.cls] || duty.cls) +
       ", смен " + duty.shiftCount + '</div><div id="xpV"><span class="spinner"></span></div><div id="xpD"></div>' +
-      '<div class="drawer__acts">' +
+      '<div id="dutyRecords" class="drawer__acts"></div><div class="drawer__acts">' +
       (duty.segs.length ? '<button class="ad-btn ad-btn--outline ad-btn--sm" id="btnEv"><i class="ad-icon ad-icon--warning ad-icon--sm"></i>Сход, неявка, опоздание…</button>' : "") +
       '<button class="ad-btn ad-btn--outline ad-btn--sm" id="btnEdit"><i class="ad-icon ad-icon--pencil-simple ad-icon--sm"></i>Изменить…</button></div>';
     var vReq = duty.segs.length ? D.explain(day, "vehicle", duty.id) : D.explain(day, "unfilled", duty.id);
     M.swap(side);
     vReq.then(function (x) { $("#xpV").innerHTML = D.explainHtml(x, duty.segs.length && D.changedSinceMorning(m, "duty", duty)); M.swap($("#xpV")); }, function (e) { $("#xpV").innerHTML = '<p class="err">' + esc(e.message) + "</p>"; });
     var sh = duty.shifts.filter(function (s) { return s.start <= t && t < s.end; })[0] || duty.shifts[0];
+    var buses = Array.from(new Set(duty.segs.map(function (seg) { return seg.id; })));
+    var drivers = Array.from(new Set(duty.shifts.flatMap(function (shift) {
+      return shift.segs.map(function (seg) { return seg.id; });
+    })));
+    $("#dutyRecords").innerHTML = buses.map(function (id) {
+      var v = m.vehicles[id];
+      return v ? Ops.recordButton("veh", id, v.park_id, v.board_number, "Борт " + v.board_number) : "";
+    }).concat(drivers.map(function (id) {
+      var d = m.drivers[id];
+      return d ? Ops.recordButton("drv", id, d.park_id, d.full_name, D.driverName(m, id)) : "";
+    })).join("");
     if (sh && duty.segs.length) {
       D.explain(day, sh.segs.length ? "driver" : "unfilled", sh.id).then(function (x) { $("#xpD").innerHTML = D.explainHtml(x, sh.segs.length && D.changedSinceMorning(m, "shift", sh)); M.swap($("#xpD")); }, function () {});
     }

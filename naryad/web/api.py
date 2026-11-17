@@ -60,6 +60,7 @@ from naryad.ops.replan import (EDIT_TYPES, Accident, Breakdown, Edit, Late, NoSh
 from naryad.solve.city import add_transfers
 from naryad.solve.drivers import History, solve_drivers
 from naryad.solve.vehicles import solve_vehicles
+from naryad.web.assignment_history import affected
 from naryad.web.store import (LIVE_FILE, Store, history_from_dict, history_to_dict, plan_from_dict,
                               plan_to_dict, state_from_dict, state_to_dict)
 
@@ -121,6 +122,7 @@ ROUTES = [
     ("POST", r"/api/days", "add_day"),
     ("POST", r"/api/days/import", "import_registry"),
     ("GET", r"/api/days/([^/]+)", "get_day"),
+    ("GET", r"/api/days/([^/]+)/plan", "get_plan"),
     ("POST", r"/api/days/([^/]+)/plan", "make_plan"),
     ("GET", r"/api/days/([^/]+)/state", "get_state"),
     ("GET", r"/api/days/([^/]+)/explain/vehicle/([^/]+)", "explain_vehicle"),
@@ -270,6 +272,7 @@ class Engine:
 
     def list_days(self, query, body):
         return {"days": [{"day_id": r.id, "date": r.day.meta["date"], "day_type": r.day.meta["day_type"],
+                          "parks": [p["name"] for p in r.raw["parks"]],
                           "planned": r.plan is not None, "events": _count(r.log, "event"),
                           "edits": _count(r.log, "edit")}
                          for r in self.days.values()]}
@@ -413,6 +416,14 @@ class Engine:
     def get_day(self, day_id, query, body):
         return self._day(day_id).raw
 
+    def get_plan(self, day_id, query, body):
+        record = self._planned(day_id)
+        series = [(r.day, worked_today(r.state) if r.state is not None else r.plan)
+                  for r in self._earlier(record)] + [(record.day, record.plan)]
+        return {"plan": record.plan.to_dict(),
+                "violations": _violations(check_plan(record.day, record.plan)),
+                "rest_violations": _violations(check_rest(series, load_labor()))}
+
     def make_plan(self, day_id, query, body):
         """Утренний план. Запись дня меняется только после удачного расчёта.
 
@@ -527,7 +538,7 @@ class Engine:
         return _state_dict(self._planned(day_id))
 
     def get_log(self, day_id, query, body):
-        return {"log": self._day(day_id).log}
+        return {"log": [_public_log(entry) for entry in self._day(day_id).log]}
 
     # --- объяснения (по утреннему плану) -----------------------------------------
 
@@ -681,6 +692,7 @@ class Engine:
             raise ApiError(BAD, f"option: от 0 до {len(options) - 1}")
         after = apply(record.state, event, options[index])
         entry = {"kind": "event", **_event_dict(event), "option": index,
+                 "affected_ids": affected(record.state, after),
                  "title": options[index].title}
         violations = _violations(check_state(after))
         # память по факту, а не по утреннему плану
@@ -787,6 +799,7 @@ class Engine:
                                 "и записана в журнал как решение диспетчера")
 
         entry = {"kind": "edit", **_edit_dict(edit), "title": edit.title,
+                 "affected_ids": affected(record.state, after),
                  "forced": bool(added), "violations": _violations(added)}
         if reason:
             entry["reason"] = reason
@@ -934,6 +947,10 @@ def _unfilled_now(record: DayRecord) -> dict:
     return {k: r for k, r in reasons.items() if k and k not in filled}
 
 
+def _public_log(entry: dict) -> dict:
+    return {k: v for k, v in entry.items() if k != "affected_ids"}
+
+
 def _state_dict(record: DayRecord) -> dict:
     """Состояние дня для интерфейса. Что считается незакрытым - _unfilled_now."""
     state = record.state
@@ -950,7 +967,7 @@ def _state_dict(record: DayRecord) -> dict:
                         for v, windows in sorted(state.repairs.items()) for a, b in sorted(windows)],
             "late_drivers": [{"driver_id": d, "since": hm(a), "comes": hm(b)}
                              for d, (a, b) in sorted(state.late.items())],
-            "log": list(record.log)}
+            "log": [_public_log(entry) for entry in record.log]}
 
 
 # --- образцы ответов ----------------------------------------------------------------

@@ -4571,6 +4571,9 @@
      "day_id": "day-1",
      "date": "2026-10-05",
      "day_type": "weekday",
+     "parks": [
+      "Автобусный парк №7"
+     ],
      "planned": true,
      "events": 0,
      "edits": 0

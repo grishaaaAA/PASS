@@ -86,6 +86,13 @@ body { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100vh; he
 /* Сцена: карта и выезжающая панель */
 .stage { position: relative; min-height: 0; }
 .map { position: absolute; inset: 0; }
+.stage { --map-toolbar-height: 48px; }
+.map-scope { height: var(--map-toolbar-height); display: flex; align-items: center; gap: var(--space-2); padding-inline: var(--space-3); background: var(--surface); border-bottom: 1px solid var(--border); font: var(--text-caption); }
+.map-scope select { min-width: 0; max-width: 55%; min-height: 32px; padding-inline: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); font: var(--text-label); }
+.map-scope select:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 1px; }
+.map-scope [role="status"] { color: var(--ink-muted); }
+.map-scope:not([hidden]) ~ .map { top: var(--map-toolbar-height); }
+.map-scope:not([hidden]) ~ .probs { top: calc(var(--map-toolbar-height) + 14px); max-height: calc(100% - var(--map-toolbar-height) - 120px); }
 .dot { width: 12px; height: 12px; border-radius: 50%; border: 3px solid; }
 .dot--ok { border-color: var(--success-fill); } .dot--warn { border-color: var(--warning-fill); } .dot--bad { border-color: var(--danger-fill); }
 .ln { width: 22px; height: 0; border-top: 2px solid #227b81; opacity: .7; }

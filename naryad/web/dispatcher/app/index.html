@@ -20,25 +20,71 @@
 </div>
 
 <header class="bar">
-  <button class="bar__home" id="btnHome" type="button" aria-label="AUTODISP: к рабочим дням"><img class="bar__logo" src="ds/logo.svg" alt=""></button>
-  <nav class="crumbs" id="crumbs" aria-label="Где вы"></nav>
-  <span class="bar__grow"></span>
-  <button class="ad-btn ad-btn--ghost ad-btn--sm" id="btnLogout" type="button" hidden>Выйти</button>
+  <div class="bar__in">
+    <button class="bar__home" id="btnHome" type="button" aria-label="AUTODISP: к рабочим дням"><img class="bar__logo" src="ds/logo.svg" alt=""></button>
+    <nav class="crumbs" id="crumbs" aria-label="Где вы"></nav>
+    <nav class="dashboard-nav" id="dashboardNav" aria-label="Разделы рабочего пространства" hidden>
+      <a href="#stats" data-go="stats">Статистика</a>
+      <a href="#history" data-go="history">История</a>
+      <a href="#create" data-go="create">Создание</a>
+    </nav>
+    <span class="bar__grow"></span>
+    <div class="bar__profile" id="barProfile" hidden>
+      <button class="profile-trigger" id="btnProfile" type="button" aria-label="Профиль" aria-haspopup="dialog" aria-controls="profileMenu" aria-expanded="false">
+        <span class="profile-trigger__avatar" id="profileAvatar" aria-hidden="true"><i class="ad-icon ad-icon--user"></i></span>
+        <span class="profile-trigger__name" id="profileName">Профиль</span>
+        <i class="ad-icon ad-icon--caret-down ad-icon--sm" aria-hidden="true"></i>
+      </button>
+      <section class="profile-menu" id="profileMenu" role="dialog" aria-label="Профиль" hidden>
+        <div class="profile-menu__head"><span class="profile-menu__avatar" id="profileMenuAvatar" aria-hidden="true"><i class="ad-icon ad-icon--user"></i></span><div><b id="profileMenuName">Профиль</b><small>Рабочий профиль диспетчера</small></div></div>
+        <button type="button" class="profile-menu__item" id="btnSettings"><i class="ad-icon ad-icon--gear"></i><span><b>Настройки</b><small>Профиль, пароль и интеграции</small></span></button>
+        <button type="button" class="profile-menu__item profile-menu__item--danger" id="btnProfileLogout"><i class="ad-icon ad-icon--sign-out"></i><span><b>Выйти</b><small>Завершить рабочую сессию</small></span></button>
+      </section>
+    </div>
+  </div>
 </header>
 
+<button class="ad-icon-btn ai-launcher" id="btnAi" type="button" hidden
+        aria-label="Дядя Игорь, ИИ-ассистент" title="Дядя Игорь, ИИ-ассистент" aria-controls="aiChat" aria-expanded="false">
+  <span class="ai-launcher__star" aria-hidden="true"></span>
+</button>
+<dialog class="ai-chat" id="aiChat" aria-labelledby="aiChatTitle">
+  <header class="ai-chat__head">
+    <span class="ai-chat__avatar" aria-hidden="true"><span class="ai-launcher__star"></span></span>
+    <div class="ai-chat__identity"><h2 id="aiChatTitle">Дядя Игорь</h2><p>Помощник AUTODISP</p></div>
+    <button class="btn-close" id="btnAiClose" type="button" aria-label="Закрыть чат"></button>
+  </header>
+  <div class="ai-chat__messages" id="aiChatMessages" role="log" aria-label="Сообщения" aria-live="polite"></div>
+  <form class="ai-chat__form" id="aiChatForm">
+    <textarea class="ad-input" id="aiChatInput" aria-label="Сообщение" placeholder="Сообщение" rows="1" maxlength="1000" required></textarea>
+    <button class="ad-btn ad-btn--secondary ad-btn--sm ai-chat__send" id="btnAiSend" type="submit" disabled>Отправить</button>
+  </form>
+</dialog>
+
 <!-- 0. Приветствие -->
-<main class="scr welcome" id="scrWelcome" hidden>
+<main class="scr welcome" id="scrWelcome" aria-labelledby="welcomeHello" hidden>
+  <video class="welcome__film" id="welcomeFilm" muted loop playsinline preload="none"
+         aria-hidden="true" hidden></video>
+  <img class="welcome__logo" src="ds/logo-dark.svg" alt="AUTODISP">
   <div class="welcome__in">
     <div class="welcome__text">
-      <img class="welcome__logo" src="ds/logo.svg" alt="AUTODISP">
-      <h1 class="welcome__h" id="welcomeHello">Здравствуйте</h1>
-      <p class="welcome__sub">Рабочее место диспетчера</p>
-      <button class="ad-btn ad-btn--primary ad-btn--lg welcome__go" id="btnStart" type="button">Войти<i class="arr"></i></button>
+      <h1 class="welcome__h" id="welcomeHello">Помогаем вашему нарядчику</h1>
+      <p class="welcome__intro" id="welcomeIntro">AUTODISP помогает оптимизировать процессы нарядки, быстрее принимать решения и уверенно планировать выпуск автобусов.</p>
+      <button class="ad-btn ad-btn--primary ad-btn--lg welcome__go" id="btnStart" type="button"><span>Войти</span><i class="arr" aria-hidden="true"></i></button>
     </div>
+  </div>
+  <div class="welcome__credits" role="group" aria-label="Создано">
+    <a class="welcome__credit-kd" href="https://koryagindesign.com/" target="_blank" rel="noopener" aria-label="Корягин Дизайн" draggable="false">
+      <svg viewBox="0 0 705 210" width="134" height="40" aria-hidden="true"><use href="img/credit-kd-color.svg#credit-kd"></use></svg>
+    </a>
+    <span aria-hidden="true">×</span>
+    <a class="welcome__credit-safarov" href="https://safarovsolutions.com/" target="_blank" rel="noopener" aria-label="Safarov Solutions" draggable="false">
+      <svg viewBox="2478 1560 1539 379" width="130" height="32" aria-hidden="true"><use href="img/credit-safarov-color.svg#credit-safarov"></use></svg>
+    </a>
   </div>
 </main>
 
-<!-- Демонстрационный вход: проверка только в браузере -->
+<!-- Главная страница до расчёта -->
 <main class="scr auth" id="scrLogin" hidden>
   <form class="auth__card" id="loginForm">
     <h1 class="scr__h">Вход</h1>
@@ -51,17 +97,67 @@
   </form>
 </main>
 
-<!-- Главная страница до расчёта -->
-<main class="scr" id="scrDashboard" hidden>
+<main class="scr" id="scrStats" aria-labelledby="statsTitle" hidden>
   <div class="scr__in dashboard">
-    <div class="dashboard__head"><div><h1 class="scr__h">Рабочие дни</h1><p class="scr__sub muted">Сохранённые расчёты и журнал событий</p></div><button class="ad-btn ad-btn--primary ad-btn--lg" id="btnNewDay" type="button">Подготовить день<i class="arr"></i></button></div>
-    <div class="dashboard__stats" id="dashboardStats"></div>
-    <div class="dashboard__layout"><section class="dashboard__list"><h2>История дней</h2><div id="dashboardDays"></div></section><section class="dashboard__detail" id="dashboardDetail" aria-live="polite"><h2>День</h2><p class="muted">Выберите день в списке.</p></section></div>
+    <div class="dashboard__head">
+      <h1 class="scr__h" id="statsTitle">Статистика</h1>
+      <a class="ad-btn ad-btn--sm btn-plain" href="/routes" target="_blank" rel="noopener"><i class="ad-icon ad-icon--map-pin ad-icon--sm"></i>Маршруты и остановки</a>
+    </div>
+    <section class="dashboard-panel" aria-label="Сводка">
+      <div class="dashboard-panel__head"><h2>Сводка по расчётам</h2><button class="ad-btn ad-btn--ghost ad-btn--sm" type="button" id="btnCompareStats">Сравнить периоды</button></div>
+      <div class="dashboard__stats" id="dashboardStats"></div>
+      <div class="dashboard-compare" id="dashboardCompare"><div><span>Сравнение</span><b>Выберите период</b><small>Здесь появится сопоставление выпусков, событий и ручных правок.</small></div><div class="dashboard-compare__line"><i></i></div></div>
+    </section>
   </div>
 </main>
 
+<main class="scr" id="scrHistory" aria-labelledby="historyTitle" hidden>
+  <div class="scr__in dashboard">
+    <h1 class="scr__h" id="historyTitle">История</h1>
+    <div class="dashboard-panel dashboard__layout">
+      <section class="dashboard__list"><h2>Рабочие дни</h2><div id="dashboardDays"></div></section>
+      <section class="dashboard__detail" id="dashboardDetail" aria-live="polite"><h2>Выберите день</h2></section>
+    </div>
+  </div>
+</main>
+
+<main class="scr" id="scrCreate" aria-labelledby="createTitle" hidden>
+  <div class="scr__in dashboard">
+    <h1 class="scr__h" id="createTitle">Создание</h1>
+    <section class="dashboard-panel dashboard-create">
+      <div class="dashboard-create__visual" aria-hidden="true"><span></span><i></i><b></b></div>
+      <div class="dashboard-panel__head">
+        <div><h2>Создание расчёта</h2><p class="muted">Сформируйте план выпуска на рабочий день с учётом доступных автобусов, водителей и маршрутов.</p></div>
+        <button class="ad-btn ad-btn--primary ad-btn--lg" id="btnNewDay" type="button">Создать расчёт<i class="arr"></i></button>
+      </div>
+    </section>
+    <section class="dashboard-panel">
+      <div class="dashboard-panel__head">
+        <div><h2>Редактирование существующего расчёта</h2><p class="muted">Откройте сохранённый план, чтобы изменить назначения автобусов и водителей.</p></div>
+        <button class="ad-btn ad-btn--sm btn-plain" id="btnEditDay" type="button" aria-controls="savedRuns" aria-expanded="false">Выбрать расчёт<i class="ad-icon ad-icon--caret-down ad-icon--sm" aria-hidden="true"></i></button>
+      </div>
+      <div id="savedRuns" class="saved-runs" hidden>
+        <p class="caption muted" id="savedRunsStatus" role="status"></p>
+        <div id="savedRunsList"></div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<section class="settings-dialog" id="settingsDialog" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" hidden>
+  <div class="settings-dialog__backdrop" data-settings-close></div>
+  <div class="settings-dialog__box">
+    <div class="settings-dialog__head"><div><p class="dashboard-kicker">Профиль и подключение</p><h2 id="settingsTitle">Настройки</h2></div><button class="btn-close" id="btnSettingsClose" type="button" aria-label="Закрыть настройки"></button></div>
+    <div class="settings-section settings-profile"><div class="settings-avatar" id="settingsAvatar" aria-hidden="true"><i class="ad-icon ad-icon--user"></i></div><div><h3>Профиль</h3><p class="muted">Имя и изображение будут показаны в рабочем пространстве.</p><label class="settings-file">Поставить аватарку<input id="avatarInput" type="file" accept="image/*"></label></div></div>
+    <label class="settings-field"><span>Имя профиля</span><input class="ad-input" id="profileNameInput" type="text" autocomplete="name" placeholder="Имя диспетчера"></label>
+    <div class="settings-section"><div><h3>Безопасность</h3><p class="muted">Базовая смена пароля для рабочего профиля.</p></div><form class="settings-password" id="passwordForm"><input class="ad-input" id="newPassword" type="password" minlength="6" placeholder="Новый пароль" autocomplete="new-password"><input class="ad-input" id="repeatPassword" type="password" minlength="6" placeholder="Повторите пароль" autocomplete="new-password"><button class="ad-btn ad-btn--ghost" type="submit">Сменить пароль</button></form></div>
+    <div class="settings-section settings-integration"><div><h3>Интеграции</h3><p class="muted">Свяжите рабочее пространство с 1С:Предприятие, чтобы подготовить обмен данными.</p></div><div class="settings-integration__action"><span class="settings-status" id="oneCStatus">Не подключено</span><button class="ad-btn ad-btn--ghost" id="btnOneC" type="button">Подключить 1С:Предприятие</button></div></div>
+    <div class="settings-dialog__foot"><span class="muted" id="settingsSaved" role="status"></span><button class="ad-btn ad-btn--primary" id="btnSettingsSave" type="button">Сохранить профиль</button></div>
+  </div>
+</section>
+
 <!-- 1. Выбор парков -->
-<main class="scr" id="scrParks">
+<main class="scr" id="scrParks" hidden>
   <div class="scr__in">
     <h1 class="scr__h">Выбор парков</h1>
     <div class="parks" id="parks"></div>
@@ -86,7 +182,7 @@
       </div>
       <a class="ad-btn ad-btn--sm btn-plain" id="btnGeo" href="/routes" target="_blank" rel="noopener"><i class="ad-icon ad-icon--map-pin ad-icon--sm"></i>Маршруты и остановки</a>
     </div>
-    <div class="ready" id="ready" role="group" aria-label="Маршруты, автобусы, водители"></div>
+    <div class="ready" id="ready" role="group" aria-label="Колонны, автобусы, водители"></div>
     <div class="list-panel" id="sections"></div>
   </div>
   <div class="go">
@@ -103,7 +199,8 @@
 <main class="layout scr" id="scrResult" aria-label="Результат расчёта" hidden>
   <aside class="side" id="side">
     <section class="pane pane--top">
-      <button class="ad-btn ad-btn--ghost ad-btn--sm back" data-go="prep"><i class="arr arr--left"></i>К подготовке дня</button>
+      <button class="ad-btn ad-btn--ghost ad-btn--sm back" id="btnResultPrep" data-go="prep"><i class="arr arr--left"></i>К подготовке дня</button>
+      <button class="ad-btn ad-btn--ghost ad-btn--sm back" id="btnResultCreate" data-go="create" hidden><i class="arr arr--left"></i>К списку расчётов</button>
     </section>
     <!-- 3. Результат -->
     <section class="pane pane--result" id="paneResult" hidden>
@@ -114,7 +211,7 @@
       </div>
       <div class="kpis" id="kpis" role="group" aria-label="Показатели"></div>
       <div class="tabs" role="tablist" aria-label="Разделы расчёта">
-        <button role="tab" class="tab is-on" data-tab="routes">Маршруты</button>
+        <button role="tab" class="tab is-on" data-tab="routes">Колонны</button>
         <button role="tab" class="tab" data-tab="shifts">Смены</button>
         <button role="tab" class="tab" data-tab="reserve">Резерв</button>
         <button role="tab" class="tab" data-tab="log">Журнал <span class="tab__n" id="nLog"></span></button>
@@ -130,8 +227,13 @@
   </aside>
 
   <section class="stage" aria-label="Карта расчёта">
+    <div class="map-scope" id="mapScope" hidden>
+      <label for="mapPark">Маршруты</label>
+      <select id="mapPark" aria-label="Маршруты по паркам" aria-controls="map list"></select>
+      <span id="mapScopeStatus" role="status"></span>
+    </div>
     <div class="map" id="map"></div>
-    <p class="map-fallback caption muted" id="mapFallback" role="status" hidden>Карта недоступна. Маршруты, смены и резерв доступны в списке расчёта.</p>
+    <p class="map-fallback caption muted" id="mapFallback" role="status" hidden>Карта недоступна. Колонны, смены и резерв доступны в списке расчёта.</p>
     <!-- Проблемы дня: окошко поверх карты, появляется, только когда они есть -->
     <section class="probs is-collapsed" id="probs" hidden aria-label="Проблемы">
       <button type="button" class="probs__head" id="probsHead" aria-expanded="false" aria-controls="probsBody"><i class="ad-icon ad-icon--warning-circle ad-icon--sm"></i><span>Проблемы</span><span class="probs__kinds" id="probsKinds"></span><b id="probsN"></b><i class="ad-icon ad-icon--caret-down ad-icon--sm probs__car"></i></button>
@@ -167,6 +269,19 @@
 <script src="common/events.js"></script>
 <script src="common/edit.js"></script>
 <script src="common/upload.js"></script>
+<dialog class="entity-dialog" id="entityDialog" aria-labelledby="entityTitle">
+  <div class="entity-dialog__body">
+    <div class="entity-dialog__head">
+      <div><button class="ad-btn ad-btn--ghost ad-btn--sm" id="entityBack" type="button" hidden>← Назад</button>
+        <p class="dashboard-kicker" id="entityKind">Карточка</p><h2 id="entityTitle" tabindex="-1"></h2><p class="muted" id="entitySubtitle"></p>
+        <a class="record-link" id="entityGeo" href="/routes" target="_blank" rel="noopener" hidden>Схема и остановки ↗</a>
+      </div>
+      <button class="btn-close" id="entityClose" type="button" aria-label="Закрыть карточку"></button>
+    </div>
+    <div class="entity-dialog__content" id="entityContent" aria-live="polite"></div>
+  </div>
+</dialog>
+<script src="operations.js"></script>
 <script src="app.js"></script>
 <script src="prep.js"></script>
 </body>

@@ -42,6 +42,13 @@ class MarksTest(unittest.TestCase):
         j = self.store.journal(["P07"], "2026-10-07")
         self.assertEqual([(x["prev"], x["value"]) for x in j], [(True, False), (False, True), (None, False)])
         self.assertEqual(j[0]["who"], "127.0.0.1")
+        self.store.set("2026-10-08", [{"kind": "veh", "id": "P07-V0001", "value": True},
+                                      {"kind": "drv", "id": "P07-V0001", "value": True}])
+        item_log = self.store.item_journal("P07", "veh", "P07-V0001")
+        self.assertEqual([(x["date"], x["value"]) for x in item_log],
+                         [("2026-10-08", True), ("2026-10-07", False),
+                          ("2026-10-07", True), ("2026-10-07", False)])
+        self.assertEqual(self.store.item_journal("P03", "veh", "P07-V0001"), [])
 
     def test_survives_reopen(self):
         self.store.set("2026-10-07", [{"kind": "drv", "id": "P07-D0009", "value": False}])

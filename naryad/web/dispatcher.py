@@ -31,6 +31,7 @@ from urllib.parse import parse_qs, urlparse
 
 from naryad.data.generate import generate
 from naryad.geo.store import GeoError, RouteStore
+from naryad.web.assignment_history import history
 from naryad.web.marks import MarksError, MarksStore
 from naryad.web.api import DEFAULT_STORE, Engine, allowed_origin
 
@@ -113,11 +114,13 @@ class Handler(BaseHTTPRequestHandler):
         if "/api/" in self.path or "/x/" in self.path:
             sys.stderr.write("%s %s\n" % (self.command, self.path))
 
-    def _send(self, status, body: bytes, ctype: str):
+    def _send(self, status, body: bytes, ctype: str, headers=()):
         self.send_response(int(status))
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        for name, value in headers:
+            self.send_header(name, value)
         origin = allowed_origin(self.headers.get("Origin"))
         if origin:
             self.send_header("Access-Control-Allow-Origin", origin)
@@ -146,7 +149,26 @@ class Handler(BaseHTTPRequestHandler):
         ctype = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
         if ctype.startswith("text/") or ctype.endswith(("javascript", "json", "svg+xml")):
             ctype += "; charset=utf-8"
-        self._send(HTTPStatus.OK, target.read_bytes(), ctype)
+        body = target.read_bytes()
+        if ctype == "video/mp4":
+            return self._send_video(body, ctype)
+        self._send(HTTPStatus.OK, body, ctype)
+
+    def _send_video(self, body: bytes, ctype: str):
+        # Safari запрашивает MP4 по диапазонам байтов даже для коротких роликов.
+        headers = [("Accept-Ranges", "bytes")]
+        span = re.fullmatch(r"bytes=([0-9]{0,20})-([0-9]{0,20})", self.headers.get("Range", ""))
+        if span and any(span.groups()):
+            total = len(body)
+            first, last = span.groups()
+            start = int(first) if first else max(0, total - int(last))
+            end = min(total - 1, int(last)) if first and last else total - 1
+            if start > end:
+                headers.append(("Content-Range", f"bytes */{total}"))
+                return self._send(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE, b"", ctype, headers)
+            headers.append(("Content-Range", f"bytes {start}-{end}/{total}"))
+            return self._send(HTTPStatus.PARTIAL_CONTENT, body[start:end + 1], ctype, headers)
+        return self._send(HTTPStatus.OK, body, ctype, headers)
 
     def do_GET(self):
         url = urlparse(self.path)
@@ -157,6 +179,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(HTTPStatus.OK, {"runs": self.marks.runs()})
         if url.path == "/x/day-log":
             return self._json(HTTPStatus.OK, self._day_log({k: v[-1] for k, v in parse_qs(url.query).items()}))
+        if url.path == "/x/assignment-history":
+            q = {k: v[-1] for k, v in parse_qs(url.query).items()}
+            kind, item, park = q.get("kind"), q.get("id", ""), q.get("park", "")
+            if kind not in ("veh", "drv", "route") or not item or len(item) > 200 or not park or len(park) > 80:
+                return self._json(HTTPStatus.BAD_REQUEST, {"error": "Укажите тип, код записи и парк"})
+            with self.engine._lock:
+                days = history(self.engine.days.values(), kind, item, park)
+            return self._json(HTTPStatus.OK, {"days": days, "marks": self.marks.item_journal(park, kind, item)})
         if url.path in ("/x/marks", "/x/marks/journal"):
             q = {k: v[-1] for k, v in parse_qs(url.query).items()}
             parks = [p for p in (q.get("parks") or "").split(",") if p]

@@ -56,6 +56,7 @@ class MarksStore:
                     id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, park_id TEXT NOT NULL, day TEXT NOT NULL,
                     kind TEXT NOT NULL, item_id TEXT NOT NULL, value INTEGER NOT NULL, prev INTEGER, who TEXT);
                 CREATE INDEX IF NOT EXISTS journal_day ON journal (park_id, day);
+                CREATE INDEX IF NOT EXISTS journal_item ON journal (park_id, kind, item_id);
                 CREATE TABLE IF NOT EXISTS runs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, day TEXT NOT NULL, parks TEXT NOT NULL,
                     line_filled INTEGER, line_total INTEGER, shifts_filled INTEGER, shifts_total INTEGER,
@@ -135,6 +136,14 @@ class MarksStore:
                     for a, p, k, i, v, pv, w in db.execute(q, [day] + list(parks) + [int(limit)])]
 
     # --- расчёты ---------------------------------------------------------------------
+    def item_journal(self, park: str, kind: str, item: str) -> list:
+        with self.lock, self._db() as db:
+            rows = db.execute(
+                "SELECT day, at, value, prev FROM journal WHERE park_id = ? AND kind = ? AND item_id = ? "
+                "ORDER BY day DESC, id DESC", (park, kind, item))
+            return [{"date": day, "at": at, "value": bool(value), "prev": None if prev is None else bool(prev)}
+                    for day, at, value, prev in rows]
+
     def add_run(self, day, parks: list, numbers: dict, problems: int, seconds: float, who: str = "") -> dict:
         """Записать расчёт и выдать его порядковый номер."""
         day, now = _day(day), _now()
