@@ -502,7 +502,10 @@
     var button = e.target.closest("[data-history-date]"); if (!button) return;
     historyDate = button.dataset.historyDate; dashboardSelected = null;
     renderHistoryCalendar(); renderHistoryRuns();
-    $("#dashboardDetail").innerHTML = '<h2>Выберите расчёт</h2><p class="muted">Выберите расчёт за ' + esc(dateLabel(historyDate)) + '</p>';
+    var runs = dashboardDays.filter(function (d) { return d.planned && d.date === historyDate; });
+    runs.sort(function (a, b) { return (b.run ? b.run.id : 0) - (a.run ? a.run.id : 0) || b.day_id.localeCompare(a.day_id, undefined, { numeric: true }); });
+    if (runs.length) selectDashboardDay(runs[0].day_id);
+    else $("#dashboardDetail").innerHTML = '<h2>Расчётов нет</h2><p class="muted">За выбранный день сохранённых расчётов нет.</p>';
     var selected = $("#historyCalendarDays").querySelector('[data-history-date="' + historyDate + '"]'); if (selected) selected.focus();
   });
   function openScreen(name, silent) {
@@ -655,20 +658,27 @@
       if (!logHtml) logHtml = '<li class="muted">Записей пока нет.</li>';
       var planHtml = data.plan ? historyPlan(day, data.plan) :
         '<p class="muted">' + (entry.planned ? "Утренний план не загрузился." : "Утренний план для этого дня не построен.") + '</p>';
-      box.innerHTML = '<h2>' + esc(dateLabel(entry.date)) + '</h2><p class="muted">' + esc(parks.join(", ") || "Парк не указан") +
+      box.innerHTML = '<h2>' + esc((D.runCode(entry.run) || "Расчёт") + ' · ' + dateLabel(entry.date)) + '</h2><p class="muted">' + esc(parks.join(", ") || "Парк не указан") +
         '</p><div class="dashboard__facts">' + stat(duties, "нарядов на линии") + stat(shifts, "смен") +
-        stat(state ? state.unfilled.length : "—", "незакрытых назначений") + '</div><h3>Журнал дня</h3><ol class="dashboard__logs">' +
-        logHtml + "</ol><h3>Утренний план</h3>" + planHtml;
+        stat(state ? state.unfilled.length : "—", "незакрытых назначений") + '</div><h3>Колонны</h3>' + planHtml +
+        '<h3>Журнал дня</h3><ol class="dashboard__logs">' + logHtml + '</ol>';
     }, function (e) { if (current === "history" && dashboardSelected === id) box.innerHTML = '<h2>' + esc(dateLabel(entry.date)) + '</h2><p class="err">Не удалось открыть день: ' + esc(e.message) + "</p>"; });
   }
   function historyPlan(day, envelope) {
     var m = D.build(day, envelope, null, null), groups = new Map();
     var vehicles = new Map(envelope.plan.vehicle_assignments.map(function (a) { return [a.duty_id, a.vehicle_id]; }));
     var drivers = new Map(envelope.plan.driver_assignments.map(function (a) { return [a.shift_id, a.driver_id]; }));
+    function columnLabel(column, park) {
+      return (column ? (column.number ? "Колонна № " + column.number + " · " + column.name : "Без колонны") : "Резерв") + " · " + D.parkShort(m, park);
+    }
+    (day.routes || []).forEach(function (r) {
+      var label = columnLabel(Ops.column(r.park_id, r.number), r.park_id);
+      if (!groups.has(label)) groups.set(label, []);
+    });
     Object.values(m.duties).forEach(function (duty) {
       var route = m.routes[duty.route];
       var column = route ? Ops.column(duty.park, route.number) : null;
-      var label = (column ? (column.number ? "Колонна № " + column.number + " · " + column.name : "Без колонны") : "Резерв") + " · " + D.parkShort(m, duty.park);
+      var label = columnLabel(column, duty.park);
       if (!groups.has(label)) groups.set(label, []);
       groups.get(label).push(duty);
     });
@@ -688,8 +698,8 @@
           '</b><span>' + (vehicle ? "Автобус " + esc(D.vehicleName(m, vehicle)) : "Без автобуса") + (m.routes[duty.route] ? ' · маршрут ' + esc(m.routes[duty.route].number) : '') + '</span>' +
           (shifts ? "<ul>" + shifts + "</ul>" : "") + "</li>";
       }).join("");
-      return '<details><summary>' + esc(label) + '<span>' + duties.length + ' ' + D.plural(duties.length, "наряд", "наряда", "нарядов") +
-        '</span></summary><ul class="history-plan__duties">' + rows + '</ul></details>';
+      return '<details' + (label.indexOf("Резерв ·") === 0 ? ' class="history-plan__reserve"' : '') + '><summary><b>' + esc(label) + '</b><span>' + duties.length + ' ' + D.plural(duties.length, "наряд", "наряда", "нарядов") +
+        '</span></summary>' + (rows ? '<ul class="history-plan__duties">' + rows + '</ul>' : '<p class="muted history-plan__empty">В расчёте нет нарядов.</p>') + '</details>';
     }).join("") + "</div>";
   }
 
