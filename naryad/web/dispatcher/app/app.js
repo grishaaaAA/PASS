@@ -4,6 +4,47 @@
   var D = window.Disp, $ = D.$, esc = D.esc, M = window.Motion, Ops = window.Operations;
   var S = { info: null, day: null, plan: null, m: null, map: null, tab: "routes", route: null, duty: null, park: null, probsOpen: false };
   var mapPark = $("#mapPark"), parkFilter = null, openColumns = new Set();
+  var resultLayout = $("#scrResult"), side = $("#side"), sideResize = $("#sideResize");
+  var dragOffset = 0;
+  function maxSideWidth() {
+    var width = resultLayout.clientWidth;
+    return Math.floor(Math.min(560, resultLayout.classList.contains("is-split") ? width / 2 - 120 : width * 0.6));
+  }
+  function setSideWidth(width) {
+    width = Math.min(maxSideWidth(), Math.max(320, width));
+    resultLayout.style.setProperty("--side-width", Math.round(width) + "px");
+  }
+  sideResize.addEventListener("pointerdown", function (e) {
+    if (!e.isPrimary || e.button !== 0) return;
+    dragOffset = side.getBoundingClientRect().right - e.clientX;
+    sideResize.setPointerCapture(e.pointerId);
+    resultLayout.classList.add("is-resizing");
+  });
+  sideResize.addEventListener("pointermove", function (e) {
+    if (sideResize.hasPointerCapture(e.pointerId)) {
+      setSideWidth(e.clientX + dragOffset - resultLayout.getBoundingClientRect().left);
+    }
+  });
+  sideResize.addEventListener("lostpointercapture", function () { resultLayout.classList.remove("is-resizing"); });
+  sideResize.addEventListener("keydown", function (e) {
+    var width = side.offsetWidth;
+    var next = { ArrowLeft: width - 20, ArrowRight: width + 20, Home: 320, End: maxSideWidth() }[e.key];
+    if (next === undefined) return;
+    e.preventDefault();
+    setSideWidth(next);
+  });
+  if (window.ResizeObserver) {
+    new ResizeObserver(function () {
+      if (!sideResize.offsetWidth) return;
+      sideResize.setAttribute("aria-valuemin", "320");
+      sideResize.setAttribute("aria-valuemax", String(maxSideWidth()));
+      sideResize.setAttribute("aria-valuenow", String(side.offsetWidth));
+      sideResize.setAttribute("aria-valuetext", side.offsetWidth + " пикселей");
+    }).observe(side);
+    new ResizeObserver(function () {
+      if ($("#map").clientWidth) window.App.resize();
+    }).observe($("#map"));
+  }
   // Фото парков для карточки (откуда взяты - app/img/CREDITS.md)
   var PARK_PHOTOS = {
     P07: { src: "img/park-P07.jpg" }
@@ -36,26 +77,23 @@
     S.plan = r.plan;
     S.run = r.plan.run || null;
     onShown && onShown();  // экран расчёта видим - теперь карта узнает свой размер
-    $("#btnResultPrep").hidden = editing;
-    $("#btnResultCreate").hidden = !editing;
     $("#drawer").hidden = true; $("#scrResult").classList.remove("is-split");
     S.m = D.build(S.day, S.plan, r.state, r.intervals);
     parkFilter = null;
     openColumns.clear();
-    $("#mapScope").hidden = !window.L;
-    renderMapScope();
     var handlers = { onPark: openPark, onRoute: routeCard, parkTip: parkTip };
     if (window.L) {
       if (!S.map) S.map = D.parkMap($("#map"), S.m, handlers);
       else { S.map.resize(); S.map.closePopup(); S.map.redraw(S.m, handlers); S.map.setPark(null, true); }
     }
+    renderMapScope();
     $("#mapFallback").hidden = !!S.map;
     setTab("routes");
     S.probsOpen = false;  // окно проблем по умолчанию свёрнуто - открывается по заголовку или строке состояния
     renderSummary(); renderProbs(); show("paneResult");
     $("#resTitle").focus({ preventScroll: true });
   }
-  window.App = { run: run, openSaved: openSaved, resize: function () { S.map && S.map.resize(); }, runNo: function () { return S.run ? S.run.id : null; } };
+  window.App = { run: run, openSaved: openSaved, resize: function () { S.map && S.map.resize(); } };
 
   // Состояние после события: интервалы пересчитывает движок, поэтому сначала спросить их
   function apply(state) {
@@ -90,7 +128,10 @@
     });
     mapPark.value = parkFilter || "";
     var count = parkFilter ? counts[parkFilter] || 0 : total;
+    var multipleParks = m.parkList.length > 1;
+    $("#parkFilterControl").hidden = !multipleParks;
     $("#mapScopeStatus").textContent = count ? "" : "Нет схем маршрутов";
+    $("#mapScope").hidden = !S.map || (!multipleParks && !!count);
   }
   function setMapPark(id, fit) {
     parkFilter = id;
@@ -120,32 +161,42 @@
     var m = S.m, t = m.totals, pr = problems();
     // Заголовок - номер расчёта из журнала расчётов; ниже - парки расчёта с адресами
     var d = (S.run && S.run.day || m.meta.date).split("-");
-    $("#resTitle").innerHTML = (S.editing ? "Редактирование расчёта" : "Расчёт" + (S.run ? " № " + S.run.id : "")) +
+    var code = D.runCode(S.run);
+    $("#resTitle").innerHTML = (S.editing ? "Редактирование расчёта" : "Расчёт") + (code ? " " + esc(code) : "") +
       ' <small>' + (+d[2]) + " " + MONTHS[+d[1] - 1] + "</small>";
     $("#resParks").innerHTML = m.parkList.map(function (p) {
       var label = "<b>" + esc(p.name) + "</b><span>" + esc(p.address || "") + "</span>";
-      return S.map && p.coords ? '<button type="button" class="res-park" data-park="' + p.id + '">' + label + "</button>" : '<div class="res-park-label">' + label + "</div>";
+      var action = S.map && p.coords ? '<button type="button" class="ad-btn ad-btn--sm btn-plain res-park" data-park="' + esc(p.id) +
+        '" aria-label="Показать на карте: ' + esc(p.name) + '"><i class="ad-icon ad-icon--map-pin ad-icon--sm" aria-hidden="true"></i>Показать на карте</button>' : "";
+      return '<div class="res-park-label">' + label + action + '</div>';
     }).join("");
-    $("#resParks").querySelectorAll("[data-park]").forEach(function (b) { b.addEventListener("click", function () { openPark(b.getAttribute("data-park")); }); });
+    $("#resParks").querySelectorAll("[data-park]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var id = b.dataset.park;
+        if ($("#drawer").hidden) openPark(id);
+        else closePanel(function () { openPark(id); });
+      });
+    });
     // Всё хорошо - никакого уведомления; есть проблемы - маленький красный значок с числом
     var bad = pr.line.length + pr.shifts.length + pr.viol.length, al = $("#resAlert");
     al.hidden = !bad;
     if (bad) { $("#resAlertN").textContent = bad; al.title = "Проблемы: " + bad + " - открыть список"; al.setAttribute("aria-label", al.title); }
-    // показатели - они же переключают список ниже
     var k = [
-      ["routes", "Наряды на линии", t.lineFilled, t.lineTotal, pr.line.length ? "bad" : ""],
+      ["Наряды на линии", t.lineFilled, t.lineTotal, t.lineTotal ? (t.lineFilled < t.lineTotal ? "bad" : "ok") : ""],
       // смены на линии по текущему состоянию дня: после событий число меняется
-      ["shifts", "Смены с водителем", t.shiftFilled, t.shiftTotal, pr.shifts.length ? "warn" : ""],
-      ["reserve", "Резерв выпущен", t.resFilled, t.resTotal, ""]
+      ["Смены с водителем", t.shiftFilled, t.shiftTotal, t.shiftTotal ? (t.shiftFilled < t.shiftTotal ? "warn" : "ok") : ""],
+      ["Резерв выпущен", t.resFilled, t.resTotal, t.resTotal ? (t.resFilled >= t.resTotal ? "bad" : t.resFilled ? "warn" : "ok") : ""]
     ];
-    if (m.parkList.length > 1) k.push(["routes", "Переброски", m.transfers.length, null, ""]);
-    $("#kpis").innerHTML = k.map(function (x) {
-      return '<button type="button" aria-controls="list" aria-pressed="' + (S.tab === x[0]) + '" class="kpi' + (x[4] ? " kpi--" + x[4] : "") + (S.tab === x[0] ? " is-on" : "") + '" data-view="' + x[0] + '"><span class="kpi__v">' + D.num(x[2]) +
-        (x[3] != null ? " <small>из " + D.num(x[3]) + "</small>" : "") + '</span><span class="kpi__l">' + x[1] + "</span></button>";
+    if (m.parkList.length > 1) k.push(["Переброски", m.transfers.length, null, ""]);
+    var statusText = { ok: "В норме", warn: "Требует внимания", bad: "Проблема" };
+    $("#kpis").innerHTML = k.map(function ([label, value, total, tone]) {
+      return '<div class="kpi' + (tone ? " kpi--" + tone : "") + '"><div class="kpi__top"><span class="kpi__v">' + D.num(value) +
+        (total != null ? " <small>из " + D.num(total) + "</small>" : "") + '</span>' +
+        (tone === "bad" ? '<i class="kpi__warning ad-icon ad-icon--warning-circle" aria-hidden="true"></i>' : '') +
+        '</div><span class="kpi__l">' + label + '</span>' +
+        (tone ? '<span class="kpi__status">' + statusText[tone] + '</span>' : '') + '</div>';
     }).join("");
-    $("#kpis").querySelectorAll("[data-view]").forEach(function (b) { b.addEventListener("click", function () { setTab(b.getAttribute("data-view")); }); });
     $("#nLog").textContent = m.state.log.length || "";
-    window.dispatchEvent(new Event("autodisp:run"));  // крошки в шапке узнают номер расчёта
   }
   $("#resAlert").addEventListener("click", function () { S.probsOpen = true; renderProbs(true); });
 
@@ -158,11 +209,6 @@
       x.setAttribute("aria-selected", String(selected));
       x.tabIndex = selected ? 0 : -1;
       if (selected) $("#list").setAttribute("aria-labelledby", x.id);
-    });
-    document.querySelectorAll("#kpis [data-view]").forEach(function (x) {
-      var selected = x.getAttribute("data-view") === t;
-      x.classList.toggle("is-on", selected);
-      x.setAttribute("aria-pressed", String(selected));
     });
     if (S.m) renderList();
     if (changed) M.swap($("#list"));
@@ -192,11 +238,12 @@
         '<div class="column-groups">' + groups.map(function (g) {
           var filled = g.routes.reduce(function (n, r) { return n + r.filled; }, 0);
           var total = g.routes.reduce(function (n, r) { return n + r.total; }, 0);
-          var name = g.name + (m.parkList.length > 1 && !parkFilter ? " · " + D.parkShort(m, g.park) : "");
           return '<details class="column-group" data-result-column="' + esc(g.id) + '"' +
-            (openColumns.has(g.id) ? ' open' : '') + '><summary><span>' + esc(name) +
-            '</span><span class="column-group__meta">' + g.routes.length + ' ' + D.plural(g.routes.length, "маршрут", "маршрута", "маршрутов") +
-            ' · ' + filled + ' из ' + total + ' нарядов</span></summary>' +
+            (openColumns.has(g.id) ? ' open' : '') + '><summary>' +
+            Ops.columnHeading(g, m.parkList.length > 1 && !parkFilter ? D.parkShort(m, g.park) : "") +
+            '<span class="column-group__meta">' + D.num(total) + ' ' + D.plural(total, "наряд", "наряда", "нарядов") +
+            ' · ' + D.num(g.routes.length) + ' ' + D.plural(g.routes.length, "маршрут", "маршрута", "маршрутов") +
+            (filled < total ? ' · на линии ' + D.num(filled) : '') + '</span></summary>' +
             '<div class="rows-head"><span>Маршрут</span><span>Наряды</span><span>Интервал, худший</span><span></span></div>' +
             g.routes.map(function (r) { return routeItem(r, "<b>" + r.filled + "</b> / " + r.total, r.unfilled ? "bad" : "ok", D.worstShort(r.worst)); }).join("") +
             '</details>';
@@ -337,7 +384,8 @@
     b && b.addEventListener("click", function () {
       setMapPark(id, $("#drawer").hidden);
       if (!$("#drawer").hidden) closePanel();
-      setTab("routes"); show("paneResult"); mapPark.focus({ preventScroll: true });
+      setTab("routes"); show("paneResult");
+      (mapPark.offsetWidth ? mapPark : $("#result-tab-routes")).focus({ preventScroll: true });
     });
   }
 
@@ -479,7 +527,7 @@
     $("#drClose").focus({ preventScroll: true });
     window.App.resize();
   }
-  function closePanel() {
+  function closePanel(after) {
     S.route = null; S.duty = null;
     document.querySelectorAll("[data-route].is-on").forEach(function (x) { x.classList.remove("is-on"); });
     if ($("#drawer").contains(document.activeElement)) {
@@ -489,6 +537,7 @@
     M.hide($("#drawer"), "right", function () {
       $("#scrResult").classList.remove("is-split");
       if (S.map) { S.map.resize(); S.map.setPark(parkFilter, true); }
+      if (typeof after === "function") after();
     });
   }
   $("#drClose").addEventListener("click", closePanel);

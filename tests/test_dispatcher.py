@@ -90,13 +90,20 @@ class TestYesterday(unittest.TestCase):
         self.assertEqual(status, 200, plan)
         self.assertEqual(dispatcher.Handler.engine.days[made["day_id"]].source, first)
 
-    def test_recalculation_replaces_the_day(self):
-        self.server.plan_day(DAY)
-        second, _ = self.server.plan_day(DAY)
-        self.assertEqual(list(dispatcher.Handler.engine.days), [second])
+    def test_new_calculation_keeps_previous_plan_and_edits(self):
+        first, plan = self.server.plan_day(DAY)
+        duty = plan["plan"]["vehicle_assignments"][0]["duty_id"]
+        status, _ = self.server.call("POST", f"/api/days/{first}/edits", {"type": "clear_vehicle", "duty_id": duty})
+        self.assertEqual(status, 200)
+        second, new_plan = self.server.plan_day(DAY)
+        self.assertEqual(list(dispatcher.Handler.engine.days), [first, second])
+        self.assertEqual(new_plan["run"]["id"], plan["run"]["id"] + 1)
+        self.assertEqual(self.server.call("GET", f"/api/days/{first}/state")[1]["meta"]["edits"], 1)
+        self.assertEqual(self.server.call("GET", f"/api/days/{first}/plan")[1]["run"], plan["run"])
+        days = self.server.call("GET", "/api/days")[1]["days"]
+        self.assertEqual([d["run"] for d in days], [plan["run"], new_plan["run"]])
 
-    def test_day_log_counts_what_recalculation_erases(self):
-        """Перед повторным расчётом интерфейс спрашивает, сколько событий и правок пропадёт."""
+    def test_day_log_counts_saved_changes(self):
         day_id, plan = self.server.plan_day(DAY)
         ask = f"/x/day-log?date={DAY.isoformat()}&parks=P07"
         self.assertEqual(self.server.call("GET", ask), (200, {"events": 0, "edits": 0}))
@@ -118,14 +125,15 @@ class TestStore(unittest.TestCase):
         self.server.close()
         shutil.rmtree(self.folder, ignore_errors=True)
 
-    def test_day_survives_restart_and_recalculation_removes_old_files(self):
-        old, _ = self.server.plan_day(DAY)
-        new, _ = self.server.plan_day(DAY)
+    def test_both_calculations_keep_their_number_after_restart(self):
+        old, old_plan = self.server.plan_day(DAY)
+        new, new_plan = self.server.plan_day(DAY)
         names = sorted(p.name for p in self.folder.iterdir())
-        self.assertEqual(names, [f"{new}.day.json", f"{new}.live.json"], "файлы заменённого дня убраны")
+        self.assertEqual(names, sorted(f"{day}.{part}.json" for day in (old, new) for part in ("day", "live")))
         again = Engine(store=self.folder)
-        self.assertEqual(list(again.days), [new])
-        self.assertNotEqual(old, new)
+        self.assertCountEqual(again.days, [old, new])
+        self.assertEqual(again.days[old].run, old_plan["run"])
+        self.assertEqual(again.days[new].run, new_plan["run"])
 
     def test_main_refuses_a_file_instead_of_a_folder(self):
         target = self.folder / "файл"

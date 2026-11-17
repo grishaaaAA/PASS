@@ -14,20 +14,27 @@
   };
   function column(park, number) {
     var rows = demo[park] || [], n = String(number).trim().toLowerCase();
-    var row = rows.find(function (r) { return r[2].some(function (v) { return v.toLowerCase() === n; }); });
-    return { id: park + ":" + (row ? row[0] : "unassigned"), name: row ? row[1] : "Без колонны", demo: !!row };
+    var index = rows.findIndex(function (r) { return r[2].some(function (v) { return v.toLowerCase() === n; }); });
+    var row = rows[index];
+    return { id: park + ":" + (row ? row[0] : "unassigned"), name: row ? row[1] : "Без колонны",
+      number: row ? index + 1 : null, demo: !!row, park: park };
   }
   function groupRoutes(routes) {
     var by = new Map();
     routes.forEach(function (r) {
       var park = r.park_id || r.park, c = column(park, r.number);
-      if (!by.has(c.id)) by.set(c.id, { id: c.id, name: c.name, demo: c.demo, park: park, routes: [] });
+      if (!by.has(c.id)) by.set(c.id, Object.assign(c, { routes: [] }));
       by.get(c.id).routes.push(r);
     });
     return Array.from(by.values()).sort(function (a, b) {
-      var order = function (c) { return (demo[c.park] || []).findIndex(function (r) { return c.id === c.park + ":" + r[0]; }); };
-      return a.park.localeCompare(b.park) || Number(b.demo) - Number(a.demo) || order(a) - order(b);
+      return a.park.localeCompare(b.park) || Number(b.demo) - Number(a.demo) || a.number - b.number;
     });
+  }
+  function columnHeading(group, park) {
+    var title = group.number ? "Колонна № " + group.number : group.name;
+    var caption = (group.number ? [group.name, park] : [park]).filter(Boolean).join(" · ");
+    return '<span class="column-group__title"><strong>' + esc(title) + '</strong>' +
+      (caption ? '<small>' + esc(caption) + '</small>' : '') + '</span>';
   }
 
   var dialog = $("#entityDialog"), title = $("#entityTitle"), content = $("#entityContent");
@@ -126,5 +133,5 @@
     if (!b) return;
     open({ kind: b.dataset.record, id: b.dataset.id, park: b.dataset.park, name: b.dataset.name }, b);
   });
-  window.Operations = { groupRoutes: groupRoutes, column: column, recordButton: button, openRecord: open };
+  window.Operations = { groupRoutes: groupRoutes, column: column, columnHeading: columnHeading, recordButton: button, openRecord: open };
 })();

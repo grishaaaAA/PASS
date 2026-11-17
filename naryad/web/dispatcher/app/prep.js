@@ -10,7 +10,6 @@
   var D = window.Disp, $ = D.$, esc = D.esc, toast = D.events.toast;
   var M = window.Motion, Ops = window.Operations;
   var signedIn = false;
-  var entryHash = location.hash;
   // file - название реестра, загруженного файлом (иначе null: реестр парка с сервера), fileParks - его парки
   var P = { parks: [], sel: [], ids: [], park: null, date: null, base: null, file: null, fileParks: {}, ov: null, open: {}, tab: null, filter: { veh: "all", drv: "all" }, st: null, saved: null,
     sort: { veh: { key: "route", dir: 1 }, drv: { key: "name", dir: 1 } }, q: { veh: "", drv: "" } };
@@ -19,20 +18,30 @@
   var aiForm = $("#aiChatForm"), aiSend = $("#btnAiSend");
   var aiDate = new Intl.DateTimeFormat("ru", { day: "numeric", month: "long" });
   var aiTime = new Intl.DateTimeFormat("ru", { hour: "2-digit", minute: "2-digit" });
+  var aiMotion;
+  var aiCollapsed = { opacity: 0, transform: "translate(8px, 8px) scale(.88)" };
+  var aiExpanded = { opacity: 1, transform: "none" };
   function closeAiChat(restoreFocus) {
     if (!aiChat.open) return;
-    aiChat.close();
     aiButton.setAttribute("aria-expanded", "false");
-    if (restoreFocus) aiButton.focus();
+    if (aiMotion) aiMotion.cancel();
+    function finish() {
+      aiChat.close();
+      if (aiMotion) aiMotion.cancel();
+      aiMotion = null;
+      if (restoreFocus) aiButton.focus({ preventScroll: true });
+    }
+    if (!restoreFocus || M.reduce) { finish(); return; }
+    aiMotion = aiChat.animate([aiExpanded, aiCollapsed], { duration: 160, easing: "ease-in", fill: "forwards" });
+    aiMotion.onfinish = finish;
   }
   aiButton.addEventListener("click", function () {
     if (aiChat.open) { closeAiChat(true); return; }
     aiChat.show();
     aiButton.setAttribute("aria-expanded", "true");
     if (!aiMessages.firstChild) appendAiMessage("Здравствуйте! Подскажу, как начать расчёт, открыть историю или выбрать парк на карте.", false);
-    M.enter(aiChat, "fade");
-    if (window.matchMedia("(pointer: fine)").matches) aiInput.focus();
-    else $("#btnAiClose").focus();
+    if (!M.reduce) aiMotion = aiChat.animate([aiCollapsed, aiExpanded], { duration: 260, easing: "cubic-bezier(.2,.8,.25,1)" });
+    (window.matchMedia("(pointer: fine)").matches ? aiInput : $("#btnAiClose")).focus({ preventScroll: true });
   });
   $("#btnAiClose").addEventListener("click", function () { closeAiChat(true); });
   aiChat.addEventListener("keydown", function (e) {
@@ -71,7 +80,7 @@
     aiMessages.scrollTop = aiMessages.scrollHeight;
   }
   function aiHelp(message) {
-    if (/истори|прошл|журнал/.test(message)) return "Откройте «История» в верхнем меню и выберите рабочий день. События внутри расчёта собраны на вкладке «Журнал».";
+    if (/истори|прошл|журнал/.test(message)) return "Откройте «История» в верхнем меню и выберите рабочий день. Там доступны журнал событий и утренний план.";
     if (/карт|маршрут/.test(message)) return "На карте расчёта откройте список «Все парки» и выберите нужный парк. Нажмите на линию маршрута, чтобы открыть его карточку.";
     if (/расч[её]т|созда|новый день|подготов/.test(message)) return "Откройте «Создание» и нажмите «Создать расчёт». Выберите парк, проверьте дату, автобусы и водителей, затем нажмите «Рассчитать».";
     return "Пока я отвечаю на вопросы о работе в AUTODISP. Спросите, как открыть историю расчётов, создать рабочий день или выбрать парк на карте.";
@@ -153,6 +162,9 @@
   });
 
   var dashboardNav = $("#dashboardNav");
+  var workspaceBar = $("#workspaceBar"), resultSide = $("#side");
+  var barProfile = $("#barProfile"), mapProfile = $("#mapProfile"), resultNavigation = $("#resultNavigation");
+  var barContent = workspaceBar.querySelector(".bar__in");
   var workspaceScreens = { stats: "#scrStats", history: "#scrHistory", create: "#scrCreate" };
   var workspaceLinks = Array.from(dashboardNav.querySelectorAll("a"));
   $("#btnCompareStats").addEventListener("click", function () { toast("Шаблон сравнения готов для выбора периода"); });
@@ -207,7 +219,8 @@
       else link.removeAttribute("aria-current");
     });
     aiButton.hidden = !signedIn || name === "welcome" || name === "login";
-    $("#barProfile").hidden = aiButton.hidden;
+    barProfile.hidden = aiButton.hidden;
+    if (changed) closeProfile();
     if (aiButton.hidden) {
       closeAiChat(false);
       aiMessages.replaceChildren();
@@ -221,6 +234,21 @@
       M.enter($(target), "up");
     }
     document.body.classList.toggle("is-result", name === "result");
+    if (name === "result" && workspaceBar.parentNode !== resultSide) {
+      resultSide.prepend(workspaceBar);
+      resultSide.scrollTop = 0;
+    } else if (name !== "result" && workspaceBar.parentNode === resultSide) {
+      document.body.insertBefore(workspaceBar, aiButton);
+    }
+    var result = name === "result";
+    var profileTarget = result ? mapProfile : barContent;
+    if (barProfile.parentNode !== profileTarget) profileTarget.appendChild(barProfile);
+    resultNavigation.hidden = !result;
+    if (result) {
+      $("#resultHomeLabel").textContent = resultEditId ? "К списку расчётов" : "Создание";
+      resultNavigation.querySelector('[data-go="parks"]').hidden = !!resultEditId;
+      resultNavigation.querySelector('[data-go="prep"]').hidden = !!resultEditId || !P.ids.length;
+    }
     renderCrumbs(name);
     if (!silent) {
       var hash = "#" + name;
@@ -240,23 +268,18 @@
       }
     }
   }
-  // Крошки показывают путь от истории рабочих дней к расчёту.
   function renderCrumbs(name) {
-    var no = window.App && window.App.runNo && window.App.runNo();
-    if (name === "welcome" || name === "login" || workspaceScreens[name]) { $("#crumbs").innerHTML = ""; return; }
-    var crumbs = [['<button data-go="create">Создание</button>', false]];
-    if (!resultEditId) crumbs.push(['<button data-go="parks">Выбор парков</button>', name === "parks"]);
-    if (!resultEditId && (name === "prep" || name === "result") && P.ids.length) crumbs.push(['<button data-go="prep">Подготовка дня</button>', name === "prep"]);
-    if (name === "result") crumbs.push(["<span>" + (resultEditId ? "Редактирование расчёта" : "Расчёт" + (no ? " № " + no : "")) + "</span>", true]);
+    if (name === "welcome" || name === "login" || name === "result" || workspaceScreens[name]) { $("#crumbs").innerHTML = ""; return; }
+    var crumbs = [['<button data-go="create">Создание</button>', false], ['<button data-go="parks">Выбор парков</button>', name === "parks"]];
+    if (name === "prep" && P.ids.length) crumbs.push(['<button data-go="prep">Подготовка дня</button>', true]);
     $("#crumbs").innerHTML = crumbs.map(function (c) { return '<span class="crumb' + (c[1] ? ' is-on" aria-current="page' : "") + '">' + c[0] + "</span>"; }).join('<span class="crumb__sep" aria-hidden="true">/</span>');
   }
   // Логотип возвращает к рабочим дням после входа.
   $("#btnHome").addEventListener("click", function () {
-    var to = signedIn ? "stats" : "welcome";
+    var to = signedIn ? "create" : "welcome";
     if (to === current) return;
     confirmLeave().then(function (ok) { if (!ok) return; openScreen(to); });
   });
-  window.addEventListener("autodisp:run", function () { if (current === "result") renderCrumbs("result"); });
   document.addEventListener("click", function (e) {
     var b = e.target.closest("[data-go]"); if (!b) return;
     var to = b.getAttribute("data-go");
@@ -294,7 +317,7 @@
       setSavedRunsOpen(true);
       return editSavedDay(h[1], true);
     }
-    var name = h[0] === "parks" || workspaceScreens[h[0]] ? h[0] : "stats";
+    var name = h[0] === "parks" || workspaceScreens[h[0]] ? h[0] : "create";
     openScreen(name, true);
   }
   // Каждое открытие приложения начинается с приветствия, даже если в адресе сохранён экран.
@@ -329,11 +352,7 @@
     signedIn = true;
     $("#loginPassword").value = "";
     renderProfile();
-    if (/^#(?:prep\/|edit\/|stats$|history$|create$)/.test(entryHash)) {
-      history.replaceState(null, "", entryHash);
-      entryHash = "";
-      route();
-    } else openScreen("stats");
+    openScreen("create");
   });
   $("#btnProfileLogout").addEventListener("click", function () {
     closeProfile();
@@ -352,39 +371,82 @@
     var d = new Date(s + "T12:00:00");
     return isNaN(d.getTime()) ? s : new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric" }).format(d);
   }
+  var createdDate = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/Moscow" });
+  function creationLabel(run) {
+    return run && run.at ? createdDate.format(new Date(run.at)) : "Дата создания неизвестна";
+  }
   function stat(value, label) { return '<div class="dashboard__stat"><b>' + value + '</b><span>' + label + "</span></div>"; }
   function openScreen(name, silent) {
     go(name, silent);
-    if (name === "stats" || name === "history" || (name === "create" && !$("#savedRuns").hidden)) loadDays(name);
+    if (workspaceScreens[name]) loadDays(name);
   }
   function loadDays(page) {
     if (page === "history") $("#dashboardDays").innerHTML = '<p class="muted">Загружаем историю…</p>';
-    if (page === "create") $("#savedRunsStatus").textContent = "Загружаем расчёты…";
+    if (page === "create") {
+      $("#savedRunsStatus").textContent = "Загружаем расчёты…";
+      $("#recentRunsStatus").textContent = "Загружаем расчёты…";
+    }
     return D.api("GET", "/api/days").then(function (r) {
       if (current !== page) return;
       dashboardDays = (r.days || []).slice().sort(function (a, b) { return b.date.localeCompare(a.date) || b.day_id.localeCompare(a.day_id, undefined, { numeric: true }); });
       var done = dashboardDays.filter(function (d) { return d.planned; });
       if (page === "stats") {
-        $("#dashboardStats").innerHTML = stat(done.length, "дней с расчётом") + stat(done.reduce(function (n, d) { return n + d.events; }, 0), "событий") + stat(done.reduce(function (n, d) { return n + d.edits; }, 0), "ручных правок");
+        var calculatedDates = new Set(done.map(function (d) { return d.date; }));
+        $("#dashboardStats").innerHTML = stat(calculatedDates.size, "дней с расчётом") + stat(done.reduce(function (n, d) { return n + d.events; }, 0), "событий") + stat(done.reduce(function (n, d) { return n + d.edits; }, 0), "ручных правок");
       } else if (page === "history") {
         $("#dashboardDays").innerHTML = dashboardDays.length ? dashboardDays.map(function (d) {
-          return '<button class="dashboard__day" type="button" data-day="' + esc(d.day_id) + '"><b>' + esc(dateLabel(d.date)) + '</b><span>' + (d.planned ? "Расчёт выполнен" : "Без расчёта") + ' · событий: ' + d.events + ' · правок: ' + d.edits + "</span></button>";
+          var code = D.runCode(d.run);
+          return '<button class="dashboard__day" type="button" data-day="' + esc(d.day_id) + '"><b>' + esc((code ? code + " · " : "") + dateLabel(d.date)) + '</b><span>' + (d.planned ? "Расчёт выполнен" : "Без расчёта") + ' · событий: ' + d.events + ' · правок: ' + d.edits + "</span></button>";
         }).join("") : '<p class="muted">Сохранённых дней пока нет.</p>';
         if (dashboardDays.length) selectDashboardDay(dashboardDays.some(function (d) { return d.day_id === dashboardSelected; }) ? dashboardSelected : dashboardDays[0].day_id);
         else $("#dashboardDetail").innerHTML = '<h2>День</h2><p class="muted">После первого расчёта здесь появится история.</p>';
       } else {
         $("#savedRunsStatus").textContent = done.length ? "" : "Сохранённых расчётов пока нет.";
-        $("#savedRunsList").innerHTML = done.map(function (d) {
-          return '<button class="dashboard__day" type="button" data-edit-day="' + esc(d.day_id) + '"><b>' + esc(dateLabel(d.date)) + '</b><span>' +
-            esc((d.parks || []).join(", ") || "Сохранённый расчёт") + ' · правок: ' + d.edits + '</span></button>';
+        $("#recentRunsStatus").textContent = $("#savedRunsStatus").textContent;
+        var byCreation = done.slice().sort(function (a, b) {
+          return (b.run ? b.run.id : 0) - (a.run ? a.run.id : 0);
+        });
+        $("#savedRunsList").innerHTML = byCreation.map(function (d) {
+          var code = D.runCode(d.run) || "Расчёт";
+          return '<button class="dashboard__day" type="button" data-edit-day="' + esc(d.day_id) + '"><b>' +
+            esc(code + " · " + dateLabel(d.date)) + '</b><span>' + esc((d.parks || []).join(", ") || "Сохранённый расчёт") +
+            ' · правок: ' + d.edits + '</span></button>';
         }).join("");
+        recentRunsList.innerHTML = byCreation.slice(0, 8).map(function (d) {
+          var code = D.runCode(d.run) || "Расчёт";
+          var date = creationLabel(d.run);
+          var label = [code, date, "Рабочий день " + dateLabel(d.date)].concat(d.parks || []).join(" · ");
+          return '<li><button class="recent-runs__date" type="button" data-edit-day="' + esc(d.day_id) +
+            '" title="' + esc(label) + '" aria-label="' + esc(label) + '"><b>' + esc(code) + '</b><span>' + esc(date) + '</span></button></li>';
+        }).join("");
+        $("#recentRunsPicker").hidden = !done.length;
+        recentRunsList.scrollLeft = 0;
+        syncRecentRunsNav();
       }
     }, function (e) {
       if (current !== page) return;
       var target = { stats: "#dashboardStats", history: "#dashboardDays", create: "#savedRunsStatus" }[page];
       $(target).textContent = "Не удалось загрузить данные. " + e.message;
+      if (page === "create") $("#recentRunsStatus").textContent = $(target).textContent;
     });
   }
+  var recentRunsList = $("#recentRunsList"), recentRunsPrev = $("#recentRunsPrev"), recentRunsNext = $("#recentRunsNext");
+  function syncRecentRunsNav() {
+    var maxScroll = recentRunsList.scrollWidth - recentRunsList.clientWidth;
+    $("#recentRunsNav").hidden = maxScroll <= 1;
+    recentRunsPrev.disabled = recentRunsList.scrollLeft <= 1;
+    recentRunsNext.disabled = recentRunsList.scrollLeft >= maxScroll - 1;
+  }
+  function scrollRecentRuns(direction) {
+    var cards = recentRunsList.children;
+    if (cards.length < 2) return;
+    var step = cards[1].getBoundingClientRect().left - cards[0].getBoundingClientRect().left;
+    recentRunsList.scrollBy({ left: step * direction, behavior: M.reduce ? "auto" : "smooth" });
+  }
+  recentRunsPrev.addEventListener("click", function () { scrollRecentRuns(-1); });
+  recentRunsNext.addEventListener("click", function () { scrollRecentRuns(1); });
+  recentRunsList.addEventListener("scroll", syncRecentRunsNav, { passive: true });
+  if (window.ResizeObserver) new ResizeObserver(syncRecentRunsNav).observe(recentRunsList);
   function setSavedRunsOpen(open) {
     $("#btnEditDay").setAttribute("aria-expanded", String(open));
     if (open) M.show($("#savedRuns"), "down");
@@ -394,25 +456,30 @@
   $("#btnEditDay").addEventListener("click", function () {
     var open = this.getAttribute("aria-expanded") !== "true";
     setSavedRunsOpen(open);
-    if (open) loadDays("create");
+    if (open) $("#savedRuns").scrollIntoView({ block: "nearest", behavior: M.reduce ? "auto" : "smooth" });
     else editRequest++;
   });
   $("#savedRunsList").addEventListener("click", function (e) {
     var button = e.target.closest("[data-edit-day]");
     if (button) editSavedDay(button.dataset.editDay);
   });
-  function editSavedDay(id, silent) {
+  recentRunsList.addEventListener("click", function (e) {
+    var button = e.target.closest("[data-edit-day]");
+    if (button) editSavedDay(button.dataset.editDay, false, $("#recentRunsStatus"));
+  });
+  function editSavedDay(id, silent, status) {
+    status = status || $("#savedRunsStatus");
     var request = ++editRequest;
     var hash = location.hash;
     function stillHere() { return current === "create" && request === editRequest && location.hash === hash; }
-    $("#savedRunsStatus").textContent = "Открываем расчёт…";
+    status.textContent = "Открываем расчёт…";
     return window.App.openSaved(id, function () {
       if (!stillHere()) return false;
-      $("#savedRunsStatus").textContent = "";
+      status.textContent = "";
       P.calculated = false;
       go("result", silent, id);
     }).catch(function (e) {
-      if (stillHere()) $("#savedRunsStatus").textContent = "Не удалось открыть расчёт. " + e.message;
+      if (stillHere()) status.textContent = "Не удалось открыть расчёт. " + e.message;
     });
   }
   $("#dashboardDays").addEventListener("click", function (e) {
@@ -426,14 +493,16 @@
     var box = $("#dashboardDetail");
     box.innerHTML = '<h2>' + esc(dateLabel(entry.date)) + '</h2><p class="muted">Загружаю данные дня…</p>';
     var base = "/api/days/" + encodeURIComponent(id);
-    Promise.all([D.api("GET", base), entry.planned ? D.api("GET", base + "/state") : Promise.resolve(null)]).then(function (r) {
+    var stateRequest = entry.planned ? D.api("GET", base + "/state") : Promise.resolve(null);
+    var planRequest = entry.planned ? D.api("GET", base + "/plan").catch(function () { return null; }) : Promise.resolve(null);
+    Promise.all([D.api("GET", base), stateRequest, planRequest]).then(function (r) {
       if (current !== "history" || dashboardSelected !== id) return;
-      var day = r[0], state = r[1], logs = state ? state.log || [] : [];
+      var day = r[0], state = r[1], plan = r[2], logs = state ? state.log || [] : [];
       var parks = (day.parks || []).map(function (p) { return p.name; });
       var parkIds = (day.parks || []).map(function (p) { return p.id; });
       return D.api("GET", "/x/marks/journal?date=" + encodeURIComponent(entry.date) + "&parks=" + parkIds.map(encodeURIComponent).join(",")).then(function (marks) {
-        return { day: day, state: state, logs: logs, parks: parks, marks: marks.journal || [] };
-      }, function () { return { day: day, state: state, logs: logs, parks: parks, marks: [] }; });
+        return { day: day, state: state, plan: plan, logs: logs, parks: parks, marks: marks.journal || [] };
+      }, function () { return { day: day, state: state, plan: plan, logs: logs, parks: parks, marks: [] }; });
     }).then(function (data) {
       if (!data || current !== "history" || dashboardSelected !== id) return;
       var day = data.day, state = data.state, logs = data.logs, parks = data.parks;
@@ -441,7 +510,7 @@
       var shifts = (day.shifts || []).length;
       var names = {};
       (day.drivers || []).forEach(function (d) { names[d.id] = "Водитель " + (d.full_name || d.tab_number || d.id); });
-      (day.vehicles || []).forEach(function (v) { names[v.id] = "Автобус " + (v.number || v.garage_number || v.id); });
+      (day.vehicles || []).forEach(function (v) { names[v.id] = "Автобус " + (v.board_number || v.id); });
       (day.routes || []).forEach(function (r) { names[r.id] = "Маршрут " + (r.number || r.id); });
       var logHtml = logs.slice().reverse().map(function (l) {
         var title = l.title || l.type || "Событие";
@@ -455,8 +524,42 @@
         return '<li class="dashboard__log"><time>' + esc(isNaN(time.getTime()) ? m.at : new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" }).format(time)) + '</time><span><b>' + esc(label) + '</b><small>' + esc(stateText) + "</small></span></li>";
       }).join("");
       if (!logHtml) logHtml = '<li class="muted">Записей пока нет.</li>';
-      box.innerHTML = '<h2>' + esc(dateLabel(entry.date)) + '</h2><p class="muted">' + esc(parks.join(", ") || "Парк не указан") + '</p><div class="dashboard__facts">' + stat(duties, "нарядов на линии") + stat(shifts, "смен") + stat(state ? state.unfilled.length : "—", "незакрытых назначений") + '</div><h3>Журнал дня</h3><ol class="dashboard__logs">' + logHtml + "</ol>";
+      var planHtml = data.plan ? historyPlan(day, data.plan) :
+        '<p class="muted">' + (entry.planned ? "Утренний план не загрузился." : "Утренний план для этого дня не построен.") + '</p>';
+      box.innerHTML = '<h2>' + esc(dateLabel(entry.date)) + '</h2><p class="muted">' + esc(parks.join(", ") || "Парк не указан") +
+        '</p><div class="dashboard__facts">' + stat(duties, "нарядов на линии") + stat(shifts, "смен") +
+        stat(state ? state.unfilled.length : "—", "незакрытых назначений") + '</div><h3>Журнал дня</h3><ol class="dashboard__logs">' +
+        logHtml + "</ol><h3>Утренний план</h3>" + planHtml;
     }, function (e) { if (current === "history" && dashboardSelected === id) box.innerHTML = '<h2>' + esc(dateLabel(entry.date)) + '</h2><p class="err">Не удалось открыть день: ' + esc(e.message) + "</p>"; });
+  }
+  function historyPlan(day, envelope) {
+    var m = D.build(day, envelope, null, null), groups = new Map();
+    var vehicles = new Map(envelope.plan.vehicle_assignments.map(function (a) { return [a.duty_id, a.vehicle_id]; }));
+    var drivers = new Map(envelope.plan.driver_assignments.map(function (a) { return [a.shift_id, a.driver_id]; }));
+    Object.values(m.duties).forEach(function (duty) {
+      var route = m.routes[duty.route];
+      var label = (route ? "Маршрут " + route.number : "Резерв") + " · " + D.parkShort(m, duty.park);
+      if (!groups.has(label)) groups.set(label, []);
+      groups.get(label).push(duty);
+    });
+    var collator = new Intl.Collator("ru", { numeric: true });
+    if (!groups.size) return '<p class="muted">В плане нет нарядов.</p>';
+    return '<div class="history-plan">' + Array.from(groups.keys()).sort(collator.compare).map(function (label) {
+      var duties = groups.get(label).sort(function (a, b) { return a.start - b.start || collator.compare(a.id, b.id); });
+      var rows = duties.map(function (duty) {
+        var vehicle = vehicles.get(duty.id);
+        var shifts = duty.shifts.map(function (shift) {
+          var driver = drivers.get(shift.id);
+          return "<li>Смена " + esc(shift.order) + " · " + D.hm(shift.start) + "–" + D.hm(shift.end) + " · " +
+            (driver ? esc(D.driverName(m, driver)) : "Без водителя") + "</li>";
+        }).join("");
+        return '<li><b>Наряд ' + esc(D.dutyNo(m, duty)) + ' · ' + D.hm(duty.start) + '–' + D.hm(duty.end) +
+          '</b><span>' + (vehicle ? "Автобус " + esc(D.vehicleName(m, vehicle)) : "Без автобуса") + '</span>' +
+          (shifts ? "<ul>" + shifts + "</ul>" : "") + "</li>";
+      }).join("");
+      return '<details><summary>' + esc(label) + '<span>' + duties.length + ' ' + D.plural(duties.length, "наряд", "наряда", "нарядов") +
+        '</span></summary><ul class="history-plan__duties">' + rows + '</ul></details>';
+    }).join("") + "</div>";
   }
 
   // ---------- 1. Выбор парков ----------
@@ -733,9 +836,9 @@
       '<th>Маршрут</th><th>Конечные</th><th>Важность</th><th class="ad-num">Нарядов сегодня</th><th class="ad-num">Смен</th><th>Класс</th></tr></thead><tbody>';
     el.innerHTML = '<div class="column-tools"><p class="muted">' + help + '</p><label class="sw sw--text"><input type="checkbox" data-all-routes aria-label="Все маршруты"><span></span><em>Все</em></label></div>' +
       '<div class="column-groups">' + P.columns.map(function (g, index) {
-        var title = g.name + (P.ids.length > 1 ? " · " + shortName(parkById(g.park)) : "");
         return '<details class="column-group" data-column="' + index + '"' + (P.open["column:" + g.id] ? ' open' : '') +
-          '><summary><span>' + esc(title) + '</span><span class="column-group__meta"></span></summary>' + head +
+          '><summary>' + Ops.columnHeading(g, P.ids.length > 1 ? shortName(parkById(g.park)) : "") +
+          '<span class="column-group__meta"></span></summary>' + head +
           g.routes.map(function (r) {
             var i = routeInfo(r), on = routeOn(r);
             return '<tr class="' + (on ? "" : "is-off") + '"><td><label class="sw"><input type="checkbox" data-route="' + esc(r.id) +
@@ -782,8 +885,10 @@
       all.parentNode.querySelector("em").textContent = on === ids.length ? "Все" : on ? on + " из " + ids.length : "Нет";
       groups.forEach(function (v) {
         var active = v.group.routes.filter(routeOn).length;
-        v.box.querySelector(".column-group__meta").textContent = active + " из " + v.group.routes.length + " в работе · " +
-          v.duties.filter(function (d) { return P.st.route[d.route_id]; }).length + " нарядов · " +
+        var dutyCount = v.duties.filter(function (d) { return P.st.route[d.route_id]; }).length;
+        var routeCount = v.group.routes.length;
+        v.box.querySelector(".column-group__meta").textContent = dutyCount + " " + D.plural(dutyCount, "наряд", "наряда", "нарядов") + " · " +
+          routeCount + " " + D.plural(routeCount, "маршрут", "маршрута", "маршрутов") + " · в работе " + active + " · " +
           v.fleet.length + " " + D.plural(v.fleet.length, "автобус", "автобуса", "автобусов") + " и " +
           v.drivers.length + " " + D.plural(v.drivers.length, "водитель", "водителя", "водителей") + " закреплено";
         if (v.schedule.open) paintSchedule(v);
@@ -1043,31 +1148,16 @@
     if (!P.base) return;  // реестр ещё грузится
     var c = counts();
     if (!c.lineDuties) return toast("Ни один маршрут не работает - считать нечего", true);
-    confirmRecalc().then(function (ok) {
-      if (!ok) return;
-      $("#prepBusy").hidden = false; $("#prepBusyText").textContent = "Расчёт расстановки…";
-      // Не сохранились отметки - считаем всё равно, по тому, что отмечено на экране: сообщение
-      // «Не сохранилось» уже показано, а «Сохранить» осталась с числом, и сохранение можно повторить.
-      save().catch(function () {}).then(function () { return window.App.run(buildDay(), function () { P.calculated = true; go("result"); }); }).then(function () {
-        $("#prepBusy").hidden = true;
-      }, function (e) {
-        $("#prepBusy").hidden = true;
-        toast(e.message + (e.details && e.details.length ? ": " + e.details.slice(0, 2).join("; ") : ""), true);
-      });
+    if (!$("#prepBusy").hidden) return;
+    $("#prepBusy").hidden = false; $("#prepBusyText").textContent = "Расчёт расстановки…";
+    // Не сохранились отметки - считаем по тому, что отмечено на экране.
+    save().catch(function () {}).then(function () { return window.App.run(buildDay(), function () { P.calculated = true; go("result"); }); }).then(function () {
+      $("#prepBusy").hidden = true;
+    }, function (e) {
+      $("#prepBusy").hidden = true;
+      toast(e.message + (e.details && e.details.length ? ": " + e.details.slice(0, 2).join("; ") : ""), true);
     });
   });
-  // Повторный расчёт того же дня тех же парков заменяет прежний: сходы, замены и правки дня пропадают.
-  // Если они были - спросить. Сервер не ответил - не мешаем расчёту.
-  function confirmRecalc() {
-    var day = P.base, parks = day.parks.map(function (p) { return p.id; });
-    return D.api("GET", "/x/day-log?date=" + encodeURIComponent(day.meta.date) + "&parks=" + parks.map(encodeURIComponent).join(",")).then(function (r) {
-      var n = r.events + r.edits;
-      if (!n) return true;
-      return D.events.confirm({ title: "Рассчитать заново?",
-        text: "Сходы, замены и правки этого дня пропадут: " + n + " " + D.plural(n, "запись", "записи", "записей") + " в журнале.",
-        ok: "Рассчитать заново", cancel: "Отмена", danger: true });
-    }, function () { return true; });
-  }
 
   // ---------- старт ----------
   // Заставка: короткая линия загрузки, пока приходит список парков; не меньше 500 мс, чтобы не мигала.

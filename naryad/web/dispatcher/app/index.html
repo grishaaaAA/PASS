@@ -19,14 +19,14 @@
   <div class="splash__bar"><i></i></div>
 </div>
 
-<header class="bar">
+<header class="bar" id="workspaceBar">
   <div class="bar__in">
-    <button class="bar__home" id="btnHome" type="button" aria-label="AUTODISP: к рабочим дням"><img class="bar__logo" src="ds/logo.svg" alt=""></button>
+    <button class="bar__home" id="btnHome" type="button" aria-label="AUTODISP: к созданию расчёта"><img class="bar__logo" src="ds/logo.svg" alt=""></button>
     <nav class="crumbs" id="crumbs" aria-label="Где вы"></nav>
     <nav class="dashboard-nav" id="dashboardNav" aria-label="Разделы рабочего пространства" hidden>
-      <a href="#stats" data-go="stats">Статистика</a>
-      <a href="#history" data-go="history">История</a>
-      <a href="#create" data-go="create">Создание</a>
+      <a href="#create" data-go="create"><span>Создание</span></a>
+      <a href="#history" data-go="history"><span>История</span></a>
+      <a href="#stats" data-go="stats"><span>Статистика</span></a>
     </nav>
     <span class="bar__grow"></span>
     <div class="bar__profile" id="barProfile" hidden>
@@ -37,6 +37,11 @@
       </button>
       <section class="profile-menu" id="profileMenu" role="dialog" aria-label="Профиль" hidden>
         <div class="profile-menu__head"><span class="profile-menu__avatar" id="profileMenuAvatar" aria-hidden="true"><i class="ad-icon ad-icon--user"></i></span><div><b id="profileMenuName">Профиль</b><small>Рабочий профиль диспетчера</small></div></div>
+        <nav class="profile-menu__nav" id="resultNavigation" aria-label="Навигация расчёта" hidden>
+          <button type="button" class="profile-menu__item" data-go="create"><i class="ad-icon ad-icon--chart-bar" aria-hidden="true"></i><b id="resultHomeLabel">Создание</b></button>
+          <button type="button" class="profile-menu__item" data-go="parks"><i class="ad-icon ad-icon--bus" aria-hidden="true"></i><b>Выбор парков</b></button>
+          <button type="button" class="profile-menu__item" data-go="prep"><i class="ad-icon ad-icon--path" aria-hidden="true"></i><b>Подготовка дня</b></button>
+        </nav>
         <button type="button" class="profile-menu__item" id="btnSettings"><i class="ad-icon ad-icon--gear"></i><span><b>Настройки</b><small>Профиль, пароль и интеграции</small></span></button>
         <button type="button" class="profile-menu__item profile-menu__item--danger" id="btnProfileLogout"><i class="ad-icon ad-icon--sign-out"></i><span><b>Выйти</b><small>Завершить рабочую сессию</small></span></button>
       </section>
@@ -126,17 +131,31 @@
     <h1 class="scr__h" id="createTitle">Создание</h1>
     <div class="dashboard-create-rows">
       <section class="dashboard-panel dashboard-create">
-        <div class="dashboard-create__visual" aria-hidden="true"><span></span><i></i><b></b></div>
+        <img class="dashboard-create__photo" src="img/create-bridge.png" width="512" height="278" loading="lazy" alt="">
         <div class="dashboard-panel__head">
           <div><h2>Создание расчёта</h2><p class="muted">Сформируйте план выпуска на рабочий день с учётом доступных автобусов, водителей и маршрутов.</p></div>
-          <button class="ad-btn ad-btn--primary ad-btn--lg" id="btnNewDay" type="button">Создать расчёт<i class="arr"></i></button>
         </div>
+        <button class="ad-btn ad-btn--primary ad-btn--lg dashboard-create__action" id="btnNewDay" type="button">Создать расчёт<i class="arr" aria-hidden="true"></i></button>
       </section>
-      <section class="dashboard-panel">
-        <div class="dashboard-panel__head">
-          <div><h2>Редактирование существующего расчёта</h2><p class="muted">Откройте сохранённый план, чтобы изменить назначения автобусов и водителей.</p></div>
-          <button class="ad-btn ad-btn--sm btn-plain" id="btnEditDay" type="button" aria-controls="savedRuns" aria-expanded="false">Выбрать расчёт<i class="ad-icon ad-icon--caret-down ad-icon--sm" aria-hidden="true"></i></button>
+      <section class="dashboard-panel dashboard-create">
+        <img class="dashboard-create__photo" src="img/edit-incident.jpg" width="1280" height="720" loading="lazy" alt="">
+        <div class="dashboard-create__content">
+          <div class="dashboard-panel__head">
+            <div><h2>Редактирование существующего расчёта</h2><p class="muted">Если автобус сошёл с линии или попал в ДТП, отметьте событие и скорректируйте выпуск на маршруте.</p></div>
+          </div>
+          <section class="recent-runs" aria-labelledby="recentRunsTitle">
+            <h3 id="recentRunsTitle">Последние расчёты</h3>
+            <p class="caption muted" id="recentRunsStatus" role="status"></p>
+            <div class="recent-runs__picker" id="recentRunsPicker" hidden>
+              <ul class="recent-runs__list" id="recentRunsList" aria-labelledby="recentRunsTitle"></ul>
+              <div class="recent-runs__nav" id="recentRunsNav" hidden>
+                <button class="ad-btn ad-btn--sm btn-plain" id="recentRunsPrev" type="button" aria-controls="recentRunsList" aria-label="Предыдущие расчёты"><i class="arr arr--left" aria-hidden="true"></i></button>
+                <button class="ad-btn ad-btn--sm btn-plain" id="recentRunsNext" type="button" aria-controls="recentRunsList" aria-label="Следующие расчёты"><i class="arr" aria-hidden="true"></i></button>
+              </div>
+            </div>
+          </section>
         </div>
+        <button class="ad-btn ad-btn--primary ad-btn--lg dashboard-create__action" id="btnEditDay" type="button" aria-controls="savedRuns" aria-expanded="false">Редактировать<i class="arr" aria-hidden="true"></i></button>
       </section>
     </div>
     <div id="savedRuns" class="saved-runs" hidden>
@@ -200,16 +219,19 @@
 <!-- 3. Расчёт -->
 <main class="layout scr" id="scrResult" aria-label="Результат расчёта" hidden>
   <aside class="side" id="side">
-    <section class="pane pane--top">
-      <button class="ad-btn ad-btn--ghost ad-btn--sm back" id="btnResultPrep" data-go="prep"><i class="arr arr--left"></i>К подготовке дня</button>
-      <button class="ad-btn ad-btn--ghost ad-btn--sm back" id="btnResultCreate" data-go="create" hidden><i class="arr arr--left"></i>К списку расчётов</button>
-    </section>
     <!-- 3. Результат -->
     <section class="pane pane--result" id="paneResult" hidden>
       <div class="res-head">
         <div class="res-title"><h1 class="res-h" id="resTitle" tabindex="-1">Расчёт</h1>
           <button type="button" class="res-alert" id="resAlert" hidden><i class="ad-icon ad-icon--warning-circle ad-icon--sm"></i><span id="resAlertN"></span></button></div>
         <div class="res-parks" id="resParks"></div>
+        <div class="park-filter" id="mapScope" hidden>
+          <label class="park-filter__control" id="parkFilterControl" hidden>
+            <select class="ad-input" id="mapPark" aria-label="Фильтр маршрутов по паркам" aria-controls="map list"></select>
+            <i class="ad-icon ad-icon--caret-down ad-icon--sm" aria-hidden="true"></i>
+          </label>
+          <span class="caption muted" id="mapScopeStatus" role="status"></span>
+        </div>
       </div>
       <div class="kpis" id="kpis" role="group" aria-label="Показатели"></div>
       <div class="tabs" role="tablist" aria-label="Разделы расчёта">
@@ -229,11 +251,9 @@
   </aside>
 
   <section class="stage" aria-label="Карта расчёта">
-    <div class="map-scope" id="mapScope" hidden>
-      <label for="mapPark">Маршруты</label>
-      <select id="mapPark" aria-label="Маршруты по паркам" aria-controls="map list"></select>
-      <span id="mapScopeStatus" role="status"></span>
-    </div>
+    <div class="map-profile" id="mapProfile"></div>
+    <div class="side-resize" id="sideResize" role="separator" tabindex="0" aria-orientation="vertical"
+      aria-label="Ширина левого меню" aria-controls="side"></div>
     <div class="map" id="map"></div>
     <p class="map-fallback caption muted" id="mapFallback" role="status" hidden>Карта недоступна. Колонны, смены и резерв доступны в списке расчёта.</p>
     <!-- Проблемы дня: окошко поверх карты, появляется, только когда они есть -->

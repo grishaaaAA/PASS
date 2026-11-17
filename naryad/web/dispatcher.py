@@ -234,48 +234,34 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
         if url.path == "/x/geo/routes":
             return self._geo(lambda: self.geo.create(body))
-        if url.path == "/api/days" and isinstance(body, dict) and "parks" in body:
-            self._forget_same_day(body)
         plan = re.fullmatch(r"/api/days/([^/]+)/plan", url.path.rstrip("/"))
         if plan and isinstance(body, dict) and "history_from" not in body:
             yesterday = self._previous_day(plan.group(1))
             if yesterday:  # отдых водителей считается от того, что они реально отработали накануне
                 body = {**body, "history_from": yesterday}
         if url.path.startswith("/api/"):
-            status, payload = self.engine.handle("POST", url.path, {}, body)
-            if plan and int(status) == 200:
-                payload["run"] = self._record_run(plan.group(1), payload)  # номер расчёта - в журнал расчётов
+            status, payload = self.engine.handle("POST", url.path, {}, body, register_run=self._record_run)
             return self._json(status, payload)
         self._json(HTTPStatus.NOT_FOUND, {"error": "нет такого адреса"})
 
-    def _record_run(self, day_id: str, payload: dict) -> dict:
-        rec = self.engine.days.get(day_id)
-        meta = rec.raw.get("meta", {}) if rec else {}
-        parks = [p["id"] for p in rec.raw.get("parks", [])] if rec else []
+    def _record_run(self, rec, payload: dict) -> dict:
+        parks = [p["id"] for p in rec.raw["parks"]]
         numbers = (payload.get("summary") or {}).get("numbers") or {}
         # проблемы - незакрытое на линии (невыпущенный резерв - не проблема) и нарушения норм
         line = [u for u in (payload.get("plan") or {}).get("unfilled", []) if "-RES-" not in u.get("id", "")]
         problems = len(line) + len(payload.get("violations", [])) + len(payload.get("rest_violations", []))
-        return self.marks.add_run(meta.get("date") or Date.today().isoformat(), parks, numbers, problems, payload.get("seconds", 0), who=self.client_address[0])
+        return self.marks.add_run(rec.day.meta["date"], parks, numbers, problems, payload.get("seconds", 0), who=self.client_address[0])
 
     def _same_days(self, date, parks) -> list:
-        """Записи дней той же даты тех же парков - их заменит повторный расчёт."""
+        """Все сохранённые расчёты той же даты для выбранных парков."""
         parks = sorted(parks)
         with self.engine._lock:
             return [(key, rec) for key, rec in self.engine.days.items()
                     if rec.raw.get("meta", {}).get("date") == date
                     and sorted(p["id"] for p in rec.raw.get("parks", [])) == parks]
 
-    def _forget_same_day(self, day: dict):
-        """Повторный расчёт того же дня тех же парков заменяет прежний - в памяти и на диске.
-        Копий одного дня в памяти не нужно: диспетчер работает с последним расчётом."""
-        date = (day.get("meta") or {}).get("date")
-        parks = [p.get("id") for p in day.get("parks", []) if isinstance(p, dict)]
-        for key, _ in self._same_days(date, parks):
-            self.engine.forget(key)
-
     def _day_log(self, query: dict) -> dict:
-        """Сколько событий и правок пропадёт при повторном расчёте дня: интерфейс предупреждает до расчёта."""
+        """Число событий и правок в сохранённых расчётах за день."""
         parks = [p for p in (query.get("parks") or "").split(",") if p]
         log = [e for _, rec in self._same_days(query.get("date"), parks) for e in rec.log]
         return {"events": sum(e.get("kind") == "event" for e in log), "edits": sum(e.get("kind") == "edit" for e in log)}
@@ -338,6 +324,26 @@ class Handler(BaseHTTPRequestHandler):
         self._geo(lambda: self.geo.delete(rid))
 
 
+def restore_run_numbers(engine: Engine, marks: MarksStore) -> None:
+    """Связать старые планы с номерами из журнала при первом запуске."""
+    pending = [r for r in engine.days.values() if r.plan is not None and not r.run]
+    if not pending:
+        return
+    used = {r.run["id"] for r in engine.days.values() if r.run}
+    candidates = {}
+    for row in marks.runs(limit=-1):
+        if row["id"] in used:
+            continue
+        key = (row["day"], tuple(sorted(row["parks"])))
+        candidates.setdefault(key, []).append(row)
+    for record in sorted(pending, key=lambda r: engine._number(r.id), reverse=True):
+        key = (record.day.meta["date"], tuple(sorted(record.day.parks)))
+        matches = candidates.get(key)
+        if matches:
+            row = matches.pop(0)
+            engine._save(record, run={k: row[k] for k in ("id", "at", "day", "parks")})
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="AUTODISP: рабочее место диспетчера (прототип)")
     parser.add_argument("--host", default="127.0.0.1")
@@ -354,6 +360,8 @@ def main(argv=None) -> int:
         print(f"Не запущено: {error}", file=sys.stderr)
         return 1
     server = ThreadingHTTPServer((args.host, args.port), Handler)
+    if folder:
+        restore_run_numbers(Handler.engine, Handler.marks)
     url = f"http://{args.host}:{args.port}/"
     print(f"AUTODISP, рабочее место диспетчера: {url}", flush=True)
     print(f"Дни в папке {Path(folder).expanduser().resolve()} (в ней реестр перевозчика, наружу не отдавать), "

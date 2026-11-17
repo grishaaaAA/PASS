@@ -114,6 +114,7 @@ class DayRecord:
     log: list = field(default_factory=list)
     seconds: float = 0.0
     source: str | None = None   # день, от которого взята память водителей
+    run: dict | None = None
 
 
 ROUTES = [
@@ -199,7 +200,7 @@ class Engine:
                       history_before=history_from_dict(live.get("history_before")),
                       history_after=history_from_dict(live.get("history_after")),
                       log=list(log), seconds=float(live.get("seconds") or 0.0),
-                      source=live.get("source"))
+                      source=live.get("source"), run=live.get("run"))
         for name, value in parsed.items():
             setattr(record, name, value)
 
@@ -227,7 +228,7 @@ class Engine:
             setattr(record, name, value)
 
     def handle(self, method: str, path: str, query: dict | None = None,
-               body: dict | None = None) -> tuple[int, dict]:
+               body: dict | None = None, *, register_run=None) -> tuple[int, dict]:
         """(код ответа, JSON). Ошибки движка наружу не выходят, только ApiError."""
         path = path.rstrip("/") or "/"
         allowed = set()
@@ -243,8 +244,10 @@ class Engine:
                         # номер из адреса приходит закодированным: русский код из реестра
                         # перевозчика («Н1») браузер шлёт как %D0%9D1, косую черту - как %2F
                         ids = [unquote(part) for part in found.groups()]
-                        return OK, handler(*ids, query=query or {},
-                                           body=body if body is not None else {})
+                        options = {"query": query or {}, "body": body if body is not None else {}}
+                        if name == "make_plan" and register_run is not None:
+                            options["register_run"] = register_run
+                        return OK, handler(*ids, **options)
                 if allowed:
                     raise ApiError(HTTPStatus.METHOD_NOT_ALLOWED,
                                    f"метод {method} не поддерживается, можно: {', '.join(sorted(allowed))}")
@@ -274,7 +277,7 @@ class Engine:
         return {"days": [{"day_id": r.id, "date": r.day.meta["date"], "day_type": r.day.meta["day_type"],
                           "parks": [p["name"] for p in r.raw["parks"]],
                           "planned": r.plan is not None, "events": _count(r.log, "event"),
-                          "edits": _count(r.log, "edit")}
+                          "edits": _count(r.log, "edit"), **({"run": r.run} if r.run else {})}
                          for r in self.days.values()]}
 
     # --- день ---------------------------------------------------------------------
@@ -422,9 +425,10 @@ class Engine:
                   for r in self._earlier(record)] + [(record.day, record.plan)]
         return {"plan": record.plan.to_dict(),
                 "violations": _violations(check_plan(record.day, record.plan)),
-                "rest_violations": _violations(check_rest(series, load_labor()))}
+                "rest_violations": _violations(check_rest(series, load_labor())),
+                **({"run": record.run} if record.run else {})}
 
-    def make_plan(self, day_id, query, body):
+    def make_plan(self, day_id, query, body, register_run=None):
         """Утренний план. Запись дня меняется только после удачного расчёта.
 
         Сначала проверяется всё тело запроса: отклонённый запрос не должен
@@ -470,8 +474,13 @@ class Engine:
                   "notes": notes, "seconds": seconds}
 
         state = OpsState.from_plan(record.day, plan, before)
+        run = record.run
+        if run is None and register_run is not None:
+            run = register_run(record, answer)
+        if run:
+            answer["run"] = run
         self._save(record, history_before=before, source=source, plan=plan, log=[], seconds=seconds,
-                   state=state, history_after=history_after(state, labor))
+                   state=state, history_after=history_after(state, labor), run=run)
         return answer
 
     def _earlier(self, record: DayRecord) -> list:
@@ -875,7 +884,7 @@ def _live_dict(record: DayRecord) -> dict:
             "state": state_to_dict(record.state) if record.state is not None else None,
             "history_before": history_to_dict(record.history_before),
             "history_after": history_to_dict(record.history_after),
-            "log": record.log, "seconds": record.seconds, "source": record.source}
+            "log": record.log, "seconds": record.seconds, "source": record.source, "run": record.run}
 
 
 def _edit_dict(edit: Edit) -> dict:
