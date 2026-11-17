@@ -465,7 +465,8 @@
   });
   $("#btnNewDay").addEventListener("click", function () { go("parks"); });
 
-  var dashboardDays = [], dashboardSelected = null;
+  var dashboardDays = [], dashboardSelected = null, historyDate = null;
+  var historyMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   function dateLabel(s) {
     var d = new Date(s + "T12:00:00");
     return isNaN(d.getTime()) ? s : new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric" }).format(d);
@@ -475,6 +476,35 @@
     return run && run.at ? createdDate.format(new Date(run.at)) : "Дата создания неизвестна";
   }
   function stat(value, label) { return '<div class="dashboard__stat"><b>' + value + '</b><span>' + label + "</span></div>"; }
+  function renderHistoryCalendar() {
+    var y = historyMonth.getFullYear(), m = historyMonth.getMonth(), html = "";
+    var offset = (new Date(y, m, 1).getDay() + 6) % 7, count = new Date(y, m + 1, 0).getDate();
+    var dates = new Set(dashboardDays.filter(function (d) { return d.planned; }).map(function (d) { return d.date; }));
+    $("#historyMonth").textContent = new Intl.DateTimeFormat("ru-RU", { month: "long", year: "numeric" }).format(historyMonth).replace(/\s*г\.$/, "");
+    for (var blank = 0; blank < offset; blank++) html += '<span aria-hidden="true"></span>';
+    for (var day = 1; day <= count; day++) {
+      var iso = y + "-" + pad(m + 1) + "-" + pad(day), hasRuns = dates.has(iso);
+      html += '<button type="button" class="stats-calendar__day history-calendar__day' + (iso === historyDate ? ' is-selected' : '') + (hasRuns ? ' has-runs' : '') + '" data-history-date="' + iso + '" aria-label="' + esc(dateLabel(iso)) + (hasRuns ? ', есть расчёты' : ', нет расчётов') + '" aria-pressed="' + String(iso === historyDate) + '">' + day + '</button>';
+    }
+    $("#historyCalendarDays").innerHTML = html;
+  }
+  function renderHistoryRuns() {
+    var selected = dashboardDays.filter(function (d) { return d.planned && d.date === historyDate; });
+    $("#historyRunsTitle").textContent = historyDate ? "Расчёты за " + dateLabel(historyDate) : "Расчёты";
+    $("#dashboardDays").innerHTML = !historyDate ? '<p class="muted">Выберите день в календаре.</p>' : selected.length ? selected.map(function (d) {
+      var code = D.runCode(d.run) || "Расчёт";
+      return '<button class="dashboard__day' + (d.day_id === dashboardSelected ? ' is-on' : '') + '" type="button" data-day="' + esc(d.day_id) + '"><b>' + esc(code) + '</b><span>' + esc((d.parks || []).join(", ") || "Парк не указан") + ' · событий: ' + d.events + ' · правок: ' + d.edits + '</span></button>';
+    }).join("") : '<p class="muted">За этот день расчётов нет.</p>';
+  }
+  $("#historyPrevMonth").addEventListener("click", function () { historyMonth = new Date(historyMonth.getFullYear(), historyMonth.getMonth() - 1, 1); renderHistoryCalendar(); });
+  $("#historyNextMonth").addEventListener("click", function () { historyMonth = new Date(historyMonth.getFullYear(), historyMonth.getMonth() + 1, 1); renderHistoryCalendar(); });
+  $("#historyCalendarDays").addEventListener("click", function (e) {
+    var button = e.target.closest("[data-history-date]"); if (!button) return;
+    historyDate = button.dataset.historyDate; dashboardSelected = null;
+    renderHistoryCalendar(); renderHistoryRuns();
+    $("#dashboardDetail").innerHTML = '<h2>Выберите расчёт</h2><p class="muted">Выберите расчёт за ' + esc(dateLabel(historyDate)) + '</p>';
+    var selected = $("#historyCalendarDays").querySelector('[data-history-date="' + historyDate + '"]'); if (selected) selected.focus();
+  });
   function openScreen(name, silent) {
     go(name, silent);
     if (workspaceScreens[name]) loadDays(name);
@@ -494,12 +524,9 @@
       if (page === "stats") {
         renderStats();
       } else if (page === "history") {
-        $("#dashboardDays").innerHTML = dashboardDays.length ? dashboardDays.map(function (d) {
-          var code = D.runCode(d.run);
-          return '<button class="dashboard__day" type="button" data-day="' + esc(d.day_id) + '"><b>' + esc((code ? code + " · " : "") + dateLabel(d.date)) + '</b><span>' + (d.planned ? "Расчёт выполнен" : "Без расчёта") + ' · событий: ' + d.events + ' · правок: ' + d.edits + "</span></button>";
-        }).join("") : '<p class="muted">Сохранённых дней пока нет.</p>';
-        if (dashboardDays.length) selectDashboardDay(dashboardDays.some(function (d) { return d.day_id === dashboardSelected; }) ? dashboardSelected : dashboardDays[0].day_id);
-        else $("#dashboardDetail").innerHTML = '<h2>День</h2><p class="muted">После первого расчёта здесь появится история.</p>';
+        renderHistoryCalendar(); renderHistoryRuns();
+        if (dashboardSelected && dashboardDays.some(function (d) { return d.day_id === dashboardSelected && d.date === historyDate; })) selectDashboardDay(dashboardSelected);
+        else $("#dashboardDetail").innerHTML = '<h2>Выберите расчёт</h2><p class="muted">Сначала выберите день в календаре.</p>';
       } else {
         $("#savedRunsStatus").textContent = done.length ? "" : "Сохранённых расчётов пока нет.";
         $("#recentRunsStatus").textContent = $("#savedRunsStatus").textContent;
@@ -640,13 +667,15 @@
     var drivers = new Map(envelope.plan.driver_assignments.map(function (a) { return [a.shift_id, a.driver_id]; }));
     Object.values(m.duties).forEach(function (duty) {
       var route = m.routes[duty.route];
-      var label = (route ? "Маршрут " + route.number : "Резерв") + " · " + D.parkShort(m, duty.park);
+      var column = route ? Ops.column(duty.park, route.number) : null;
+      var label = (column ? (column.number ? "Колонна № " + column.number + " · " + column.name : "Без колонны") : "Резерв") + " · " + D.parkShort(m, duty.park);
       if (!groups.has(label)) groups.set(label, []);
       groups.get(label).push(duty);
     });
     var collator = new Intl.Collator("ru", { numeric: true });
     if (!groups.size) return '<p class="muted">В плане нет нарядов.</p>';
-    return '<div class="history-plan">' + Array.from(groups.keys()).sort(collator.compare).map(function (label) {
+    var note = (day.routes || []).some(function (r) { return Ops.column(r.park_id, r.number).demo; }) ? '<p class="caption muted">Колонны парка № 7 распределены по маршрутам для демонстрации.</p>' : '';
+    return note + '<div class="history-plan">' + Array.from(groups.keys()).sort(collator.compare).map(function (label) {
       var duties = groups.get(label).sort(function (a, b) { return a.start - b.start || collator.compare(a.id, b.id); });
       var rows = duties.map(function (duty) {
         var vehicle = vehicles.get(duty.id);
@@ -656,7 +685,7 @@
             (driver ? esc(D.driverName(m, driver)) : "Без водителя") + "</li>";
         }).join("");
         return '<li><b>Наряд ' + esc(D.dutyNo(m, duty)) + ' · ' + D.hm(duty.start) + '–' + D.hm(duty.end) +
-          '</b><span>' + (vehicle ? "Автобус " + esc(D.vehicleName(m, vehicle)) : "Без автобуса") + '</span>' +
+          '</b><span>' + (vehicle ? "Автобус " + esc(D.vehicleName(m, vehicle)) : "Без автобуса") + (m.routes[duty.route] ? ' · маршрут ' + esc(m.routes[duty.route].number) : '') + '</span>' +
           (shifts ? "<ul>" + shifts + "</ul>" : "") + "</li>";
       }).join("");
       return '<details><summary>' + esc(label) + '<span>' + duties.length + ' ' + D.plural(duties.length, "наряд", "наряда", "нарядов") +

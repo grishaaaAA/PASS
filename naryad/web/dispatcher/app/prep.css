@@ -335,6 +335,11 @@ main.scr.auth { display: grid; place-items: center; }
 .dashboard__list h2, .dashboard__detail h2 { margin: 0 0 var(--space-4); font: var(--text-heading-3); }
 .dashboard__detail h3 { margin: var(--space-5) 0 var(--space-3); font: var(--text-title); }
 #dashboardDays { display: grid; gap: var(--space-2); }
+.history-calendar { margin-bottom: var(--space-5); }
+.history-calendar__day { position: relative; }
+.history-calendar__day.has-runs::after { content: ""; position: absolute; bottom: var(--space-1); width: 4px; height: 4px; border-radius: 50%; background: var(--accent-deep); }
+.history-calendar__day.has-runs.is-selected::after { background: var(--on-accent-deep); }
+.dashboard__list .history-runs-title { margin: 0 0 var(--space-3); font: var(--text-body-strong); }
 .dashboard__day { display: grid; gap: var(--space-1); width: 100%; text-align: left; padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); cursor: pointer; transition: transform var(--duration-fast) var(--easing-standard), box-shadow var(--duration-base) var(--easing-standard); }
 .dashboard__day:hover { box-shadow: var(--shadow-md); }
 .dashboard__day:active { transform: scale(.97); }

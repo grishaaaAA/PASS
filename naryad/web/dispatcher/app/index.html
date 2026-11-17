@@ -136,8 +136,15 @@
   <div class="scr__in dashboard">
     <h1 class="scr__h" id="historyTitle">История</h1>
     <div class="dashboard-panel dashboard__layout">
-      <section class="dashboard__list"><h2>Рабочие дни</h2><div id="dashboardDays"></div></section>
-      <section class="dashboard__detail" id="dashboardDetail" aria-live="polite"><h2>Выберите день</h2></section>
+      <section class="dashboard__list"><h2>Выберите день</h2>
+        <div class="stats-calendar history-calendar">
+          <div class="stats-calendar__head"><button class="stats-calendar__nav" type="button" id="historyPrevMonth" aria-label="Предыдущий месяц">&#8249;</button><b id="historyMonth" aria-live="polite"></b><button class="stats-calendar__nav" type="button" id="historyNextMonth" aria-label="Следующий месяц">&#8250;</button></div>
+          <div class="stats-calendar__week" aria-hidden="true"><span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span></div>
+          <div class="stats-calendar__days" id="historyCalendarDays" aria-label="Выберите день"></div>
+        </div>
+        <h3 class="history-runs-title" id="historyRunsTitle">Расчёты</h3><div id="dashboardDays"><p class="muted">Выберите день в календаре.</p></div>
+      </section>
+      <section class="dashboard__detail" id="dashboardDetail" aria-live="polite"><h2>Выберите расчёт</h2></section>
     </div>
   </div>
 </main>
