@@ -167,7 +167,106 @@
   var barContent = workspaceBar.querySelector(".bar__in");
   var workspaceScreens = { stats: "#scrStats", history: "#scrHistory", create: "#scrCreate" };
   var workspaceLinks = Array.from(dashboardNav.querySelectorAll("a"));
-  $("#btnCompareStats").addEventListener("click", function () { toast("Шаблон сравнения готов для выбора периода"); });
+  var statsRange = { start: "2026-11-01", end: "2026-11-17", month: new Date(2026, 10, 1) };
+  var statsCalendar = $("#statsCalendar"), statsToggle = $("#btnCompareStats");
+  var statsDemo = true;
+  var statsDaysLoaded = false;
+  // Вымышленные данные только для демонстрационного экрана, без записи в реестр.
+  var demoReasons = ["Неисправность дверей", "Прокол шины", "Неисправность двигателя", "Неисправность электрооборудования"];
+  var demoDays = Array.from({ length: 17 }, function (_, i) {
+    var day = i + 1, log = [{ kind: "event", type: "late" }];
+    if (day % 3 !== 0) log.push({ kind: "event", type: "breakdown", reason: demoReasons[i % demoReasons.length] });
+    if (day % 4 === 0) log.push({ kind: "event", type: "no_show" });
+    if (day % 5 === 0) log.push({ kind: "event", type: "late" });
+    if (day === 6 || day === 14) log.push({ kind: "event", type: "alcohol" });
+    if (day === 11) log.push({ kind: "event", type: "accident" });
+    return { date: "2026-11-" + pad(day), day_id: "demo-" + day, planned: true, events: log.length, edits: day % 3, demoLog: log };
+  });
+  var statsLogRequest = 0;
+  function renderStats() {
+    if (!statsDemo && !statsDaysLoaded) {
+      statsLogRequest++; $("#dashboardStats").textContent = "Не удалось загрузить реальные данные.";
+      $("#statsIncidents").innerHTML = ""; $("#statsReasons").innerHTML = "";
+      $("#statsIncidentsStatus").textContent = "Не удалось загрузить данные"; return;
+    }
+    var done = (statsDemo ? demoDays : dashboardDays).filter(function (d) {
+      return d.planned && (!statsRange.end || (d.date >= statsRange.start && d.date <= statsRange.end));
+    });
+    $("#dashboardStats").innerHTML = stat(new Set(done.map(function (d) { return d.date; })).size, "дней с расчётом") + stat(done.reduce(function (n, d) { return n + d.events; }, 0), "событий") + stat(done.reduce(function (n, d) { return n + d.edits; }, 0), "ручных правок");
+    renderIncidentStats(done);
+  }
+  function renderIncidentStats(days) {
+    var request = ++statsLogRequest, status = $("#statsIncidentsStatus"), box = $("#statsIncidents"), reasons = $("#statsReasons");
+    status.textContent = "Загрузка…";
+    box.innerHTML = ""; reasons.innerHTML = "";
+    var isDemo = statsDemo;
+    Promise.all(days.filter(function (d) { return d.events > 0; }).map(function (d) {
+      return isDemo ? Promise.resolve({ log: d.demoLog }) : D.api("GET", "/api/days/" + encodeURIComponent(d.day_id) + "/log");
+    })).then(function (logs) {
+      if (request !== statsLogRequest) return;
+      var counts = { late: 0, no_show: 0, breakdown: 0, accident: 0, alcohol: 0 }, breakdownReasons = {};
+      logs.forEach(function (r) { (r.log || []).forEach(function (item) {
+        if (item.kind === "event" && Object.prototype.hasOwnProperty.call(counts, item.type)) counts[item.type]++;
+        if (isDemo && item.kind === "event" && item.type === "breakdown") breakdownReasons[item.reason] = (breakdownReasons[item.reason] || 0) + 1;
+      }); });
+      box.innerHTML = stat(counts.late, "опозданий") + stat(counts.no_show, isDemo ? "неявок" : "неявок / недопусков") + stat(isDemo ? counts.alcohol : "-", "не прошли алкотестер") + stat(counts.breakdown + counts.accident, "сходов автобусов");
+      var detail = isDemo ? demoReasons.filter(function (reason) { return breakdownReasons[reason]; }).map(function (reason) { return esc(reason) + ': <b>' + breakdownReasons[reason] + '</b>'; }).join(' · ') : 'Причина не уточнена: <b>' + counts.breakdown + '</b>';
+      reasons.innerHTML = '<h4>Причины сходов</h4><p>ДТП: <b>' + counts.accident + '</b>' + (detail ? ' · ' + detail : '') + '</p>' + (isDemo ? '' : '<small>Подробные причины сходов пока не записываются.</small>');
+      status.textContent = "";
+    }, function () {
+      if (request !== statsLogRequest) return;
+      status.textContent = "Не удалось загрузить журнал событий";
+      box.innerHTML = ""; reasons.innerHTML = "";
+    });
+  }
+  function renderCalendar() {
+    var month = statsRange.month, y = month.getFullYear(), m = month.getMonth();
+    $("#statsMonth").textContent = new Intl.DateTimeFormat("ru-RU", { month: "long", year: "numeric" }).format(month).replace(/\s*г\.$/, "");
+    var offset = (new Date(y, m, 1).getDay() + 6) % 7, count = new Date(y, m + 1, 0).getDate(), html = "";
+    for (var blank = 0; blank < offset; blank++) html += '<span aria-hidden="true"></span>';
+    for (var day = 1; day <= count; day++) {
+      var iso = y + "-" + pad(m + 1) + "-" + pad(day), selected = iso === statsRange.start || iso === statsRange.end;
+      var between = statsRange.end && iso > statsRange.start && iso < statsRange.end;
+      html += '<button type="button" class="stats-calendar__day' + (selected ? ' is-selected' : '') + (between ? ' is-between' : '') + '" data-date="' + iso + '" aria-label="' + esc(dateLabel(iso)) + '" aria-pressed="' + String(selected) + '">' + day + '</button>';
+    }
+    $("#statsDays").innerHTML = html;
+    $("#statsPeriodLabel").textContent = statsRange.end ? dateLabel(statsRange.start) + " - " + dateLabel(statsRange.end) : statsRange.start ? dateLabel(statsRange.start) : "Все дни";
+    $("#statsPeriodHint").textContent = statsRange.start && !statsRange.end ? "Выберите конечную дату" : statsRange.end ? "Показатели за выбранный период" : "Выберите начальную и конечную даты";
+    $("#statsPeriodReset").hidden = !statsRange.start;
+  }
+  statsToggle.addEventListener("click", function () {
+    var open = this.getAttribute("aria-expanded") !== "true";
+    this.setAttribute("aria-expanded", String(open));
+    if (open) { renderCalendar(); M.show(statsCalendar, "down"); }
+    else M.hide(statsCalendar, "down");
+  });
+  function moveStatsMonth(delta) {
+    statsRange.month = new Date(statsRange.month.getFullYear(), statsRange.month.getMonth() + delta, 1);
+    renderCalendar();
+  }
+  $("#statsPrevMonth").addEventListener("click", function () { moveStatsMonth(-1); });
+  $("#statsNextMonth").addEventListener("click", function () { moveStatsMonth(1); });
+  $("#statsDays").addEventListener("click", function (e) {
+    var button = e.target.closest("[data-date]"); if (!button) return;
+    var date = button.dataset.date;
+    if (!statsRange.start || statsRange.end) { statsRange.start = date; statsRange.end = null; }
+    else if (date < statsRange.start) { statsRange.end = statsRange.start; statsRange.start = date; }
+    else statsRange.end = date;
+    renderCalendar(); renderStats();
+    var selected = $("#statsDays").querySelector('[data-date="' + date + '"]'); if (selected) selected.focus();
+  });
+  $("#statsPeriodReset").addEventListener("click", function () {
+    statsRange.start = null; statsRange.end = null; renderCalendar(); renderStats(); statsToggle.focus();
+  });
+  $("#statsDemoToggle").addEventListener("click", function () {
+    statsDemo = !statsDemo;
+    $("#statsDemoLabel").textContent = statsDemo ? "Демонстрационные данные - все события вымышлены" : "Реальные данные из сохранённых расчётов";
+    this.textContent = statsDemo ? "Показать реальные данные" : "Показать демонстрационные данные";
+    $("#statsIncidentsNote").textContent = statsDemo ? "Показан пример для презентации. Данные не относятся к реальной работе парка." : "Неявки и недопуски могут сохраняться под одним видом события. Результаты алкотестера отдельно не записываются.";
+    statsRange.start = statsDemo ? "2026-11-01" : null; statsRange.end = statsDemo ? "2026-11-17" : null;
+    if (statsDemo) statsRange.month = new Date(2026, 10, 1);
+    renderCalendar(); renderStats();
+  });
 
   function today() { var d = new Date(); return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
   function pad(n) { return (n < 10 ? "0" : "") + n; }
@@ -381,6 +480,7 @@
     if (workspaceScreens[name]) loadDays(name);
   }
   function loadDays(page) {
+    if (page === "stats") { renderCalendar(); if (statsDemo) renderStats(); }
     if (page === "history") $("#dashboardDays").innerHTML = '<p class="muted">Загружаем историю…</p>';
     if (page === "create") {
       $("#savedRunsStatus").textContent = "Загружаем расчёты…";
@@ -389,10 +489,10 @@
     return D.api("GET", "/api/days").then(function (r) {
       if (current !== page) return;
       dashboardDays = (r.days || []).slice().sort(function (a, b) { return b.date.localeCompare(a.date) || b.day_id.localeCompare(a.day_id, undefined, { numeric: true }); });
+      statsDaysLoaded = true;
       var done = dashboardDays.filter(function (d) { return d.planned; });
       if (page === "stats") {
-        var calculatedDates = new Set(done.map(function (d) { return d.date; }));
-        $("#dashboardStats").innerHTML = stat(calculatedDates.size, "дней с расчётом") + stat(done.reduce(function (n, d) { return n + d.events; }, 0), "событий") + stat(done.reduce(function (n, d) { return n + d.edits; }, 0), "ручных правок");
+        renderStats();
       } else if (page === "history") {
         $("#dashboardDays").innerHTML = dashboardDays.length ? dashboardDays.map(function (d) {
           var code = D.runCode(d.run);
@@ -425,9 +525,11 @@
       }
     }, function (e) {
       if (current !== page) return;
+      if (page === "stats" && statsDemo) return;
       var target = { stats: "#dashboardStats", history: "#dashboardDays", create: "#savedRunsStatus" }[page];
       $(target).textContent = "Не удалось загрузить данные. " + e.message;
       if (page === "create") $("#recentRunsStatus").textContent = $(target).textContent;
+      if (page === "stats") { statsLogRequest++; $("#statsIncidents").innerHTML = ""; $("#statsReasons").innerHTML = ""; $("#statsIncidentsStatus").textContent = "Не удалось загрузить данные"; }
     });
   }
   var recentRunsList = $("#recentRunsList"), recentRunsPrev = $("#recentRunsPrev"), recentRunsNext = $("#recentRunsNext");
@@ -671,8 +773,8 @@
     P.vehById = Object.fromEntries(base.vehicles.map(function (v) { return [v.id, v]; }));
     P.columns = Ops.groupRoutes(base.routes);
     P.st = initState();
-    // отметки, сделанные в этот день раньше, - поверх реестра
-    ["route", "veh", "drv"].forEach(function (k) { Object.keys(saved[k] || {}).forEach(function (id) { if (id in P.st[k]) P.st[k][id] = saved[k][id]; }); });
+    // Маршруты работают, состояние автобусов берётся из реестра; сохраняются только отметки водителей.
+    Object.keys(saved.drv || {}).forEach(function (id) { if (id in P.st.drv) P.st.drv[id] = saved.drv[id]; });
     P.saved = clone(P.st);
     updateSave();
     $("#sections").innerHTML = "";
@@ -704,7 +806,7 @@
   function pending() {
     var out = [];
     if (!P.st || !P.saved) return out;
-    ["route", "veh", "drv"].forEach(function (k) {
+    ["drv"].forEach(function (k) {
       Object.keys(P.st[k]).forEach(function (id) { if (P.st[k][id] !== P.saved[k][id]) out.push({ kind: k, id: id, value: P.st[k][id] }); });
     });
     return out;
@@ -828,27 +930,25 @@
   }
   function chip(r, g) { return '<span class="num" style="background:' + D.routeBadgeColor(g && g.color) + '">' + esc(r.number) + "</span>"; }
 
-  // Колонна содержит несколько маршрутов. Отметка готовности остаётся у маршрута.
+  // Колонна содержит маршруты, которые работают по умолчанию.
   function routesBody(el) {
     var help = P.columns.some(function (g) { return g.demo; })
       ? "Демонстрационное закрепление по направлениям парка № 7." : "Для этих маршрутов закрепление за колоннами не задано.";
-    var head = '<div class="ad-table-wrap"><table class="ad-table tbl tbl--routes"><thead><tr><th>В работе</th>' +
+    var head = '<div class="ad-table-wrap"><table class="ad-table tbl tbl--routes"><thead><tr>' +
       '<th>Маршрут</th><th>Конечные</th><th>Важность</th><th class="ad-num">Нарядов сегодня</th><th class="ad-num">Смен</th><th>Класс</th></tr></thead><tbody>';
-    el.innerHTML = '<div class="column-tools"><p class="muted">' + help + '</p><label class="sw sw--text"><input type="checkbox" data-all-routes aria-label="Все маршруты"><span></span><em>Все</em></label></div>' +
+    el.innerHTML = '<div class="column-tools"><p class="muted">' + help + '</p></div>' +
       '<div class="column-groups">' + P.columns.map(function (g, index) {
         return '<details class="column-group" data-column="' + index + '"' + (P.open["column:" + g.id] ? ' open' : '') +
           '><summary>' + Ops.columnHeading(g, P.ids.length > 1 ? shortName(parkById(g.park)) : "") +
           '<span class="column-group__meta"></span></summary>' + head +
           g.routes.map(function (r) {
-            var i = routeInfo(r), on = routeOn(r);
-            return '<tr class="' + (on ? "" : "is-off") + '"><td><label class="sw"><input type="checkbox" data-route="' + esc(r.id) +
-              '"' + (on ? " checked" : "") + ' aria-label="Маршрут ' + esc(r.number) + ' в работе"><span></span></label></td><td>' +
+            var i = routeInfo(r);
+            return '<tr><td>' +
               Ops.recordButton("route", r.id, r.park_id, r.number) + "</td><td>" + esc(i.g ? i.g.name : "—") +
               "</td><td>" + D.PRIORITY[r.priority] + '</td><td class="ad-num">' + i.duties + '</td><td class="ad-num">' + i.shifts +
               "</td><td>" + r.allowed_classes.map(function (c) { return D.CLASSES[c]; }).join(", ") + "</td></tr>";
           }).join("") + '</tbody></table></div><details class="column-schedule"><summary>Распорядок выпуска</summary><div data-column-schedule></div></details></details>';
       }).join("") + '</div>';
-    var all = el.querySelector("[data-all-routes]");
     var groups = Array.from(el.querySelectorAll("[data-column]")).map(function (box) {
       var group = P.columns[Number(box.dataset.column)], ids = new Set(group.routes.map(function (r) { return r.id; }));
       var duties = P.base.duties.filter(function (d) { return ids.has(d.route_id); });
@@ -878,11 +978,6 @@
         }).join("") + "</tbody></table></div>";
     }
     function syncAll() {
-      var ids = Object.keys(P.st.route), on = ids.filter(function (k) { return P.st.route[k]; }).length;
-      all.checked = ids.length > 0 && on === ids.length;
-      all.disabled = !ids.length;
-      all.indeterminate = on > 0 && on < ids.length;
-      all.parentNode.querySelector("em").textContent = on === ids.length ? "Все" : on ? on + " из " + ids.length : "Нет";
       groups.forEach(function (v) {
         var active = v.group.routes.filter(routeOn).length;
         var dutyCount = v.duties.filter(function (d) { return P.st.route[d.route_id]; }).length;
@@ -895,20 +990,6 @@
       });
       refresh();
     }
-    el.querySelectorAll("[data-route]").forEach(function (cb) {
-      cb.addEventListener("change", function () {
-        mark("route", [cb.getAttribute("data-route")], cb.checked);
-        cb.closest("tr").classList.toggle("is-off", !cb.checked);
-        syncAll();
-      });
-    });
-    all.addEventListener("change", function () {
-      var target = all.checked;
-      var change = Object.keys(P.st.route).filter(function (k) { return P.st.route[k] !== target; });
-      if (change.length) mark("route", change, target);
-      el.querySelectorAll("[data-route]").forEach(function (cb) { cb.checked = target; cb.closest("tr").classList.toggle("is-off", !target); });
-      syncAll();
-    });
     syncAll();
   }
 
@@ -1061,10 +1142,10 @@
       { key: "model", title: "Модель", cell: function (v) { return '<span class="muted">' + esc(v.model) + "</span>"; }, sort: function (v) { return v.model; } },
       { key: "class", title: "Класс", cell: function (v) { return D.CLASSES[v.class]; }, sort: function (v) { return D.CLASSES[v.class]; } },
       { key: "fuel", title: "Топливо", cell: function (v) { return v.fuel === "gas" ? "газ" : v.fuel === "electric" ? "электро" : "дизель"; }, sort: function (v) { return v.fuel; } },
-      { key: "state", title: "Состояние", cell: function (v) { return toggle("veh", v.id, vehOk(v), "Исправен", "Неисправен"); }, sort: function (v) { return vehOk(v) ? 0 : 1; } }
+      { key: "state", title: "Состояние", cell: function (v) { return vehOk(v) ? "Исправен" : "Неисправен"; }, sort: function (v) { return vehOk(v) ? 0 : 1; } }
     ];
     c.on = vehOk;
-    c.bind = function (box) { bindToggles(box, "veh", "Исправен", "Неисправен", function (id, on) { mark("veh", [id], on); }); };
+    c.bind = function () {};
     return c;
   }
   var VEH = {
@@ -1125,17 +1206,6 @@
   // ---------- день для движка ----------
   function buildDay() {
     var d = JSON.parse(JSON.stringify(P.base)), st = P.st;
-    var gone = {};
-    d.duties = d.duties.filter(function (x) { if (x.type === "line" && !st.route[x.route_id]) { gone[x.id] = 1; return false; } return true; });
-    d.shifts = d.shifts.filter(function (s) { return !gone[s.duty_id]; });
-    // выпуск парка = наряды, которые сегодня есть; иначе проверка данных ругается на расхождение с планом
-    var kind = d.meta.day_type;
-    d.parks.forEach(function (p) { p["release_" + kind] = d.duties.filter(function (x) { return x.park_id === p.id; }).length; });
-    d.routes.forEach(function (r) { if (!st.route[r.id]) r["duties_" + kind] = 0; });
-    d.vehicles.forEach(function (v) {
-      if (st.veh[v.id]) { v.condition = "ok"; v.repair_days_left = null; }
-      else if (v.condition === "ok") { v.condition = "repair"; v.repair_days_left = 1; }
-    });
     d.drivers.forEach(function (x) {
       if (st.drv[x.id]) { x.schedule = "work"; x.medical = "passed"; }
       else if (x.schedule === "work" && x.medical === "passed") x.medical = "failed";  // в графике, но на линию не выходит

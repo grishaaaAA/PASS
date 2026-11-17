@@ -109,9 +109,25 @@
       <a class="ad-btn ad-btn--sm btn-plain" href="/routes" target="_blank" rel="noopener"><i class="ad-icon ad-icon--map-pin ad-icon--sm"></i>Маршруты и остановки</a>
     </div>
     <section class="dashboard-panel" aria-label="Сводка">
-      <div class="dashboard-panel__head"><h2>Сводка по расчётам</h2><button class="ad-btn ad-btn--ghost ad-btn--sm" type="button" id="btnCompareStats">Сравнить периоды</button></div>
+      <div class="dashboard-panel__head"><h2>Сводка по расчётам</h2><button class="ad-btn ad-btn--ghost ad-btn--sm" type="button" id="btnCompareStats" aria-expanded="false" aria-controls="statsCalendar">Выбрать период</button></div>
+      <div class="stats-demo"><span id="statsDemoLabel">Демонстрационные данные - все события вымышлены</span><button class="ad-btn ad-btn--ghost ad-btn--sm" id="statsDemoToggle" type="button">Показать реальные данные</button></div>
       <div class="dashboard__stats" id="dashboardStats"></div>
-      <div class="dashboard-compare" id="dashboardCompare"><div><span>Сравнение</span><b>Выберите период</b><small>Здесь появится сопоставление выпусков, событий и ручных правок.</small></div><div class="dashboard-compare__line"><i></i></div></div>
+      <div class="stats-details">
+      <div class="stats-period">
+        <div class="stats-period__summary"><div><span>Период</span><b id="statsPeriodLabel" aria-live="polite">Все дни</b><small id="statsPeriodHint">Выберите начальную и конечную даты</small></div><button class="ad-btn ad-btn--ghost ad-btn--sm" type="button" id="statsPeriodReset" hidden>Сбросить</button></div>
+        <div class="stats-calendar" id="statsCalendar" hidden>
+          <div class="stats-calendar__head"><button class="stats-calendar__nav" type="button" id="statsPrevMonth" aria-label="Предыдущий месяц">&#8249;</button><b id="statsMonth" aria-live="polite"></b><button class="stats-calendar__nav" type="button" id="statsNextMonth" aria-label="Следующий месяц">&#8250;</button></div>
+          <div class="stats-calendar__week" aria-hidden="true"><span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span></div>
+          <div class="stats-calendar__days" id="statsDays" aria-label="Выберите даты периода"></div>
+        </div>
+      </div>
+      <section class="stats-incidents" aria-labelledby="statsIncidentsTitle">
+        <div class="stats-incidents__head"><h3 id="statsIncidentsTitle">События за период</h3><span id="statsIncidentsStatus" role="status"></span></div>
+        <div class="stats-incidents__grid" id="statsIncidents"></div>
+        <div class="stats-incidents__reasons" id="statsReasons"></div>
+        <p class="stats-incidents__note" id="statsIncidentsNote">Показан пример для презентации. Данные не относятся к реальной работе парка.</p>
+      </section>
+      </div>
     </section>
   </div>
 </main>
