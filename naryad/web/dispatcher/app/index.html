@@ -21,7 +21,31 @@
 
 <header class="bar" id="workspaceBar">
   <div class="bar__in">
-    <button class="bar__home" id="btnHome" type="button" aria-label="AUTODISP: к созданию расчёта"><img class="bar__logo" src="ds/logo.svg" alt=""></button>
+    <button class="bar__home" id="btnHome" type="button" aria-label="AUTODISP: к созданию расчёта">
+      <img class="bar__logo" src="ds/logo.svg" alt=""><img class="bar__mark" src="ds/mark.svg" width="32" height="32" alt="">
+    </button>
+    <form class="result-search" id="resultSearch" role="search" aria-label="Поиск по расчёту">
+      <div class="result-search__field">
+        <input id="resultQuery" type="search" aria-label="Поиск водителя, маршрута или автобуса" aria-controls="resultMatches"
+          placeholder="Поиск по расчёту" autocomplete="off">
+        <button class="result-search__action" type="submit" aria-label="Найти">
+          <svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+            <circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 4 4"/>
+          </svg>
+        </button>
+        <button class="result-search__action result-search__clear" id="resultClear" type="button" aria-label="Очистить поиск" hidden>
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg>
+        </button>
+      </div>
+      <div class="result-search__matches" id="resultMatches" hidden>
+        <div class="result-search__categories" role="group" aria-label="Разделы поиска">
+          <button type="button" data-category="route" aria-pressed="false"><i class="ad-icon ad-icon--path" aria-hidden="true"></i>Маршруты</button>
+          <button type="button" data-category="veh" aria-pressed="false"><i class="ad-icon ad-icon--bus" aria-hidden="true"></i>Автобусы</button>
+          <button type="button" data-category="driver" aria-pressed="false"><i class="ad-icon ad-icon--users" aria-hidden="true"></i>Водители</button>
+        </div>
+        <div id="resultEntries"></div>
+      </div>
+    </form>
     <nav class="crumbs" id="crumbs" aria-label="Где вы"></nav>
     <nav class="dashboard-nav" id="dashboardNav" aria-label="Разделы рабочего пространства" hidden>
       <a href="#create" data-go="create"><span>Создание</span></a>
@@ -48,21 +72,26 @@
     </div>
   </div>
 </header>
+<div class="result-search-shade" aria-hidden="true"></div>
 
 <button class="ad-icon-btn ai-launcher" id="btnAi" type="button" hidden
-        aria-label="Дядя Игорь, ИИ-ассистент" title="Дядя Игорь, ИИ-ассистент" aria-controls="aiChat" aria-expanded="false">
+        aria-label="AI Helper" title="AI Helper" aria-controls="aiChat" aria-expanded="false">
   <span class="ai-launcher__star" aria-hidden="true"></span>
 </button>
 <dialog class="ai-chat" id="aiChat" aria-labelledby="aiChatTitle">
   <header class="ai-chat__head">
     <span class="ai-chat__avatar" aria-hidden="true"><span class="ai-launcher__star"></span></span>
-    <div class="ai-chat__identity"><h2 id="aiChatTitle">Дядя Игорь</h2><p>Помощник AUTODISP</p></div>
+    <div class="ai-chat__identity"><h2 id="aiChatTitle">AI Helper</h2><p>Помощник AUTODISP</p></div>
     <button class="btn-close" id="btnAiClose" type="button" aria-label="Закрыть чат"></button>
   </header>
   <div class="ai-chat__messages" id="aiChatMessages" role="log" aria-label="Сообщения" aria-live="polite"></div>
   <form class="ai-chat__form" id="aiChatForm">
     <textarea class="ad-input" id="aiChatInput" aria-label="Сообщение" placeholder="Сообщение" rows="1" maxlength="1000" required></textarea>
-    <button class="ad-btn ad-btn--secondary ad-btn--sm ai-chat__send" id="btnAiSend" type="submit" disabled>Отправить</button>
+    <button class="ad-btn ad-btn--secondary ai-chat__send" id="btnAiSend" type="submit" aria-label="Отправить сообщение" title="Отправить сообщение" disabled>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M22 2 9.5 14.5M22 2l-7.5 20-5-7.5L2 9.5 22 2Z"/>
+      </svg>
+    </button>
   </form>
 </dialog>
 
@@ -247,14 +276,6 @@
       <div class="res-head">
         <div class="res-title"><h1 class="res-h" id="resTitle" tabindex="-1">Расчёт</h1>
           <button type="button" class="res-alert" id="resAlert" hidden><i class="ad-icon ad-icon--warning-circle ad-icon--sm"></i><span id="resAlertN"></span></button></div>
-        <div class="res-parks" id="resParks"></div>
-        <div class="park-filter" id="mapScope" hidden>
-          <label class="park-filter__control" id="parkFilterControl" hidden>
-            <select class="ad-input" id="mapPark" aria-label="Фильтр маршрутов по паркам" aria-controls="map list"></select>
-            <i class="ad-icon ad-icon--caret-down ad-icon--sm" aria-hidden="true"></i>
-          </label>
-          <span class="caption muted" id="mapScopeStatus" role="status"></span>
-        </div>
       </div>
       <div class="kpis" id="kpis" role="group" aria-label="Показатели"></div>
       <div class="tabs" role="tablist" aria-label="Разделы расчёта">
@@ -271,10 +292,29 @@
       <button class="ad-btn ad-btn--ghost ad-btn--sm back" id="btnBack"><i class="arr arr--left"></i>Назад к списку</button>
       <div id="detail"></div>
     </section>
+
+    <!-- Синхронная схема выбранного маршрута: карта справа, остановки слева -->
+    <section class="pane route-viewer" id="paneRoute" hidden aria-labelledby="routeViewerTitle">
+      <div id="routeViewer"></div>
+    </section>
+    <section class="pane route-buses" id="paneRouteBuses" hidden aria-labelledby="routeBusesTitle">
+      <div id="routeBuses"></div>
+    </section>
   </aside>
 
   <section class="stage" aria-label="Карта расчёта">
     <div class="map-profile" id="mapProfile"></div>
+    <div class="park-picker" id="parkPicker">
+      <button type="button" class="mc__lbtn" id="parkPickerToggle" aria-label="Выбор парков" title="Выбор парков" aria-expanded="false" aria-controls="parkPickerPanel">
+        <i class="ad-icon ad-icon--bus ad-icon--sm" aria-hidden="true"></i>
+      </button>
+      <section class="mc__panel park-picker__panel" id="parkPickerPanel" aria-labelledby="parkPickerTitle" hidden>
+        <h2 id="parkPickerTitle">Выбранные парки</h2>
+        <ul class="park-picker__list" id="resParks"></ul>
+        <p class="caption muted park-picker__status" id="parkPickerStatus" role="status" hidden></p>
+        <div class="park-picker__options" id="parkOptions" aria-label="Выбор парков"></div>
+      </section>
+    </div>
     <div class="side-resize" id="sideResize" role="separator" tabindex="0" aria-orientation="vertical"
       aria-label="Ширина левого меню" aria-controls="side"></div>
     <div class="map" id="map"></div>

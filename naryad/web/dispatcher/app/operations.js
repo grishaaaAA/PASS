@@ -2,6 +2,32 @@
 (function () {
   "use strict";
   var D = window.Disp, $ = D.$, esc = D.esc;
+  var parkKinds = [
+    { id: "bus", name: "Автобусы", icon: '<i class="ad-icon ad-icon--bus" aria-hidden="true"></i>' },
+    { id: "trolley", name: "Троллейбусы", icon: '<i class="tr-ic tr-ic--trolley" aria-hidden="true"></i>' },
+    { id: "tram", name: "Трамваи", icon: '<i class="tr-ic tr-ic--tram" aria-hidden="true"></i>' }
+  ];
+  function parkKindIcon(kind) {
+    var item = parkKinds.find(function (k) { return k.id === kind; });
+    return (item || parkKinds[0]).icon;
+  }
+  function parkCard(park, options) {
+    var compact = options.compact, picked = options.picked, reason = options.disabledReason;
+    var tag = reason ? "div" : "button";
+    var attrs = reason ? ' aria-disabled="true"' + (compact ? ' title="' + esc(reason) + '"' : '') : ' type="button" role="checkbox" aria-checked="' + picked + '" ' +
+      (compact ? 'data-pick-park="' : 'data-park="') + esc(park.id) + '"';
+    var values = [[park.routes, "маршрутов"], [park.vehicles, "автобусов"],
+      [park.release_weekday, "выпуск в будни"], [park.release_weekend, "выпуск в выходные"]];
+    var stats = compact ? "" : '<span class="pc__nums">' + values.map(function ([value, label]) {
+      return '<span><b>' + (reason || value == null ? "?" : D.num(value)) + '</b>' + label + '</span>';
+    }).join("") + '</span>';
+    return '<' + tag + ' class="pc' + (compact ? ' pc--compact' : '') + (reason ? ' pc--locked' : '') + (picked ? ' is-picked' : '') + '"' + attrs + '>' +
+      '<span class="pc__top"><span class="pc__ic">' + parkKindIcon(park.kind) + '</span>' +
+      (reason ? (compact ? '<i class="pc__lock ad-icon ad-icon--lock-simple" role="img" aria-label="' + esc(reason) + '"></i>' : '') :
+        '<span class="pc__check" aria-hidden="true"></span>') + '</span>' +
+      '<span class="pc__name">' + esc(park.name) + '</span><span class="pc__addr">' + esc(park.address || "") + '</span>' + stats +
+      (reason && !compact ? '<span class="pc__go pc__go--off">' + esc(reason) + '</span>' : '') + '</' + tag + '>';
+  }
   // Демонстрационное закрепление по конечным из справочника парка №7.
   // Маршруты сохраняют свои идентификаторы и настройки расчёта.
   var demo = {
@@ -133,5 +159,6 @@
     if (!b) return;
     open({ kind: b.dataset.record, id: b.dataset.id, park: b.dataset.park, name: b.dataset.name }, b);
   });
-  window.Operations = { groupRoutes: groupRoutes, column: column, columnHeading: columnHeading, recordButton: button, openRecord: open };
+  window.Operations = { parkKinds: parkKinds, parkCard: parkCard, groupRoutes: groupRoutes, column: column,
+    columnHeading: columnHeading, recordButton: button, openRecord: open };
 })();

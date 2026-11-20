@@ -156,6 +156,7 @@
       m.parks[p.id] = { id: p.id, name: p.name, address: p.address, state: p.state, coords: c, approx: p.lat == null && !gp,
         routes: [], lineTotal: 0, lineFilled: 0, resTotal: 0, resFilled: 0, shiftTotal: 0, shiftFilled: 0,
         vehOk: 0, vehAll: 0, drvWork: 0, unfilled: [], transIn: 0, transOut: 0 };
+      if (p.kind) m.parks[p.id].kind = p.kind;
       m.parkList.push(m.parks[p.id]);
     });
     day.routes.forEach(function (r) {
@@ -466,6 +467,7 @@
       if (!gesture) return;
       gesture = false;
       pane.style.transform = base; pane.style.transformOrigin = "";
+      el.style.removeProperty("--map-marker-scale");
       if (anchor && Math.abs(target - map.getZoom()) > 0.001) map.setZoomAround(anchor, target, { animate: false });
       el.classList.remove("map--moving");
     }
@@ -482,7 +484,9 @@
         el.classList.add("map--moving");
       }
       target = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), target - e.deltaY * unit * gain));
-      pane.style.transform = base + " scale(" + Math.pow(2, target - map.getZoom()) + ")";
+      var scale = Math.pow(2, target - map.getZoom());
+      el.style.setProperty("--map-marker-scale", String(1 / scale));
+      pane.style.transform = base + " scale(" + scale + ")";
       if (settle) clearTimeout(settle);
       settle = setTimeout(commit, 140);
     }, { passive: false });
@@ -563,7 +567,7 @@
     box.querySelectorAll("[data-pop]").forEach(function (b) {
       b.addEventListener("click", function () { var n = b.getAttribute("data-pop"); setPanel(n, box.querySelector('[data-panel="' + n + '"]').hidden); });
     });
-    map.on("click", function () { setPanel(null, false); });
+    map.on("click closecontrolpanels", function () { setPanel(null, false); });
     // Карта на весь экран: прячем всё вокруг (класс у ближайшего экрана), Escape - обратно
     var full = box.querySelector("[data-full]"), host = el.closest(".layout") || el.parentElement;
     function setFull(on) {
@@ -623,20 +627,22 @@
   }
   function parkMap(el, m, opts) {
     opts = opts || {};
-    if (!window.L) { el.innerHTML = '<p class="muted map__off">Карта не загрузилась: нет доступа к интернету для подложки.</p>'; return { select: function () {}, redraw: function () {}, selectRoute: function () {}, setPark: function () {}, resize: function () {} }; }
+    if (!window.L) { el.innerHTML = '<p class="muted map__off">Карта не загрузилась: нет доступа к интернету для подложки.</p>'; return { select: function () {}, redraw: function () {}, selectRoute: function () {}, highlightStop: function () {}, showParkCard: function () {}, setParks: function () {}, resize: function () {} }; }
     var map = makeMap(el, [59.92, 30.36], 10);
     el._map = map;  // для отладки из консоли
     var canvas = L.canvas({ padding: 0.5, tolerance: 7 });  // tolerance: линию легче задеть кликом
     var routeLayer = L.layerGroup().addTo(map), stopLayer = L.layerGroup().addTo(map);
-    var layer = L.layerGroup().addTo(map), markers = {}, current = m, selected = null, selRoute = null, parkFilter = null;
+    var layer = L.layerGroup().addTo(map), markers = {}, stopMarkers = [], highlightedStop = null, current = m, selected = null, selRoute = null, selDirection = null;
+    var includedParks = new Set(m.parkList.map(function (p) { return p.id; }));
     function visibleRoutes() {
-      return current.routeList.filter(function (r) { return r.geo && (!parkFilter || r.park === parkFilter) && (!selRoute || selRoute === r.id); });
+      return current.routeList.filter(function (r) { return r.geo && includedParks.has(r.park) && (!selRoute || selRoute === r.id); });
     }
     // Подписи номеров маршрутов: маленькие, на линии; видны при приближении, чтобы не засорять обзор города
     var labelLayer = L.layerGroup();
     function syncLabels() {
-      var zoom = map.getZoom(), on = !!selRoute || zoom >= 11.5;
+      var zoom = map.getZoom(), on = !selRoute && zoom >= 11.5;
       el.classList.toggle("map--street", zoom >= 13.5);
+      el.classList.toggle("map--far", zoom < 12.5);
       if (on && !map.hasLayer(labelLayer) && labelLayer._wanted !== false) labelLayer.addTo(map);
       if (!on && map.hasLayer(labelLayer)) map.removeLayer(labelLayer);
     }
@@ -647,84 +653,118 @@
     map._overlay("Номера маршрутов", labelLayer);
     map._overlay("Остановки выбранного маршрута", stopLayer);
     map._overlay("Парки и переброски", layer);
-    // Оттенок направления B: цвет маршрута, чуть светлее - чтобы различать «туда» и «обратно»
-    // Стрелки направления движения вдоль линии: через каждые ~650 м, повёрнуты по ходу
-    function arrows(line, color, offset) {
-      var step = 650, acc = -offset, prev = L.latLng(line[0]);
-      for (var i = 1; i < line.length; i++) {
-        var cur = L.latLng(line[i]), seg = prev.distanceTo(cur);
-        while (acc + seg >= step) {
-          var t = (step - acc) / seg, at = L.latLng(prev.lat + (cur.lat - prev.lat) * t, prev.lng + (cur.lng - prev.lng) * t);
-          var p1 = map.project(prev), p2 = map.project(cur), ang = Math.atan2(p2.y - p1.y, p2.x - p1.x) * 180 / Math.PI;
-          L.marker(at, { interactive: false, keyboard: false, icon: L.divIcon({ className: "dir-arrow", iconSize: [0, 0],
-            html: '<b style="transform:translate(-50%,-50%) rotate(' + ang.toFixed(1) + 'deg)"><i style="--c:' + color + '"></i></b>' }) }).addTo(stopLayer);
-          seg -= (step - acc); prev = at; acc = 0;
+    // Одна небольшая стрелка на видимом участке между соседними остановками.
+    function arrows(line, stops, color) {
+      if (stops.length < 2) return;
+      var pts = line.map(function (p) { return map.latLngToContainerPoint(p); }), lengths = [0];
+      for (var i = 1; i < pts.length; i++) lengths[i] = lengths[i - 1] + pts[i - 1].distanceTo(pts[i]);
+      var stopPts = stops.map(function (s) { return map.latLngToContainerPoint([s.lat, s.lon]); });
+      var measures = [], previous = 0;
+      stopPts.forEach(function (p) {
+        var best = Infinity, at = previous;
+        for (var j = 1; j < pts.length; j++) {
+          var a = pts[j - 1], b = pts[j], dx = b.x - a.x, dy = b.y - a.y, len2 = dx * dx + dy * dy;
+          if (!len2) continue;
+          var t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2));
+          var measure = lengths[j - 1] + t * Math.sqrt(len2);
+          if (measure < previous - 12) continue;
+          var dist2 = Math.pow(p.x - a.x - t * dx, 2) + Math.pow(p.y - a.y - t * dy, 2);
+          if (dist2 < best) { best = dist2; at = measure; }
         }
-        acc += seg; prev = cur;
+        measures.push(at); previous = at;
+      });
+      var lastArrow = -Infinity;
+      for (var k = 1; k < measures.length; k++) {
+        if (measures[k] - measures[k - 1] < 70) continue;
+        var middle = (measures[k] + measures[k - 1]) / 2;
+        if (middle - lastArrow < 90) continue;
+        for (var n = 1; n < lengths.length; n++) {
+          if (lengths[n] < middle) continue;
+          var fraction = (middle - lengths[n - 1]) / (lengths[n] - lengths[n - 1]);
+          var p0 = pts[n - 1], p1 = pts[n], px = p0.x + (p1.x - p0.x) * fraction, py = p0.y + (p1.y - p0.y) * fraction;
+          if (stopPts.some(function (s) { return Math.hypot(s.x - px, s.y - py) < 25; })) break;
+          var a0 = line[n - 1], a1 = line[n], at = [a0[0] + (a1[0] - a0[0]) * fraction, a0[1] + (a1[1] - a0[1]) * fraction];
+          var angle = Math.atan2(p1.y - p0.y, p1.x - p0.x) * 180 / Math.PI;
+          L.marker(at, { interactive: false, keyboard: false, zIndexOffset: 0, icon: L.divIcon({ className: "dir-arrow dir-arrow--selected", iconSize: [10, 10], iconAnchor: [5, 5],
+            html: '<svg viewBox="0 0 10 10" aria-hidden="true" fill="none" style="transform:rotate(' + angle.toFixed(1) + 'deg)"><path d="M2 2 L7 5 L2 8" stroke="#fff" stroke-width="3"/><path d="M2 2 L7 5 L2 8" stroke="' + color + '" stroke-width="1.7"/></svg>' }) }).addTo(stopLayer);
+          lastArrow = middle;
+          break;
+        }
+      }
+    }
+    function highlightStop(index) {
+      if (highlightedStop !== null && stopMarkers[highlightedStop]) {
+        var old = stopMarkers[highlightedStop];
+        if (old.getElement()) old.getElement().classList.remove("is-highlighted");
+        old.setZIndexOffset(100);
+      }
+      highlightedStop = Number.isInteger(index) && index >= 0 ? index : null;
+      var marker = highlightedStop !== null && stopMarkers[highlightedStop];
+      if (marker) {
+        if (marker.getElement()) marker.getElement().classList.add("is-highlighted");
+        marker.setZIndexOffset(1000);
       }
     }
     function drawRoutes() {
-      routeLayer.clearLayers(); stopLayer.clearLayers();
+      routeLayer.clearLayers(); stopLayer.clearLayers(); stopMarkers = [];
       var list = visibleRoutes();
       // сначала спокойные, сверху - с проблемами, самый верх - выбранный
       list.sort(function (a, b) { return rank(a) - rank(b); });
       list.forEach(function (r) {
         var on = selRoute === r.id, bad = current.state && r.unfilled;
-        if (on) depotLine(map, current.parks[r.park] && current.parks[r.park].coords, r.geo).addTo(routeLayer);
-        var directions = r.geo.directions;
-        // На общей улице прямое направление остаётся поверх обратного.
-        (on ? directions.slice().reverse() : directions).forEach(function (d, index) {
-          var i = on ? directions.length - 1 - index : index;
+        var directions = on ? r.geo.directions.filter(function (d) { return !selDirection || d.id === selDirection; }) : r.geo.directions;
+        directions.forEach(function (d, i) {
           if (d.line.length < 2) return;
           // у выбранного маршрута направление A - цветом маршрута, B - чуть светлее; у остальных оба одним цветом
-          var col = on ? dirColor(r.geo.color, i) : r.geo.color;
-          var base = on ? (i ? 4 : 5) : bad ? 4 : 3;
+          var col = r.geo.color;
+          var base = on ? (map.getZoom() < 12.5 ? 6 : 9) : bad ? 4 : 3;
           var opacity = on || bad ? 1 : 0.7;
           // Проблема (наряды без автобуса) - ярко-красная обводка под линией маршрута.
           if (bad) L.polyline(d.line, { renderer: canvas, color: "#e0001b", weight: on ? base + 8 : 9, opacity: 0.95, interactive: false }).addTo(routeLayer);
           if (on) L.polyline(d.line, { renderer: canvas, color: "#ffffff", weight: base + 4, interactive: false }).addTo(routeLayer);
           var line = L.polyline(d.line, { renderer: canvas, color: col, weight: base, opacity: opacity });
-          line.bindTooltip("<b>Маршрут " + esc(r.number) + "</b>" + (d.name ? "<br>" + esc(d.id) + ": " + esc(d.name) : "") +
-            (current.state ? "<br>На линии " + r.filled + " из " + r.total + (r.unfilled ? ", без автобуса " + r.unfilled : "") + (r.noDriver ? ", без водителя смен " + r.noDriver : "") : ""), { sticky: true });
+          line.bindTooltip('<span class="route-tip__body"><i class="ad-icon ad-icon--bus ad-icon--sm" aria-hidden="true"></i><span>Маршрут ' + esc(r.number) + (d.name ? ' · ' + esc(d.name) : '') + '</span></span>',
+            { sticky: true, className: "route-line-tip", opacity: 1 });
           line.on("click", function (e) { L.DomEvent.stopPropagation(e); opts.onRoute && opts.onRoute(r.id, e.latlng, d); });
           // наведение: линия чуть толще и ярче
           line.on("mouseover", function () { if (!on) line.setStyle({ weight: base + 2, opacity: 1 }); map.getContainer().style.cursor = "pointer"; });
           line.on("mouseout", function () { if (!on) line.setStyle({ weight: base, opacity: opacity }); map.getContainer().style.cursor = ""; });
           line.addTo(routeLayer);
-          if (on) arrows(d.line, col, i ? 325 : 0);  // стрелки направлений - вразбежку, чтобы на общих улицах не наложились
+          if (on) arrows(d.line, d.stops, col);
         });
         if (on) {
-          // остановки каждого направления - его цветом; общая для обоих остановка рисуется один раз
-          var seen = {};
-          r.geo.directions.forEach(function (d, i) {
-            var col = routeBadgeColor(dirColor(r.geo.color, i));
+          directions.forEach(function (d) {
+            var col = r.geo.color;
             d.stops.forEach(function (s, k) {
-              var key = s.name + "|" + s.lat.toFixed(4) + s.lon.toFixed(4); if (seen[key]) return; seen[key] = 1;
               var end = k === 0 || k === d.stops.length - 1;
-              var icon = L.divIcon({ className: "route-stop-wrap", iconSize: [16, 16], iconAnchor: [8, 8],
-                html: '<span class="route-stop' + (end ? ' route-stop--end' : '') + '" style="--c:' + col + '"><i class="ad-icon ad-icon--bus"></i></span>' });
-              L.marker([s.lat, s.lon], { icon: icon, keyboard: false, zIndexOffset: 100 })
-                .bindTooltip(esc(s.name) + " · " + esc(d.id) + (end ? (k === 0 ? " · начало" : " · конечная") : ""), { direction: "top" }).addTo(stopLayer);
+              var icon = L.divIcon({ className: "route-stop-wrap", iconSize: [24, 24], iconAnchor: [12, 12],
+                html: '<span class="route-stop route-stop--selected' + (end ? ' route-stop--end' : '') + '" style="--c:' + col + '"></span>' });
+              var marker = L.marker([s.lat, s.lon], { icon: icon, keyboard: false, zIndexOffset: 100 })
+                .bindTooltip('<span class="route-tip__body"><i class="ad-icon ad-icon--map-pin ad-icon--sm" aria-hidden="true"></i><span>' + esc(s.name) + (k === 0 ? ' · Начальная' : end ? ' · Конечная' : '') + '</span></span>',
+                  { direction: "top", className: "route-stop-tip", offset: [0, -15], opacity: 1 }).addTo(stopLayer);
+              stopMarkers[k] = marker;
             });
           });
         }
       });
       syncLabels();
       placeLabels();
+      if (highlightedStop !== null) highlightStop(highlightedStop);
       function rank(r) { return (selRoute === r.id ? 100 : 0) + (r.unfilled ? 10 : 0) + (r.noDriver ? 5 : 0); }
     }
+    map.on("zoomend", drawRoutes);
     // Подписи номеров без наложений: для каждого маршрута перебираем точки вдоль линии и берём
     // первую, где табличка не задевает уже поставленные. Не нашлось места - подписи нет (лучше, чем каша).
     function placeLabels() {
       labelLayer.clearLayers();
-      if (!selRoute && map.getZoom() < 11.5) return;
+      if (selRoute || map.getZoom() < 11.5) return;
       var list = visibleRoutes();
       list.sort(function (a, b) { return (selRoute === b.id) - (selRoute === a.id) || (b.unfilled ? 1 : 0) - (a.unfilled ? 1 : 0); });
       var placed = [], size = map.getSize(), fr = [0.4, 0.25, 0.55, 0.7, 0.15, 0.85, 0.32, 0.62, 0.48];
       list.forEach(function (r) {
         var on = selRoute === r.id;
         var w = (on ? 34 : 12) + 7 * String(r.number).length, h = on ? 28 : 18, pad = 4;
-        var dirs = r.geo.directions.filter(function (d) { return d.line.length > 1; });
+        var dirs = r.geo.directions.filter(function (d) { return d.line.length > 1 && (!on || !selDirection || d.id === selDirection); });
         for (var di = 0; di < dirs.length; di++) {
           for (var fi = 0; fi < fr.length; fi++) {
             var ll = dirs[di].line[Math.floor(dirs[di].line.length * fr[fi])], pt = map.latLngToContainerPoint(ll);
@@ -743,17 +783,17 @@
     function routeBounds() {
       var b = null;
       visibleRoutes().forEach(function (r) {
-        r.geo.directions.forEach(function (d) { d.line.forEach(function (p) { b = b ? b.extend(p) : L.latLngBounds(p, p); }); });
+        r.geo.directions.filter(function (d) { return !selRoute || !selDirection || d.id === selDirection; }).forEach(function (d) { d.line.forEach(function (p) { b = b ? b.extend(p) : L.latLngBounds(p, p); }); });
       });
       return b;
     }
     // Легенда - ровно то, что сейчас может быть на карте
     function legend() {
-      var multi = !parkFilter && current.parkList.length > 1, st = !!current.state;
+      var multi = includedParks.size > 1, st = !!current.state;
       var it = [
         ['<i class="lg-line lg-line--multi"></i>', "Маршрут - у каждого свой цвет"],
         st ? ['<i class="lg-line lg-line--bad"></i>', "На маршруте есть наряды без автобуса"] : null,
-        ['<i class="lg-line lg-line--a"></i><i class="lg-line lg-line--b"></i>', "Выбранный маршрут: направление A и обратное B"],
+        ['<i class="lg-line lg-line--a"></i>', "Выбранное направление маршрута"],
         ['<i class="lg-arrow"></i>', "Направление движения"],
         ['<span class="route-stop" style="--c:#0067a5"><i class="ad-icon ad-icon--bus"></i></span><span class="route-stop route-stop--end" style="--c:#0067a5"><i class="ad-icon ad-icon--bus"></i></span>', "Остановка, начальная и конечная"],
         ['<span class="rl lg-rl" style="--c:#0067a5">26</span>', "Номер маршрута (видно при приближении)"],
@@ -770,8 +810,8 @@
       // переброски: линия от парка-донора к парку-получателю, толщина по числу автобусов
       var flows = {};
       current.transfers.forEach(function (t) {
-        if (parkFilter) return;
-        var v = current.vehicles[t.vehicle_id]; if (!v) return;
+        var v = current.vehicles[t.vehicle_id];
+        if (!v || !includedParks.has(v.park_id) || !includedParks.has(t.to_park)) return;
         var k = v.park_id + ">" + t.to_park; flows[k] = (flows[k] || 0) + 1;
       });
       Object.keys(flows).forEach(function (k) {
@@ -785,20 +825,49 @@
         L.marker(end[1], { icon: L.divIcon({ className: "map-arrow", html: '<span style="transform:rotate(' + (-ang) + 'deg)">➤</span>', iconSize: [16, 16] }), interactive: false }).addTo(layer);
       });
       current.parkList.forEach(function (p) {
-        if (!p.coords || (parkFilter && p.id !== parkFilter)) return;
+        if (!p.coords || !includedParks.has(p.id)) return;
         pts.push(p.coords);
-        // Метка парка: квадрат в точке парка, справа - название и под ним «на линии N из M».
-        var miss = p.lineTotal - p.lineFilled;
-        var tone = !current.state ? "idle" : p.state === "down" ? "down" : miss ? "bad" : "ok";
+        var miss = Math.max(0, p.lineTotal - p.lineFilled);
+        var noDrv = p.unfilled.filter(function (u) { return u.kind === "shift" && u.type === "line"; }).length;
+        var tone = !current.state ? "idle" : p.state === "down" ? "down" : miss ? "bad" : noDrv ? "warn" : "ok";
         var sub = !current.state ? p.lineTotal + " " + plural(p.lineTotal, "наряд", "наряда", "нарядов")
           : '<b class="pk__n--' + (miss ? "bad" : "ok") + '">' + p.lineFilled + "</b> из <b>" + p.lineTotal + "</b>";
-        var html = '<div class="pk pk--' + tone + (selected === p.id ? " is-selected" : "") + '" aria-label="' + esc(p.name) + '"><span class="pk__ic"><i class="ad-icon ad-icon--bus"></i></span></div>';
-        var mk = L.marker(p.coords, { icon: L.divIcon({ className: "pk-wrap", html: html, iconSize: [0, 0], iconAnchor: [0, 0] }), zIndexOffset: 500 }).addTo(layer);
-        var noDrv = p.unfilled.filter(function (u) { return u.kind === "shift" && u.type === "line"; }).length;
-        // подсказка при наведении: краткая сводка по парку (её собирает экран, если умеет)
-        mk.bindTooltip(opts.parkTip ? opts.parkTip(p, sub) : "<b>" + esc(p.name) + "</b><br>" + sub,
-          { direction: "right", offset: [24, 0], className: "ptip-wrap", opacity: 1 });
+        var status = !current.state ? "План выпуска" : p.state === "down" ? "Парк недоступен" : miss ? "Без автобуса: " + miss :
+          noDrv ? "Без водителя: " + noDrv : "Выпуск закрыт";
+        var name = p.name.replace(/^Автобусный парк/i, "Автобусный Парк");
+        var caption = current.state ? p.lineFilled + " / " + p.lineTotal + " на линии" : p.lineTotal + " " + plural(p.lineTotal, "наряд", "наряда", "нарядов");
+        var label = p.name + ". " + caption + ". " + status + ". Открыть карточку парка";
+        var html = '<div class="pk pk--' + tone + (selected === p.id ? " is-selected" : "") + '">' +
+          '<span class="pk__ic"><i class="ad-icon ad-icon--bus" aria-hidden="true"></i></span>' +
+          '<span class="pk__body"><b class="pk__name">' + esc(name) + '</b><span class="pk__count">' + esc(caption) +
+          (tone === "ok" ? '<span class="pk__check" role="img" aria-label="Выпуск закрыт"></span>' :
+            tone === "bad" || tone === "warn" || tone === "down" ? '<i class="pk__warning ad-icon ad-icon--warning-circle" role="img" aria-label="' + esc(status) + '"></i>' : '') +
+          '</span></span></div>';
+        var mk = L.marker(p.coords, { alt: label, keyboard: true,
+          icon: L.divIcon({ className: "pk-wrap", html: html, iconSize: [0, 0], iconAnchor: [0, 0] }), zIndexOffset: 500 }).addTo(layer);
+        mk.getElement().setAttribute("aria-label", label);
+        var card = L.popup({ className: "park-hover-popup", closeButton: false, autoPan: true,
+          autoPanPaddingTopLeft: [14, 14], autoPanPaddingBottomRight: [14, 14],
+          maxWidth: 280, minWidth: 280, offset: [0, 0] })
+          .setLatLng(p.coords).setContent(opts.parkTip ? opts.parkTip(p, sub) : "<b>" + esc(p.name) + "</b><br>" + sub);
+        // Курсор может перейти с маркера на карточку и её кнопку.
+        var hideTimer;
+        function cancelHide() { clearTimeout(hideTimer); }
+        function showCard() { cancelHide(); map.openPopup(card); }
+        function scheduleHide() { cancelHide(); hideTimer = setTimeout(function () { map.closePopup(card); }, 220); }
+        mk.on("mouseover", showCard);
+        mk.on("mouseout", scheduleHide);
+        card.on("add", function () {
+          var box = card.getElement(); if (!box) return;
+          var badge = mk.getElement().querySelector(".pk");
+          var markerWidth = badge.offsetWidth, markerHeight = badge.offsetHeight;
+          card.options.offset = L.point(-10 - markerWidth / 2, -markerHeight / 2 - 8);
+          card.update();
+          box.addEventListener("pointerenter", cancelHide);
+          box.addEventListener("pointerleave", scheduleHide);
+        });
         mk.on("click", function () { opts.onPark && opts.onPark(p.id); });
+        mk._parkCard = card;
         markers[p.id] = mk;
       });
       if (draw.fitted) return;
@@ -824,18 +893,21 @@
     setTimeout(function () { map.invalidateSize(); }, 50);
     return {
       map: map,
-      setPark: function (id, fit) {
-        parkFilter = id;
-        selected = selRoute = null;
+      setParks: function (ids, fit) {
+        includedParks = new Set(ids);
+        selected = selRoute = selDirection = null;
         if (fit) draw.fitted = false;
         draw();
       },
       select: function (id) { selected = id; draw(); var p = current.parks[id]; if (p && p.coords && !selRoute) flyTo(map, p.coords); },
-      selectRoute: function (id, pad, noFit) {
-        selRoute = id || null; drawRoutes();
+      showParkCard: function (id) { if (markers[id]) map.openPopup(markers[id]._parkCard); },
+      selectRoute: function (id, pad, noFit, direction) {
+        selRoute = id || null; selDirection = direction || null; highlightedStop = null; drawRoutes();
         var b = id && !noFit && routeBounds();
         if (b) flyBounds(map, b, { paddingTopLeft: [30, 30], paddingBottomRight: [30, pad || 30], maxZoom: 14 });
       },
+      focusStop: function (stop) { flyTo(map, [stop.lat, stop.lon], Math.max(map.getZoom(), 16)); },
+      highlightStop: highlightStop,
       redraw: function (mm, handlers) { if (handlers) opts = handlers; current = mm; draw(); syncLabels(); },
       popup: function (latlng, html, onClose, cls) {
         var wide = cls === "ppop" ? { maxWidth: 300, minWidth: 300 } : { maxWidth: 600, minWidth: 540 };

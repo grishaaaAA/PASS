@@ -131,20 +131,33 @@ body { background: var(--bg); color: var(--ink); font: var(--text-body); }
 .mc__chk input { accent-color: var(--accent-deep); width: 16px; height: 16px; margin: 0; }
 .mc__credit { position: absolute; right: 8px; bottom: 5px; z-index: 600; font: 400 10px/1 var(--font-sans); color: var(--ink); opacity: .32; pointer-events: none; letter-spacing: .02em; }
 
-/* Метка парка: квадрат с автобусом, центр - ровно в точке парка. Название и цифры - в подсказке при наведении.
-   Цвет подложки - состояние: зелёный всё на линии, красный - есть нехватка. */
+/* Метка слева от координаты парка. */
 .pk-wrap { background: none; border: 0; }
-.pk { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); display: flex; box-sizing: border-box; cursor: pointer;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-md); overflow: hidden;
+.pk-wrap::before { content: ""; position: absolute; left: -3px; top: -3px; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--ink-muted); box-shadow: 0 0 0 2px var(--surface); }
+.pk { --park-tone: var(--accent-deep); position: absolute; right: 10px; top: 0;
+  transform: translateY(-50%) scale(var(--map-marker-scale, 1)); transform-origin: right center; display: flex; align-items: center;
+  gap: 7px; padding: 5px 8px 5px 5px; box-sizing: border-box; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 13px;
+  box-shadow: var(--shadow-md);
   transition: transform 320ms var(--easing-standard), box-shadow 320ms var(--easing-standard), border-color 220ms var(--easing-standard); }
-.pk:hover { transform: translate(-50%, -50%) scale(1.08); box-shadow: var(--shadow-lg); border-color: var(--border-strong); }
-.pk:active { transform: translate(-50%, -50%) scale(0.97); }
-.pk.is-selected { border-color: var(--accent-deep); box-shadow: 0 0 0 1px var(--accent-deep), var(--shadow-md); }
-.pk__ic { flex: none; width: 36px; height: 36px; display: grid; place-items: center; background-image: var(--gradient-chrome-deep); color: var(--on-fill); }
-.pk__ic .ad-icon { width: 18px; height: 18px; }
-.pk--ok .pk__ic { background-image: none; background-color: var(--success-fill); }
-.pk--bad .pk__ic { background-image: none; background-color: var(--danger-fill); }
-.pk--down .pk__ic { background-image: none; background-color: var(--neutral-fill); }
+.pk:hover { box-shadow: var(--shadow-lg); }
+.map--moving .pk { transition: none; }
+.pk:active { transform: translateY(-50%) scale(calc(var(--map-marker-scale, 1) * .98)); }
+.pk__ic { flex: none; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--park-tone) 80%, white), var(--park-tone));
+  box-shadow: inset 0 1px 1px rgba(255,255,255,.55), 0 2px 4px rgba(46,40,42,.15); color: var(--on-fill); }
+.pk__ic .ad-icon { width: 16px; height: 16px; }
+.pk--ok { --park-tone: var(--success-fill); }
+.pk--bad { --park-tone: var(--danger-fill); }
+.pk--warn { --park-tone: var(--warning-text); }
+.pk--down { --park-tone: var(--neutral-fill); }
+.pk__body { display: grid; gap: 1px; white-space: nowrap; }
+.pk__name { color: var(--ink); font: 600 11px/1.3 var(--font-sans); }
+.pk__count { display: flex; align-items: center; gap: 5px; color: var(--ink-muted); font: 400 10px/1.3 var(--font-sans); font-variant-numeric: tabular-nums; }
+.pk__check { width: 7px; height: 4px; border: solid var(--park-tone); border-width: 0 0 1.5px 1.5px; transform: translateY(-1px) rotate(-45deg); }
+.pk__warning { width: 12px; height: 12px; color: var(--park-tone); }
+.pk-wrap:focus-visible .pk { outline: 3px solid var(--focus-ring); outline-offset: 3px; }
 .pk__n--ok { color: var(--success-text); }
 .pk__n--bad { color: var(--danger-text); }
 
@@ -217,18 +230,29 @@ body { background: var(--bg); color: var(--ink); font: var(--text-body); }
 
 /* Стрелка направления движения на линии выбранного маршрута: маленький шеврон цвета направления с белой окантовкой */
 .dir-arrow { background: none; border: 0; }
-.dir-arrow b { position: absolute; display: block; filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff); }
-.dir-arrow i { display: block; width: 11px; height: 11px; background: var(--c);
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 1.5L10 6 2 10.5 4.2 6z'/%3E%3C/svg%3E") center / contain no-repeat;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 1.5L10 6 2 10.5 4.2 6z'/%3E%3C/svg%3E") center / contain no-repeat; }
-#map:not(.map--street) .dir-arrow { visibility: hidden; }
+.dir-arrow--selected svg { display: block; width: 10px; height: 10px; overflow: visible; stroke-linecap: round; stroke-linejoin: round; }
 .route-stop-wrap { display: grid; place-items: center; }
 .route-stop { display: grid; place-items: center; width: 14px; height: 14px; border: 2px solid #fff; border-radius: 5px;
   background: var(--c); color: #fff; box-shadow: var(--shadow-sm); }
+.route-stop--selected { width: 20px; height: 20px; border: 4px solid var(--c); border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px #fff; }
+.route-stop--selected.route-stop--end { width: 25px; height: 25px; border-width: 5px; }
+#map.map--far .route-stop--selected { width: 13px; height: 13px; border-width: 3px; }
+#map.map--far .route-stop--selected.route-stop--end { width: 18px; height: 18px; border-width: 4px; }
+.route-stop-wrap.is-highlighted .route-stop--selected { width: 24px; height: 24px; border: 0; background: var(--c); box-shadow: none; transition: width 180ms var(--easing-standard), height 180ms var(--easing-standard), background-color 180ms var(--easing-standard); }
+.route-stop-wrap.is-highlighted .route-stop--selected.route-stop--end { width: 29px; height: 29px; }
+#map.map--far .route-stop-wrap.is-highlighted .route-stop--selected { width: 17px; height: 17px; }
+#map.map--far .route-stop-wrap.is-highlighted .route-stop--selected.route-stop--end { width: 22px; height: 22px; }
+.route-stop-tip.leaflet-tooltip, .route-line-tip.leaflet-tooltip { padding: 8px 11px; border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: var(--shadow-md); color: var(--ink); font: var(--text-caption); }
+.route-stop-tip.leaflet-tooltip::before, .route-line-tip.leaflet-tooltip::before { display: none; }
+.route-tip__body { display: inline-flex; align-items: center; gap: 7px; animation: route-tip-in 220ms var(--easing-standard) both; }
+.route-tip__body .ad-icon { flex: none; color: var(--accent-deep); }
+@keyframes route-tip-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .route-tip__body { animation: none; } }
+.route-stop--selected .ad-icon { display: none; }
 .route-stop--end { width: 16px; height: 16px; border-radius: 50%; }
 .route-stop .ad-icon { width: 9px; height: 9px; }
 .route-stop--end .ad-icon { width: 10px; height: 10px; }
-#map:not(.map--street) .route-stop-wrap .route-stop:not(.route-stop--end) { width: 7px; height: 7px; border-width: 1px; border-radius: 50%; }
+#map:not(.map--street) .route-stop-wrap .route-stop:not(.route-stop--end):not(.route-stop--selected) { width: 7px; height: 7px; border-width: 1px; border-radius: 50%; }
 #map:not(.map--street) .route-stop-wrap .route-stop:not(.route-stop--end) .ad-icon { display: none; }
 
 /* Кнопка «На весь экран» / «Свернуть» и режим карты на весь экран */
